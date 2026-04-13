@@ -17,12 +17,13 @@ export default function Page() {
   const [price, setPrice] = useState<number | null>(null);
   const [directions, setDirections] = useState<any>(null);
   const [trackingLink, setTrackingLink] = useState("");
+  const [distance, setDistance] = useState<number | null>(null);
+  const [dateTime, setDateTime] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
 
   const pickupRef = useRef<HTMLInputElement>(null);
   const dropoffRef = useRef<HTMLInputElement>(null);
 
-  // 🔥 cuando carga google
   const handleLoad = () => setIsLoaded(true);
 
   // 🔥 AUTOCOMPLETE
@@ -46,87 +47,99 @@ export default function Page() {
     }
   }, [isLoaded]);
 
-  // 🚗 CALCULAR RUTA REAL
-  const calculateRoute = async () => {
-  try {
-    if (!pickup || !dropoff) {
-      alert("Selecciona origen y destino");
+  // 📍 UBICACIÓN
+  const getCurrentLocation = () => {
+    if (!navigator.geolocation || !window.google) {
+      alert("Ubicación no disponible");
       return;
     }
 
-    if (!window.google || !window.google.maps) {
-      alert("Google Maps no ha cargado");
-      return;
-    }
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      try {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
 
-    const service = new window.google.maps.DirectionsService();
+        const geocoder = new window.google.maps.Geocoder();
 
-    const results = await service.route({
-      origin: pickup,
-      destination: dropoff,
-      travelMode: window.google.maps.TravelMode.DRIVING,
+        const res = await geocoder.geocode({
+          location: { lat, lng },
+        });
+
+        if (res?.results?.length > 0) {
+          setPickup(res.results[0].formatted_address);
+        }
+      } catch (err) {
+        alert("Error obteniendo ubicación");
+      }
     });
+  };
 
-    // 🔥 VALIDACIÓN FUERTE
-    if (
-      !results ||
-      !results.routes ||
-      results.routes.length === 0
-    ) {
-      alert("No se encontró ruta");
-      return;
+  // 🔥 GUARDAR RESERVA (CORRECTO)
+  const saveBooking = async () => {
+    try {
+      await fetch(
+        "https://script.google.com/macros/s/AKfycbwnZEK7Iiq2htWCxpM4lOSbBhWczFBldODfatKgbYZqJFrRQXn2e6HlIMgtm7zyO0cO/exec",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name,
+            phone,
+            pickup,
+            dropoff,
+            price,
+            distance,
+            dateTime,
+          }),
+        }
+      );
+    } catch (err) {
+      console.error("Error guardando:", err);
     }
+  };
 
-    const routeData = results.routes[0];
+  // 🚗 CALCULAR RUTA
+  const calculateRoute = async () => {
+    try {
+      if (!pickup || !dropoff || !window.google) {
+        alert("Selecciona direcciones válidas");
+        return;
+      }
 
-    if (!routeData.legs || routeData.legs.length === 0) {
-      alert("Ruta inválida");
-      return;
+      const service = new window.google.maps.DirectionsService();
+
+      const results: any = await new Promise((resolve, reject) => {
+        service.route(
+          {
+            origin: pickup,
+            destination: dropoff,
+            travelMode: window.google.maps.TravelMode.DRIVING,
+          },
+          (result: any, status: any) => {
+            if (status === "OK") resolve(result);
+            else reject(status);
+          }
+        );
+      });
+
+      const route = results.routes?.[0]?.legs?.[0];
+      if (!route) return;
+
+      setDirections(results);
+
+      const miles = route.distance.value / 1609;
+      const minutes = route.duration.value / 60;
+
+      setDistance(Number(miles.toFixed(2)));
+
+      const total = 10 + miles * 2.0 + minutes * 0.5;
+      setPrice(Number(total.toFixed(2)));
+
+    } catch (err) {
+      alert("Error calculando ruta");
     }
-
-    const route = routeData.legs[0];
-
-    if (!route.distance || !route.duration) {
-      alert("Datos de ruta incompletos");
-      return;
-    }
-
-    // ✅ SOLO AQUÍ GUARDAMOS
-    setDirections(results);
-
-    const miles = route.distance.value / 1609;
-    const minutes = route.duration.value / 60;
-
-    const total =
-      10 + miles * 2.5 + minutes * 0.5;
-
-    setPrice(Number(total.toFixed(2)));
-
-  } catch (error: any) {
-    console.error("ERROR GOOGLE:", error);
-    alert("Error calculando la ruta. Verifica direcciones.");
-  }
-};
-
-  // 📲 WHATSAPP
-  const sendWhatsApp = () => {
-    const message = `
-🚗 NUEVA RESERVA
-
-👤 ${name}
-📞 ${phone}
-
-📍 ${pickup}
-🏁 ${dropoff}
-
-💰 $${price}
-
-📡 Tracking:
-${trackingLink || "Se enviará luego"}
-`;
-
-    const url = `https://wa.me/17252876197?text=${encodeURIComponent(message)}`;
-    window.open(url, "_blank");
   };
 
   return (
@@ -137,7 +150,6 @@ ${trackingLink || "Se enviará luego"}
     >
       <div style={{ position: "relative", height: "100vh" }}>
 
-        {/* MAPA */}
         <GoogleMap
           center={{ lat: 36.1699, lng: -115.1398 }}
           zoom={12}
@@ -146,48 +158,28 @@ ${trackingLink || "Se enviará luego"}
           {directions && <DirectionsRenderer directions={directions} />}
         </GoogleMap>
 
-        {/* PANEL */}
         <div style={panel}>
 
-          <input placeholder="Nombre"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            style={input}
-          />
+          <input placeholder="Nombre" value={name} onChange={(e) => setName(e.target.value)} style={input} />
+          <input placeholder="Teléfono" value={phone} onChange={(e) => setPhone(e.target.value)} style={input} />
 
-          <input placeholder="Teléfono"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            style={input}
-          />
+          <input type="datetime-local" value={dateTime} onChange={(e) => setDateTime(e.target.value)} style={input} />
 
-          <input ref={pickupRef}
-            placeholder="Origen"
-            value={pickup}
-            onChange={(e) => setPickup(e.target.value)}
-            style={input}
-          />
+          <div style={{ display: "flex", gap: 5 }}>
+            <input ref={pickupRef} placeholder="Origen" value={pickup} onChange={(e) => setPickup(e.target.value)} style={{ ...input, flex: 1 }} />
+            <button onClick={getCurrentLocation}>📍</button>
+          </div>
 
-          <input ref={dropoffRef}
-            placeholder="Destino"
-            value={dropoff}
-            onChange={(e) => setDropoff(e.target.value)}
-            style={input}
-          />
+          <input ref={dropoffRef} placeholder="Destino" value={dropoff} onChange={(e) => setDropoff(e.target.value)} style={input} />
 
-          <button onClick={calculateRoute} style={btn}>
-            Calcular tarifa
-          </button>
+          <button onClick={calculateRoute} style={btn}>Calcular tarifa</button>
 
           {price && (
             <>
               <h2>💰 ${price}</h2>
+              <p>📏 {distance} millas</p>
 
-              <p>Métodos de pago:</p>
-
-              <button onClick={() => alert("Zelle: 725-287-6197")} style={btnPurple}>
-                Zelle
-              </button>
+              <button onClick={() => alert("Zelle: 725-287-6197")} style={btnPurple}>Zelle</button>
 
               <a href="https://www.paypal.com/paypalme/ernestogongorasaco" target="_blank">
                 <button style={btnBlue}>PayPal</button>
@@ -197,15 +189,36 @@ ${trackingLink || "Se enviará luego"}
                 <button style={btnSky}>Venmo</button>
               </a>
 
-              <input
-                placeholder="(Conductor) link de tracking"
-                value={trackingLink}
-                onChange={(e) => setTrackingLink(e.target.value)}
-                style={input}
-              />
+              <input placeholder="Tracking link" value={trackingLink} onChange={(e) => setTrackingLink(e.target.value)} style={input} />
 
-              <button onClick={sendWhatsApp} style={btn}>
-                Reservar por WhatsApp
+              {/* ✅ BOTÓN FINAL CORREGIDO */}
+              <button
+                onClick={async () => {
+                  if (!price) return alert("Calcula tarifa");
+                  if (!name || !phone) return alert("Completa datos");
+
+                  await saveBooking();
+
+                  const message = `
+🚗 RESERVA CONFIRMADA
+
+👤 ${name}
+📞 ${phone}
+
+📅 ${dateTime || "No especificada"}
+
+📍 ${pickup}
+🏁 ${dropoff}
+
+📏 ${distance} millas
+💰 $${price}
+`;
+
+                  window.open(`https://wa.me/17252876197?text=${encodeURIComponent(message)}`, "_blank");
+                }}
+                style={btn}
+              >
+                Confirmar reserva ✅
               </button>
             </>
           )}
@@ -215,7 +228,6 @@ ${trackingLink || "Se enviará luego"}
   );
 }
 
-// 🎨 estilos
 const panel = {
   position: "absolute" as const,
   bottom: 0,
