@@ -2,97 +2,147 @@
 
 import { useEffect, useState } from "react";
 
+const PASSWORD = "8887";
+
 export default function AdminPage() {
   const [data, setData] = useState<any[]>([]);
+  const [authorized, setAuthorized] = useState(false);
+  const [inputPass, setInputPass] = useState("");
 
-  useEffect(() => {
+  // 🔥 CARGAR DATOS
+  const loadData = () => {
     fetch("https://docs.google.com/spreadsheets/d/e/2PACX-1vTpBB4Sb-wzWPSPT-Yvo_jA5KB0rDOR5epN0F3iHdHTOzd-tZnYbz3_336twwe1FKf14lBqOokS865i/pub?output=csv")
       .then(res => res.text())
       .then(text => {
-        const rows = text.split("\n").map(row => row.split(","));
-        setData(rows.slice(1)); // quitamos encabezado
+        const rows = text.split("\n").map(r => r.split(","));
+        setData(rows.slice(1));
       });
+  };
+
+  useEffect(() => {
+    loadData();
   }, []);
 
-  return (
-    <div style={{ padding: 20, background: "#f5f5f5", minHeight: "100vh" }}>
-      
-      <h1 style={{ fontSize: 28, fontWeight: "bold", marginBottom: 20 }}>
-        🚗 Panel PRO de Reservas
-      </h1>
-
-      {/* CONTADOR */}
-      <div style={{
-        marginBottom: 20,
-        padding: 15,
-        background: "black",
-        color: "white",
-        borderRadius: 12
-      }}>
-        Total de reservas: {data.length}
+  // 🔐 LOGIN
+  if (!authorized) {
+    return (
+      <div style={{ padding: 20 }}>
+        <h2>🔐 Panel Admin</h2>
+        <input
+          type="password"
+          placeholder="Contraseña"
+          value={inputPass}
+          onChange={(e) => setInputPass(e.target.value)}
+        />
+        <button
+          onClick={() => {
+            if (inputPass === PASSWORD) setAuthorized(true);
+            else alert("Contraseña incorrecta");
+          }}
+        >
+          Entrar
+        </button>
       </div>
+    );
+  }
 
-      {/* TARJETAS */}
-      <div style={{
-        display: "grid",
-        gap: 15
-      }}>
-        {data.map((row, i) => (
+  // 🔥 ACTUALIZAR STATUS EN GOOGLE SHEETS
+  const updateStatus = async (name: string, phone: string, status: string) => {
+    try {
+      await fetch(
+        "https://script.google.com/macros/s/AKfycbw9W1SOCuelG7M1I5cLfBzkUMXZdGj78csPYM8Bjr9-WT0dwlUEbdTUA0rislOEVFkX6A/exec",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            updateStatus: true,
+            name,
+            phone,
+            status,
+          }),
+        }
+      );
+
+      alert("Estado actualizado ✅");
+
+      // 🔄 recargar datos automáticamente
+      loadData();
+
+    } catch (error) {
+      alert("Error actualizando estado");
+      console.error(error);
+    }
+  };
+
+  // 🎨 COLOR DEL STATUS
+  const getColor = (status: string) => {
+    if (status === "Pendiente") return "#ffc107";
+    if (status === "En camino") return "#17a2b8";
+    if (status === "Completado") return "#28a745";
+    return "#ccc";
+  };
+
+  return (
+    <div style={{ padding: 20, background: "#f5f5f5" }}>
+      <h1>🚗 Panel PRO</h1>
+
+      {data.map((row, i) => {
+        const status = row[7] || "Pendiente"; // 🔥 ESTADO REAL DESDE SHEETS
+
+        return (
           <div key={i} style={card}>
-
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <h3 style={{ margin: 0 }}>{row[1]}</h3>
-              <span style={status}>Activo</span>
+              <h3>{row[1]}</h3>
+              <span style={{ ...badge, background: getColor(status) }}>
+                {status}
+              </span>
             </div>
 
             <p>📞 {row[2]}</p>
 
-            <div style={routeBox}>
+            <div style={route}>
               <p>📍 {row[3]}</p>
               <p>➡️ {row[4]}</p>
             </div>
 
-            <div style={bottomRow}>
-              <span>💰 ${row[5]}</span>
-              <span>📏 {row[6]} mi</span>
+            <p>💰 ${row[5]} | 📏 {row[6]} mi</p>
+
+            {/* 🔥 BOTONES REALES (GUARDAN EN GOOGLE SHEETS) */}
+            <div style={{ display: "flex", gap: 5, marginTop: 10 }}>
+              <button onClick={() => updateStatus(row[1], row[2], "Pendiente")}>
+                🟡
+              </button>
+              <button onClick={() => updateStatus(row[1], row[2], "En camino")}>
+                🟢
+              </button>
+              <button onClick={() => updateStatus(row[1], row[2], "Completado")}>
+                🔵
+              </button>
             </div>
-
-            <small style={{ color: "#666" }}>
-              {row[0]}
-            </small>
-
           </div>
-        ))}
-      </div>
+        );
+      })}
     </div>
   );
 }
 
-// 🎨 ESTILOS PRO
+// 🎨 estilos
 const card = {
   background: "white",
   padding: 15,
   borderRadius: 15,
-  boxShadow: "0 4px 10px rgba(0,0,0,0.1)"
+  marginBottom: 15,
+  boxShadow: "0 4px 10px rgba(0,0,0,0.1)",
 };
 
-const routeBox = {
-  background: "#f1f1f1",
+const route = {
+  background: "#eee",
   padding: 10,
   borderRadius: 10,
-  margin: "10px 0"
 };
 
-const bottomRow = {
-  display: "flex",
-  justifyContent: "space-between",
-  fontWeight: "bold"
-};
-
-const status = {
-  background: "#28a745",
+const badge = {
   color: "white",
   padding: "4px 10px",
   borderRadius: 10,
-  fontSize: 12
+  fontSize: 12,
 };
