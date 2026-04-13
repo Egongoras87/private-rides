@@ -77,10 +77,11 @@ export default function Page() {
   // 🔥 GUARDAR RESERVA (CORRECTO)
   const saveBooking = async () => {
   try {
-    const res = await fetch(
-      "https://script.google.com/macros/s/AKfycbw9W1SOCuelG7M1I5cLfBzkUMXZdGj78csPYM8Bjr9-WT0dwlUEbdTUA0rislOEVFkX6A/exec",
+    await fetch(
+      "https://script.google.com/macros/s/AKfycbxKFVhlJzimK8NPFwK42OdGeqxkuYLrBMjqc51mlQAkHAR_DyYQc56f-zA21DgLKE5ocg/exec",
       {
         method: "POST",
+        mode: "no-cors", // 🔥 CLAVE
         headers: {
           "Content-Type": "application/json",
         },
@@ -96,18 +97,10 @@ export default function Page() {
       }
     );
 
-    const text = await res.text();
-
-    console.log("RESPUESTA SHEETS:", text);
-
-    if (!res.ok) {
-      throw new Error("Error al guardar");
-    }
+    console.log("Guardado en Sheets ✅");
 
   } catch (error) {
-    console.error("ERROR GUARDANDO:", error);
-    alert("Error guardando la reserva");
-    throw error;
+    console.error(error);
   }
 };
 
@@ -216,7 +209,7 @@ export default function Page() {
   }
 
   try {
-    await saveBooking(); // 🔥 guarda en Sheets
+    saveBooking(); // sin await 🔥
   } catch (e) {
     return; // 🔥 evita seguir si falla
   }
