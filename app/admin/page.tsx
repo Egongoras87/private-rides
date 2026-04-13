@@ -14,8 +14,12 @@ export default function AdminPage() {
     fetch("https://docs.google.com/spreadsheets/d/e/2PACX-1vTpBB4Sb-wzWPSPT-Yvo_jA5KB0rDOR5epN0F3iHdHTOzd-tZnYbz3_336twwe1FKf14lBqOokS865i/pub?output=csv")
       .then(res => res.text())
       .then(text => {
-        const rows = text.split("\n").map(r => r.split(","));
-        setData(rows.slice(1));
+       const rows = text.split("\n").slice(1).map((row) => {
+  const cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+  return cols.map(c => c.replace(/(^"|"$)/g, "").trim());
+});
+
+setData(rows.filter(r => r.length > 5));
       });
   };
 
