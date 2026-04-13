@@ -76,29 +76,40 @@ export default function Page() {
 
   // 🔥 GUARDAR RESERVA (CORRECTO)
   const saveBooking = async () => {
-    try {
-      await fetch(
-        "https://script.google.com/macros/s/AKfycbwnZEK7Iiq2htWCxpM4lOSbBhWczFBldODfatKgbYZqJFrRQXn2e6HlIMgtm7zyO0cO/exec",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name,
-            phone,
-            pickup,
-            dropoff,
-            price,
-            distance,
-            dateTime,
-          }),
-        }
-      );
-    } catch (err) {
-      console.error("Error guardando:", err);
+  try {
+    const res = await fetch(
+      "https://script.google.com/macros/s/AKfycbw9W1SOCuelG7M1I5cLfBzkUMXZdGj78csPYM8Bjr9-WT0dwlUEbdTUA0rislOEVFkX6A/exec",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          phone,
+          pickup,
+          dropoff,
+          price,
+          distance,
+          dateTime,
+        }),
+      }
+    );
+
+    const text = await res.text();
+
+    console.log("RESPUESTA SHEETS:", text);
+
+    if (!res.ok) {
+      throw new Error("Error al guardar");
     }
-  };
+
+  } catch (error) {
+    console.error("ERROR GUARDANDO:", error);
+    alert("Error guardando la reserva");
+    throw error;
+  }
+};
 
   // 🚗 CALCULAR RUTA
   const calculateRoute = async () => {
@@ -194,12 +205,23 @@ export default function Page() {
               {/* ✅ BOTÓN FINAL CORREGIDO */}
               <button
                 onClick={async () => {
-                  if (!price) return alert("Calcula tarifa");
-                  if (!name || !phone) return alert("Completa datos");
+  if (!price) {
+    alert("Calcula tarifa");
+    return;
+  }
 
-                  await saveBooking();
+  if (!name || !phone) {
+    alert("Completa datos");
+    return;
+  }
 
-                  const message = `
+  try {
+    await saveBooking(); // 🔥 guarda en Sheets
+  } catch (e) {
+    return; // 🔥 evita seguir si falla
+  }
+
+  const message = `
 🚗 RESERVA CONFIRMADA
 
 👤 ${name}
@@ -214,8 +236,11 @@ export default function Page() {
 💰 $${price}
 `;
 
-                  window.open(`https://wa.me/17252876197?text=${encodeURIComponent(message)}`, "_blank");
-                }}
+  window.open(
+    `https://wa.me/17252876197?text=${encodeURIComponent(message)}`,
+    "_blank"
+  );
+}}
                 style={btn}
               >
                 Confirmar reserva ✅
