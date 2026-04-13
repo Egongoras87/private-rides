@@ -48,39 +48,65 @@ export default function Page() {
 
   // 🚗 CALCULAR RUTA REAL
   const calculateRoute = async () => {
-    if (!pickup || !dropoff || !window.google) {
-      alert("Selecciona direcciones válidas");
+  try {
+    if (!pickup || !dropoff) {
+      alert("Selecciona origen y destino");
+      return;
+    }
+
+    if (!window.google || !window.google.maps) {
+      alert("Google Maps no ha cargado");
       return;
     }
 
     const service = new window.google.maps.DirectionsService();
 
-    try {
-      const results = await service.route({
-        origin: pickup,
-        destination: dropoff,
-        travelMode: window.google.maps.TravelMode.DRIVING,
-      });
+    const results = await service.route({
+      origin: pickup,
+      destination: dropoff,
+      travelMode: window.google.maps.TravelMode.DRIVING,
+    });
 
-      if (!results.routes?.[0]?.legs?.[0]) {
-        alert("No se pudo calcular la ruta");
-        return;
-      }
-
-      setDirections(results);
-
-      const route = results.routes[0].legs[0];
-
-      const miles = route.distance.value / 1609;
-      const minutes = route.duration.value / 60;
-
-      const total = 10 + miles * 2.5 + minutes * 0.5;
-
-      setPrice(Number(total.toFixed(2)));
-    } catch (e) {
-      alert("Error calculando ruta");
+    // 🔥 VALIDACIÓN FUERTE
+    if (
+      !results ||
+      !results.routes ||
+      results.routes.length === 0
+    ) {
+      alert("No se encontró ruta");
+      return;
     }
-  };
+
+    const routeData = results.routes[0];
+
+    if (!routeData.legs || routeData.legs.length === 0) {
+      alert("Ruta inválida");
+      return;
+    }
+
+    const route = routeData.legs[0];
+
+    if (!route.distance || !route.duration) {
+      alert("Datos de ruta incompletos");
+      return;
+    }
+
+    // ✅ SOLO AQUÍ GUARDAMOS
+    setDirections(results);
+
+    const miles = route.distance.value / 1609;
+    const minutes = route.duration.value / 60;
+
+    const total =
+      10 + miles * 2.5 + minutes * 0.5;
+
+    setPrice(Number(total.toFixed(2)));
+
+  } catch (error: any) {
+    console.error("ERROR GOOGLE:", error);
+    alert("Error calculando la ruta. Verifica direcciones.");
+  }
+};
 
   // 📲 WHATSAPP
   const sendWhatsApp = () => {
