@@ -134,6 +134,34 @@ export default function Page() {
     setPrice(Number((10 + miles * 2 + minutes * 0.5).toFixed(2)));
     setDirections(results);
   };
+  // 🔥 GUARDAR RESERVA EN GOOGLE SHEETS
+const saveBooking = async () => {
+  try {
+    await fetch(
+      "https://script.google.com/macros/s/AKfycbxKFVhlJzimK8NPFwK42OdGeqxkuYLrBMjqc51mlQAkHAR_DyYQc56f-zA21DgLKE5ocg/exec",
+      {
+        method: "POST",
+        mode: "no-cors",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          phone,
+          pickup,
+          dropoff,
+          price,
+          distance,
+          dateTime,
+        }),
+      }
+    );
+
+    console.log("Reserva guardada ✅");
+  } catch (error) {
+    console.error("Error guardando:", error);
+  }
+};
 
   return (
     <LoadScript
@@ -175,19 +203,89 @@ export default function Page() {
           <button onClick={startTracking} style={btnMain}>📍 Activar GPS</button>
 
           {price && (
-            <>
-              <h3>💰 ${price}</h3>
+  <>
+    <h3>💰 ${price}</h3>
+    <p>📏 {distance} millas</p>
 
-              <div style={{ display: "flex", gap: 5 }}>
-                <button style={{ ...btnSmall, background: "#6f42c1" }}>Zelle</button>
-                <button style={{ ...btnSmall, background: "#0070ba" }}>PayPal</button>
-                <button style={{ ...btnSmall, background: "#3d95ce" }}>Venmo</button>
-              </div>
-            </>
-          )}
-        </div>
+    {/* 💳 PAGOS EN FILA */}
+    <div style={{ display: "flex", gap: 5 }}>
+      <button
+        onClick={() => alert("Zelle: 725-287-6197")}
+        style={{ ...btnSmall, background: "#6f42c1" }}
+      >
+        Zelle
+      </button>
 
-      </div>
+      <a
+        href="https://www.paypal.com/paypalme/ernestogongorasaco"
+        target="_blank"
+        style={{ flex: 1 }}
+      >
+        <button style={{ ...btnSmall, background: "#0070ba", width: "100%" }}>
+          PayPal
+        </button>
+      </a>
+
+      <a
+        href="https://venmo.com/code?user_id=4536118275999433880&created=1776057522"
+        target="_blank"
+        style={{ flex: 1 }}
+      >
+        <button style={{ ...btnSmall, background: "#3d95ce", width: "100%" }}>
+          Venmo
+        </button>
+      </a>
+    </div>
+
+    {/* ✅ BOTÓN RESERVAR */}
+    <button
+      onClick={async () => {
+        if (!name || !phone) return alert("Completa tus datos");
+
+        await saveBooking();
+
+        const message = `
+🚗 NUEVA RESERVA
+
+👤 ${name}
+📞 ${phone}
+
+📅 ${dateTime || "Lo antes posible"}
+
+📍 ${pickup}
+🏁 ${dropoff}
+
+📏 ${distance} millas
+💰 $${price}
+
+📍 Tracking:
+${driverLocation || "Pendiente"}
+
+`;
+
+        // 👉 ENVÍA AL DRIVER (TU NÚMERO)
+        window.open(
+          `https://wa.me/17252876197?text=${encodeURIComponent(message)}`,
+          "_blank"
+        );
+
+        // 👉 OPCIONAL: confirmar al cliente
+        alert("Reserva enviada 🚗");
+
+        // 👉 limpiar datos
+        localStorage.removeItem("rideData");
+      }}
+      style={btnMain}
+    >
+      Confirmar reserva 🚗
+    </button>
+  </>
+)}
+
+        </div> {/* 🔥 CIERRE PANEL */}
+
+      </div> {/* 🔥 CIERRE CONTENEDOR PRINCIPAL */}
+
     </LoadScript>
   );
 }
