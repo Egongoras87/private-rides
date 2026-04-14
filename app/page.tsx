@@ -268,16 +268,14 @@ const startTracking = () => {
     <h2>💰 ${price}</h2>
     <p>📏 {distance} millas</p>
 
-    <button onClick={() => alert("Zelle: 725-287-6197")} style={btnPurple}>
-      Zelle
-    </button>
+    <button onClick={() => alert("Zelle: 725-287-6197")} style={{ ...btn, flex: 1, background: "#6f42c1" }}>Zelle</button>
 
     <a href="https://www.paypal.com/paypalme/ernestogongorasaco" target="_blank">
-      <button style={btnBlue}>PayPal</button>
+      <button style={{ ...btn, flex: 1, background: "#0070ba" }}>PayPal</button>
     </a>
 
     <a href="https://venmo.com/code?user_id=4536118275999433880&created=1776057522" target="_blank">
-      <button style={btnSky}>Venmo</button>
+      <button style={{ ...btn, flex: 1, background: "#3d95ce" }}>Venmo</button>
     </a>
 
     <button
