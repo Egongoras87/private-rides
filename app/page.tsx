@@ -5,6 +5,7 @@ import {
   GoogleMap,
   LoadScript,
   DirectionsRenderer,
+  Marker
 } from "@react-google-maps/api";
 
 const libraries: ("places")[] = ["places"];
@@ -15,8 +16,10 @@ export default function Page() {
   const [pickup, setPickup] = useState("");
   const [dropoff, setDropoff] = useState("");
   const [price, setPrice] = useState<number | null>(null);
+  const [gpsActive, setGpsActive] = useState(false);
+  const [driverPos, setDriverPos] = useState<any>(null);
   const [directions, setDirections] = useState<any>(null);
-  const [trackingLink, setTrackingLink] = useState("");
+  const [driverLocation, setDriverLocation] = useState("");
   const [distance, setDistance] = useState<number | null>(null);
   const [dateTime, setDateTime] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
@@ -26,27 +29,28 @@ export default function Page() {
 
   const handleLoad = () => setIsLoaded(true);
 
-  // 🔥 AUTOCOMPLETE
-  useEffect(() => {
-    if (!isLoaded || !window.google) return;
+ // 🔥 TRACKING EN TIEMPO REAL (CORREGIDO)
 
-    if (pickupRef.current) {
-      const auto1 = new window.google.maps.places.Autocomplete(pickupRef.current);
-      auto1.addListener("place_changed", () => {
-        const place = auto1.getPlace();
-        if (place.formatted_address) setPickup(place.formatted_address);
-      });
-    }
+// 🔥 AUTOCOMPLETE (SEPARADO)
+useEffect(() => {
+  if (!isLoaded || !window.google) return;
 
-    if (dropoffRef.current) {
-      const auto2 = new window.google.maps.places.Autocomplete(dropoffRef.current);
-      auto2.addListener("place_changed", () => {
-        const place = auto2.getPlace();
-        if (place.formatted_address) setDropoff(place.formatted_address);
-      });
-    }
-  }, [isLoaded]);
+  if (pickupRef.current) {
+    const auto1 = new window.google.maps.places.Autocomplete(pickupRef.current);
+    auto1.addListener("place_changed", () => {
+      const place = auto1.getPlace();
+      if (place.formatted_address) setPickup(place.formatted_address);
+    });
+  }
 
+  if (dropoffRef.current) {
+    const auto2 = new window.google.maps.places.Autocomplete(dropoffRef.current);
+    auto2.addListener("place_changed", () => {
+      const place = auto2.getPlace();
+      if (place.formatted_address) setDropoff(place.formatted_address);
+    });
+  }
+}, [isLoaded]);
   // 📍 UBICACIÓN
   const getCurrentLocation = () => {
     if (!navigator.geolocation || !window.google) {
@@ -102,6 +106,62 @@ export default function Page() {
   } catch (error) {
     console.error(error);
   }
+};
+
+const sendLocation = async (lat: number, lng: number) => {
+  try {
+    await fetch("https://script.google.com/macros/s/AKfycbxKFVhlJzimK8NPFwK42OdGeqxkuYLrBMjqc51mlQAkHAR_DyYQc56f-zA21DgLKE5ocg/exec", {
+      method: "POST",
+      mode: "no-cors",
+      body: JSON.stringify({
+        tracking: true,
+        lat,
+        lng,
+      }),
+    });
+  } catch (e) {
+    console.log("Error tracking", e);
+  }
+};
+const startTracking = () => {
+  if (!navigator.geolocation) {
+    alert("Tu teléfono no tiene GPS");
+    return;
+  }
+
+  // 🔥 primero pide permiso
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      console.log("GPS activado");
+
+      setGpsActive(true);
+
+      // 🔥 ahora sí activa tracking en tiempo real
+      navigator.geolocation.watchPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+
+          console.log("POSICIÓN:", lat, lng);
+
+          // 👉 mueve el carrito en el mapa
+          setDriverPos({ lat, lng });
+
+          // 👉 genera link para WhatsApp
+          const link = `https://www.google.com/maps?q=${lat},${lng}`;
+          setDriverLocation(link);
+        },
+        (error) => {
+          console.log(error);
+          alert("Error obteniendo ubicación");
+        },
+        { enableHighAccuracy: true }
+      );
+    },
+    () => {
+      alert("Debes permitir ubicación para usar la app");
+    }
+  );
 };
 
   // 🚗 CALCULAR RUTA
@@ -160,6 +220,15 @@ export default function Page() {
           mapContainerStyle={{ width: "100%", height: "100%" }}
         >
           {directions && <DirectionsRenderer directions={directions} />}
+          {driverPos && (
+  <Marker
+    position={driverPos}
+    icon={{
+      url: "https://maps.google.com/mapfiles/kml/shapes/cabs.png",
+      scaledSize: new window.google.maps.Size(40, 40),
+    }}
+  />
+)}
         </GoogleMap>
 
         <div style={panel}>
@@ -193,51 +262,93 @@ export default function Page() {
                 <button style={btnSky}>Venmo</button>
               </a>
 
-              <input placeholder="Tracking link" value={trackingLink} onChange={(e) => setTrackingLink(e.target.value)} style={input} />
+              
 
-              {/* ✅ BOTÓN FINAL CORREGIDO */}
-              <button
-                onClick={async () => {
-  if (!price) {
-    alert("Calcula tarifa");
-    return;
-  }
+             {/* ✅ BOTÓN FINAL PRO + TRACKING AUTOMÁTICO */}
+<button
+  onClick={async () => {
+    if (!price) return alert("Calcula tarifa");
+    if (!name || !phone) return alert("Completa datos");
 
-  if (!name || !phone) {
-    alert("Completa datos");
-    return;
-  }
+    // 🚨 validar tracking
+    if (!driverLocation) {
+      alert("Esperando ubicación GPS...");
+      return;
+    }
 
-  try {
-    saveBooking(); // sin await 🔥
-  } catch (e) {
-    return; // 🔥 evita seguir si falla
-  }
+    await saveBooking();
 
-  const message = `
+    const message = `
 🚗 RESERVA CONFIRMADA
+<button onClick={startTracking} style={btn}>
+  📍 Activar GPS
+</button>
+<p style={{ color: gpsActive ? "green" : "red" }}>
+  {gpsActive ? "🟢 GPS activo" : "🔴 GPS apagado"}
+</p>
 
 👤 ${name}
 📞 ${phone}
 
-📅 ${dateTime || "No especificada"}
+📅 ${dateTime || "Lo antes posible"}
 
 📍 ${pickup}
 🏁 ${dropoff}
 
 📏 ${distance} millas
 💰 $${price}
+
+🟡 Estado: Pendiente
+
+📍 Seguimiento en tiempo real:
+https://private-rides-yacg.vercel.app/tracking
+
+🚗 Gracias por preferir nuestro servicio
 `;
 
-  window.open(
-    `https://wa.me/17252876197?text=${encodeURIComponent(message)}`,
-    "_blank"
-  );
-}}
-                style={btn}
-              >
-                Confirmar reserva ✅
-              </button>
+    window.open(
+      `https://wa.me/17252876197?text=${encodeURIComponent(message)}`,
+      "_blank"
+    );
+  }}
+  style={btn}
+>
+  Confirmar reserva ✅
+</button>
+
+{/* 🚗 BOTÓN EN CAMINO */}
+<button
+  onClick={() => {
+    if (!phone) return alert("Falta teléfono");
+
+    const msg = `
+🚗 Tu conductor está en camino
+
+📍 Ubicación en tiempo real:
+${driverLocation || "Ubicación no disponible"}
+
+⏱️ Tiempo estimado: 5-10 minutos
+`;
+
+    window.open(
+      `https://wa.me/1${phone}?text=${encodeURIComponent(msg)}`,
+      "_blank"
+    );
+  }}
+  style={btn}
+>
+  🚗 Avisar cliente (En camino)
+</button>
+<button
+  onClick={() => {
+    alert(driverLocation || "Aún no hay ubicación");
+  }}
+  style={btn}
+>
+  📍 Ver mi ubicación
+</button>
+
+              
             </>
           )}
         </div>
@@ -245,6 +356,7 @@ export default function Page() {
     </LoadScript>
   );
 }
+
 
 const panel = {
   position: "absolute" as const,
