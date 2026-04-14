@@ -66,7 +66,7 @@ export default function AdminPage() {
   const updateStatus = async (name: string, phone: string, status: string) => {
     try {
       await fetch(
-        "https://script.google.com/macros/s/AKfycbw9W1SOCuelG7M1I5cLfBzkUMXZdGj78csPYM8Bjr9-WT0dwlUEbdTUA0rislOEVFkX6A/exec",
+        "https://script.google.com/macros/s/AKfycbx0_jDiY4iNsDMJnSvNkFWce60-X7op_TIgyWos-cQx12gdsQsRnq0Ovx6F8jrjL1zbSg/exec",
         {
           method: "POST",
           body: JSON.stringify({
