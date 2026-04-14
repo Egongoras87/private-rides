@@ -125,41 +125,48 @@ const sendLocation = async (lat: number, lng: number) => {
 };
 const startTracking = () => {
   if (!navigator.geolocation) {
-    alert("Tu teléfono no tiene GPS");
+    alert("Tu dispositivo no tiene GPS");
     return;
   }
 
-  // 🔥 primero pide permiso
+  // 👉 PASO 1: pedir permiso
   navigator.geolocation.getCurrentPosition(
-    (position) => {
-      console.log("GPS activado");
+    (pos) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+
+      console.log("PRIMERA UBICACIÓN:", lat, lng);
+
+      // 👉 mostrar carrito inmediatamente
+      setDriverPos({ lat, lng });
+
+      const link = `https://www.google.com/maps?q=${lat},${lng}`;
+      setDriverLocation(link);
 
       setGpsActive(true);
 
-      // 🔥 ahora sí activa tracking en tiempo real
+      // 👉 PASO 2: activar seguimiento continuo
       navigator.geolocation.watchPosition(
         (pos) => {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
 
-          console.log("POSICIÓN:", lat, lng);
+          console.log("MOVIMIENTO:", lat, lng);
 
-          // 👉 mueve el carrito en el mapa
           setDriverPos({ lat, lng });
 
-          // 👉 genera link para WhatsApp
           const link = `https://www.google.com/maps?q=${lat},${lng}`;
           setDriverLocation(link);
         },
-        (error) => {
-          console.log(error);
-          alert("Error obteniendo ubicación");
+        (err) => {
+          console.log("ERROR GPS:", err);
         },
         { enableHighAccuracy: true }
       );
     },
-    () => {
-      alert("Debes permitir ubicación para usar la app");
+    (err) => {
+      alert("Debes permitir ubicación");
+      console.log(err);
     }
   );
 };
@@ -205,6 +212,7 @@ const startTracking = () => {
       alert("Error calculando ruta");
     }
   };
+  
 
   return (
     <LoadScript
@@ -215,8 +223,8 @@ const startTracking = () => {
       <div style={{ position: "relative", height: "100vh" }}>
 
         <GoogleMap
-          center={{ lat: 36.1699, lng: -115.1398 }}
-          zoom={12}
+  center={driverPos || { lat: 36.1699, lng: -115.1398 }}
+  zoom={15}
           mapContainerStyle={{ width: "100%", height: "100%" }}
         >
           {directions && <DirectionsRenderer directions={directions} />}
@@ -246,46 +254,46 @@ const startTracking = () => {
           <input ref={dropoffRef} placeholder="Destino" value={dropoff} onChange={(e) => setDropoff(e.target.value)} style={input} />
 
           <button onClick={calculateRoute} style={btn}>Calcular tarifa</button>
-
-          {price && (
-            <>
-              <h2>💰 ${price}</h2>
-              <p>📏 {distance} millas</p>
-
-              <button onClick={() => alert("Zelle: 725-287-6197")} style={btnPurple}>Zelle</button>
-
-              <a href="https://www.paypal.com/paypalme/ernestogongorasaco" target="_blank">
-                <button style={btnBlue}>PayPal</button>
-              </a>
-
-              <a href="https://venmo.com/code?user_id=4536118275999433880&created=1776057522" target="_blank">
-                <button style={btnSky}>Venmo</button>
-              </a>
-
-              
-
-             {/* ✅ BOTÓN FINAL PRO + TRACKING AUTOMÁTICO */}
-<button
-  onClick={async () => {
-    if (!price) return alert("Calcula tarifa");
-    if (!name || !phone) return alert("Completa datos");
-
-    // 🚨 validar tracking
-    if (!driverLocation) {
-      alert("Esperando ubicación GPS...");
-      return;
-    }
-
-    await saveBooking();
-
-    const message = `
-🚗 RESERVA CONFIRMADA
+          {/* 🔥 BOTÓN GPS SIEMPRE VISIBLE */}
 <button onClick={startTracking} style={btn}>
   📍 Activar GPS
 </button>
+
 <p style={{ color: gpsActive ? "green" : "red" }}>
   {gpsActive ? "🟢 GPS activo" : "🔴 GPS apagado"}
 </p>
+
+          {price && (
+  <>
+    <h2>💰 ${price}</h2>
+    <p>📏 {distance} millas</p>
+
+    <button onClick={() => alert("Zelle: 725-287-6197")} style={btnPurple}>
+      Zelle
+    </button>
+
+    <a href="https://www.paypal.com/paypalme/ernestogongorasaco" target="_blank">
+      <button style={btnBlue}>PayPal</button>
+    </a>
+
+    <a href="https://venmo.com/code?user_id=4536118275999433880&created=1776057522" target="_blank">
+      <button style={btnSky}>Venmo</button>
+    </a>
+
+    <button
+      onClick={async () => {
+        if (!price) return alert("Calcula tarifa");
+        if (!name || !phone) return alert("Completa datos");
+
+        if (!driverLocation) {
+          alert("Activa GPS primero");
+          return;
+        }
+
+        await saveBooking();
+
+        const message = `
+🚗 RESERVA CONFIRMADA
 
 👤 ${name}
 📞 ${phone}
@@ -300,64 +308,58 @@ const startTracking = () => {
 
 🟡 Estado: Pendiente
 
-📍 Seguimiento en tiempo real:
-https://private-rides-yacg.vercel.app/tracking
+📍 Seguimiento:
+${driverLocation}
 
 🚗 Gracias por preferir nuestro servicio
 `;
 
-    window.open(
-      `https://wa.me/17252876197?text=${encodeURIComponent(message)}`,
-      "_blank"
-    );
-  }}
-  style={btn}
->
-  Confirmar reserva ✅
-</button>
+        window.open(
+          `https://wa.me/17252876197?text=${encodeURIComponent(message)}`,
+          "_blank"
+        );
+      }}
+      style={btn}
+    >
+      Confirmar reserva ✅
+    </button>
 
-{/* 🚗 BOTÓN EN CAMINO */}
-<button
-  onClick={() => {
-    if (!phone) return alert("Falta teléfono");
+    <button
+      onClick={() => {
+        if (!phone) return alert("Falta teléfono");
 
-    const msg = `
+        const msg = `
 🚗 Tu conductor está en camino
 
-📍 Ubicación en tiempo real:
-${driverLocation || "Ubicación no disponible"}
+📍 Ubicación:
+${driverLocation || "No disponible"}
 
-⏱️ Tiempo estimado: 5-10 minutos
+⏱️ 5-10 minutos
 `;
 
-    window.open(
-      `https://wa.me/1${phone}?text=${encodeURIComponent(msg)}`,
-      "_blank"
-    );
-  }}
-  style={btn}
->
-  🚗 Avisar cliente (En camino)
-</button>
-<button
-  onClick={() => {
-    alert(driverLocation || "Aún no hay ubicación");
-  }}
-  style={btn}
->
-  📍 Ver mi ubicación
-</button>
+        window.open(
+          `https://wa.me/1${phone}?text=${encodeURIComponent(msg)}`,
+          "_blank"
+        );
+      }}
+      style={btn}
+    >
+      🚗 Avisar cliente
+    </button>
 
-              
-            </>
-          )}
-        </div>
-      </div>
-    </LoadScript>
-  );
+    <button
+      onClick={() => alert(driverLocation || "Sin ubicación")}
+      style={btn}
+    >
+      📍 Ver ubicación
+    </button>
+  </>
+)}
+</div>
+</div>
+</LoadScript>
+);
 }
-
-
 const panel = {
   position: "absolute" as const,
   bottom: 0,
