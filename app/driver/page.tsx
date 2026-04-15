@@ -11,31 +11,42 @@ export default function DriverPage() {
   const PASSWORD = "8887";
 
   // 🔥 CARGAR DATA
-  const loadData = () => {
-    fetch("https://docs.google.com/spreadsheets/d/e/2PACX-1vTpBB4Sb-wzWPSPT-Yvo_jA5KB0rDOR5epN0F3iHdHTOzd-tZnYbz3_336twwe1FKf14lBqOokS865i/pub?output=csv")
-      .then(res => res.text())
-      .then(text => {
-        const rows = text.split("\n").slice(1).map(row => {
-          return row
-            .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
-            .map(c => c.replace(/(^"|"$)/g, "").trim());
-        });
+  const loadData = async () => {
+    try {
+      const res = await fetch("https://docs.google.com/spreadsheets/d/e/2PACX-1vTpBB4Sb-wzWPSPT-Yvo_jA5KB0rDOR5epN0F3iHdHTOzd-tZnYbz3_336twwe1FKf14lBqOokS865i/pub?output=csv");
 
-        // 🔔 sonido si llega nuevo viaje
-        if (rows.length > lastCount && lastCount !== 0) {
-          const audio = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
-          audio.play();
-        }
+      const text = await res.text();
 
-        setLastCount(rows.length);
+      const lines = text.split("\n").filter(l => l.trim() !== "");
 
-        // 📅 ordenar por fecha
-        const sorted = rows.sort((a, b) => {
-          return new Date(a[7]).getTime() - new Date(b[7]).getTime();
-        });
-
-        setRides(sorted);
+      const parsed = lines.slice(1).map(line => {
+        return line
+          .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+          .map(c => c.replace(/(^"|"$)/g, "").trim());
       });
+
+      // 🔥 FILTRO CORRECTO
+      const clean = parsed.filter(r =>
+        r.length >= 7 &&
+        r[0] && r[1] && r[2] && r[3]
+      );
+
+      // 🔥 ORDEN POR FECHA
+      const sorted = clean.sort((a, b) => {
+        return new Date(a[6] || 0).getTime() - new Date(b[6] || 0).getTime();
+      });
+
+      if (sorted.length > lastCount && lastCount !== 0) {
+        const audio = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
+        audio.play();
+      }
+
+      setLastCount(sorted.length);
+      setRides(sorted);
+
+    } catch (error) {
+      console.error("Error:", error);
+    }
   };
 
   useEffect(() => {
@@ -46,32 +57,24 @@ export default function DriverPage() {
 
   // 🔥 ACTUALIZAR STATUS
   const updateStatus = async (name: string, phone: string, status: string) => {
-    await fetch("TU_SCRIPT_URL_AQUI", {
+    await fetch("https://script.google.com/macros/s/AKfycbxKFVhlJzimK8NPFwK42OdGeqxkuYLrBMjqc51mlQAkHAR_DyYQc56f-zA21DgLKE5ocg/exec", {
       method: "POST",
-      body: JSON.stringify({
-        updateStatus: true,
-        name,
-        phone,
-        status,
-      }),
+      body: JSON.stringify({ updateStatus: true, name, phone, status }),
     });
 
     loadData();
   };
 
-  // 🔥 TRACKING REAL
+  // 🔥 TRACKING
   const startTracking = (phone: string) => {
     navigator.geolocation.watchPosition((pos) => {
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-
-      fetch("TU_SCRIPT_URL_AQUI", {
+      fetch("https://script.google.com/macros/s/AKfycbxKFVhlJzimK8NPFwK42OdGeqxkuYLrBMjqc51mlQAkHAR_DyYQc56f-zA21DgLKE5ocg/exec", {
         method: "POST",
         body: JSON.stringify({
           updateLocation: true,
           phone,
-          lat,
-          lng,
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
         }),
       });
     });
@@ -94,7 +97,7 @@ export default function DriverPage() {
         <button
           onClick={() => {
             if (inputPass === PASSWORD) setAuthorized(true);
-            else alert("Contraseña incorrecta");
+            else alert("Incorrecta");
           }}
           style={btnMain}
         >
@@ -108,97 +111,63 @@ export default function DriverPage() {
     <div style={{ padding: 15 }}>
       <h1>🚗 Driver PRO</h1>
 
-      {rides
-        .filter(r => r[7]) // evitar filas vacías
-        .map((r, i) => (
-          <div key={i} style={card}>
-            <p><b>{r[1]}</b></p>
+      {rides.map((r, i) => (
+        <div key={i} style={card}>
+          <p><b>{r[0]}</b></p>
+          <p>📞 {r[1]}</p>
+          <p>📅 {r[6] ? new Date(r[6]).toLocaleString() : "Sin fecha"}</p>
+          <p>📍 {r[2]}</p>
 
-            <p>
-              📅 {r[7] ? new Date(r[7]).toLocaleString() : "Sin fecha"}
-            </p>
+          <button
+            onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r[2])}`)}
+            style={btnNav}
+          >
+            🧭 Ir a recoger
+          </button>
 
-            <p>📞 {r[2]}</p>
+          <p>➡️ {r[3]}</p>
 
-            <p>📍 {r[3]}</p>
+          <p>
+            💰 ${r[4]} | 📏 {r[5]} mi | ⏱️ {Math.round((Number(r[5]) || 0) * 2.5)} min
+          </p>
+
+          <div style={{ display: "flex", gap: 5, marginTop: 10 }}>
+            <button onClick={() => updateStatus(r[0], r[1], "Pendiente")} style={{ ...btn, background: "#ffc107" }}>🟡 Pendiente</button>
 
             <button
               onClick={() => {
-                const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r[3])}`;
-                window.open(url, "_blank");
+                updateStatus(r[0], r[1], "En camino");
+                startTracking(r[1]);
+                window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r[2])}`);
               }}
-              style={btnNav}
+              style={{ ...btn, background: "#17a2b8" }}
             >
-              🧭 Ir a recoger
+              🚗 En camino
             </button>
 
-            <p>➡️ {r[4]}</p>
+            <button
+              onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r[3])}`)}
+              style={{ ...btn, background: "#007bff" }}
+            >
+              🧭 Recoger
+            </button>
 
-            <p>
-              💰 ${r[5]} | 📏 {r[6]} mi | ⏱️ {Math.round((Number(r[6]) || 0) * 2.5)} min
-            </p>
+            <button onClick={() => updateStatus(r[0], r[1], "Completado")} style={{ ...btn, background: "#28a745" }}>
+              ✅ Finalizar
+            </button>
 
-            <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-              <button
-                onClick={() => updateStatus(r[1], r[2], "Pendiente")}
-                style={{ ...btn, background: "#ffc107" }}
-              >
-                🟡
-              </button>
-
-              <button
-                onClick={() => {
-                  updateStatus(r[1], r[2], "En camino");
-                  startTracking(r[2]);
-
-                  const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r[3])}`;
-                  window.open(url, "_blank");
-                }}
-                style={{ ...btn, background: "#17a2b8" }}
-              >
-                🚗
-              </button>
-
-              <button
-                onClick={() => {
-                  const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r[4])}`;
-                  window.open(url, "_blank");
-                }}
-                style={{ ...btn, background: "#007bff" }}
-              >
-                🧭
-              </button>
-
-              <button
-                onClick={() => updateStatus(r[1], r[2], "Completado")}
-                style={{ ...btn, background: "#28a745" }}
-              >
-                ✅
-              </button>
-
-              <button
-                onClick={() => {
-                  updateStatus(r[1], r[2], "Cancelado");
-
-                  const msg = `
-❌ Viaje cancelado
-
-👤 ${r[1]}
-📞 ${r[2]}
-`;
-
-                  window.open(
-                    `https://wa.me/1${r[2]}?text=${encodeURIComponent(msg)}`,
-                    "_blank"
-                  );
-                }}
-                style={{ ...btn, background: "#dc3545" }}
-              >
-                ❌
-              </button>
-            </div>
+            <button
+              onClick={() => {
+                updateStatus(r[0], r[1], "Cancelado");
+                window.open(`https://wa.me/1${r[1]}?text=${encodeURIComponent("❌ Viaje cancelado")}`);
+              }}
+              style={{ ...btn, background: "#dc3545" }}
+            >
+              ❌ Cancelar
+            </button>
           </div>
-        ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -206,11 +175,11 @@ export default function DriverPage() {
 // 🎨 ESTILOS
 const btn = {
   flex: 1,
-  padding: 10,
+  padding: 8,
   color: "white",
-  borderRadius: 10,
+  borderRadius: 8,
   border: "none",
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: "bold"
 };
 
