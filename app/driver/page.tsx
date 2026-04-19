@@ -165,13 +165,45 @@ if (newData !== ridesRef.current) {
             <p>📌 Estado: {status}</p>
 
             <button
-              onClick={() =>
-                window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pickup)}`)
-              }
-              style={btnNav}
-            >
-              🧭 Ir a recoger
-            </button>
+  onClick={() => {
+
+    // 🧭 abrir navegación
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pickup)}`);
+
+    // ✅ actualizar estado
+    updateStatus(
+      name,
+      phone,
+      new Date(dateTime).toISOString(),
+      "En camino"
+    );
+
+    // ✅ activar GPS
+    if (watchRef.current) {
+      navigator.geolocation.clearWatch(watchRef.current);
+    }
+
+    watchRef.current = navigator.geolocation.watchPosition((pos) => {
+      sendLocation(
+        phone,
+        new Date(dateTime).toISOString(),
+        pos.coords.latitude,
+        pos.coords.longitude
+      );
+    });
+
+    // ✅ mensaje cliente
+    const msg = `🚗 Tu conductor va en camino
+
+📍 Origen: ${pickup}
+⏱️ Hora: ${dateTime}`;
+
+    window.open(`https://wa.me/1${phone}?text=${encodeURIComponent(msg)}`);
+  }}
+  style={btnNav}
+>
+  🚗 Ir a recoger
+</button>
 
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
 
@@ -182,38 +214,14 @@ if (newData !== ridesRef.current) {
     🟡 Pendiente
   </button>
 
-  <button
-   onClick={() => {
-  updateStatus(
-    name,
-    phone,
-    new Date(dateTime).toISOString(),
-    "En camino"
-  );
-
-  if (watchRef.current) {
-    navigator.geolocation.clearWatch(watchRef.current);
-  }
-
-  watchRef.current = navigator.geolocation.watchPosition((pos) => {
-    sendLocation(
-      phone,
-      new Date(dateTime).toISOString(),
-      pos.coords.latitude,
-      pos.coords.longitude
-    );
-  });
-
-  const msg = `🚗 Tu conductor va en camino\n\n📍 Origen: ${pickup}`;
-  window.open(`https://wa.me/1${phone}?text=${encodeURIComponent(msg)}`);
-}}
-    style={{ ...btn, background: "#17a2b8" }}
-  >
-    🚗 En camino
-  </button>
 
   <button
-    onClick={() => updateStatus(name, phone, dateTime, "Completado")}
+    onClick={() => updateStatus(
+  name,
+  phone,
+  new Date(dateTime).toISOString(),
+  "Completado"
+)}
     style={{ ...btn, background: "#28a745" }}
   >
     ✅ Finalizar
@@ -226,7 +234,7 @@ if (newData !== ridesRef.current) {
       updateStatus(
   name,
   phone,
-  new Date(dateTime).toISOString(),
+  dateTime,
   "Cancelado"
 );
 
