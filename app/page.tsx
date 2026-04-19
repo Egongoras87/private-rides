@@ -39,8 +39,6 @@ export default function Page() {
   const watchRef = useRef<any>(null);
   const prevPosRef = useRef<any>(null);
   const handleLoad = () => setIsLoaded(true);
-const pressIn = (e: any) => e.currentTarget.style.transform = "scale(0.95)";
-const pressOut = (e: any) => e.currentTarget.style.transform = "scale(1)";
   const isGoogleReady = () =>
     typeof window !== "undefined" && window.google?.maps;
 
@@ -244,46 +242,51 @@ useEffect(() => {
     const selected = parseDate(dateTime);
 
     return !rows.some(r => {
-      const c = r.split(",");
+      const c = r.split(",").map(x => x.replace(/(^"|"$)/g, "").trim());
       const t = parseDate(c[6]);
       return t && Math.abs(t - selected) < 30 * 60 * 1000;
     });
   };
 const fetchDriverLocation = async () => {
   try {
-    
-    const res = await fetch("https://docs.google.com/spreadsheets/d/e/2PACX-1vTpBB4Sb-wzWPSPT-Yvo_jA5KB0rDOR5epN0F3iHdHTOzd-tZnYbz3_336twwe1FKf14lBqOokS865i/pub?output=csv", { cache: "no-store" });
-  
-    const text = await res.text();
+    const res = await fetch(
+      "https://docs.google.com/spreadsheets/d/e/2PACX-1vTpBB4Sb-wzWPSPT-Yvo_jA5KB0rDOR5epN0F3iHdHTOzd-tZnYbz3_336twwe1FKf14lBqOokS865i/pub?output=csv",
+      { cache: "no-store" }
+    );
 
+    const text = await res.text();
     const rows = text.split("\n").slice(1);
 
-    for (let r of rows) {
-  const c = r.split(",");
+    let found = false;
 
-  console.log("ROW:", c);
-  console.log("MATCH:", c[1], phone, c[6], dateTime);
+   for (let r of rows.reverse()) {
 
-  if (!c[6]) continue;
+  const c = r.split(",").map(x => x.replace(/(^"|"$)/g, "").trim());
 
-  const sheetTime = new Date(c[6]).getTime();
-  const inputTime = new Date(dateTime).getTime();
+  const lat = parseFloat(c[8]);
+  const lng = parseFloat(c[9]);
+
+  const sheetPhone = c[1]?.replace(/\D/g, "");
+  const userPhone = phone.replace(/\D/g, "");
+
+  console.log("CHECK:", sheetPhone, userPhone, lat, lng); // 👈 AQUÍ
 
   if (
-    c[1]?.replace(/\D/g, "") === phone.replace(/\D/g, "") &&
-    Math.abs(sheetTime - inputTime) < 5 * 60 * 1000
+    sheetPhone.includes(userPhone) &&
+    !isNaN(lat) &&
+    !isNaN(lng)
   ) {
-    const lat = parseFloat(c[8]);
-    const lng = parseFloat(c[9]);
-
-    if (!isNaN(lat) && !isNaN(lng)) {
-      setDriverPos({ lat, lng });
-    }
+    setDriverPos({ lat, lng });
+    break;
   }
 }
 
-  } catch (e) {
-    console.log("Error tracking:", e);
+    if (!found) {
+      console.log("⛔ Driver no encontrado aún");
+    }
+
+  } catch (error) {
+    console.error("🔥 ERROR TRACKING:", error);
   }
 };
   const saveBooking = async () => {
