@@ -8,14 +8,21 @@ export default function Tracking() {
   const [pos, setPos] = useState<any>(null);
   const [map, setMap] = useState<any>(null);
 
+  // 🔥 LEER PARAMETROS DE URL
+  const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+  const phone = params.get("phone");
+  const dateTime = params.get("dateTime");
+
   const CSV_URL =
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vTpBB4Sb-wzWPSPT-Yvo_jA5KB0rDOR5epN0F3iHdHTOzd-tZnYbz3_336twwe1FKf14lBqOokS865i/pub?output=csv";
 
   useEffect(() => {
 
+    if (!phone || !dateTime) return;
+
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(CSV_URL);
+        const res = await fetch(CSV_URL, { cache: "no-store" });
         const text = await res.text();
 
         const rows = text
@@ -27,23 +34,23 @@ export default function Tracking() {
           )
           .filter(r => r.length >= 10);
 
-        // 🔥 FILTRAR SOLO LOS QUE TIENEN GPS
-        const valid = rows.filter(r => r[8] && r[9]);
+        // 🔥 FILTRAR SOLO ESTE VIAJE
+        const match = rows.find(r =>
+          r[1] === phone &&
+new Date(r[6]).getTime() === new Date(dateTime).getTime() &&
+          r[7] === "En camino"
+        );
 
-        if (valid.length === 0) return;
+        if (!match) return;
 
-        // 🔥 TOMAR EL MÁS RECIENTE REAL
-        const last = valid[valid.length - 1];
-
-        const lat = Number(last[8]);
-        const lng = Number(last[9]);
+        const lat = Number(match[8]);
+        const lng = Number(match[9]);
 
         if (!isNaN(lat) && !isNaN(lng)) {
           const newPos = { lat, lng };
 
           setPos(newPos);
 
-          // 🔥 MOVER MAPA AUTOMÁTICAMENTE (tipo Uber)
           if (map) {
             map.panTo(newPos);
           }
@@ -52,11 +59,11 @@ export default function Tracking() {
       } catch (e) {
         console.error("Tracking error:", e);
       }
-    }, 3000);
+    }, 2000);
 
     return () => clearInterval(interval);
 
-  }, [map]);
+  }, [map, phone, dateTime]);
 
   return (
     <LoadScript googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ""}>

@@ -1,105 +1,129 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+
+type Ride = string[];
 
 export default function DriverPage() {
 
-  const [rides, setRides] = useState<any[]>([]);
+  const [rides, setRides] = useState<Ride[]>([]);
   const [authorized, setAuthorized] = useState(false);
   const [inputPass, setInputPass] = useState("");
+  const [lastCount, setLastCount] = useState(0);
+  const [lastHash, setLastHash] = useState("");
+  const ridesRef = useRef<string>("");
+  const watchRef = useRef<any>(null);
 
   const PASSWORD = "8887";
 
-  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwITBSQxYqzLaM1Oa3uHQgpBq1cNV0k_szAZYv-yaOcgY6x_rk7AdY_SiNrHI4C_EdKpg/exec";
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx30fngWN_zhJfcxp-wb8ZI1ASfISH2rUeRj-lbGK9R0_QsmDutFmp39tHHlWCr7rwI7Q/exec";
 
-  const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTpBB4Sb-wzWPSPT-Yvo_jA5KB0rDOR5epN0F3iHdHTOzd-tZnYbz3_336twwe1FKf14lBqOokS865i/pub?output=csv";
-
-  // 🔥 CARGAR DATOS CORREGIDO
+  // 🔥 LOAD DATA
   const loadData = async () => {
     try {
-      const res = await fetch(CSV_URL);
+      const res = await fetch("https://docs.google.com/spreadsheets/d/e/2PACX-1vTpBB4Sb-wzWPSPT-Yvo_jA5KB0rDOR5epN0F3iHdHTOzd-tZnYbz3_336twwe1FKf14lBqOokS865i/pub?output=csv", {
+        cache: "no-store"
+      });
+
       const text = await res.text();
 
       const rows = text
         .split("\n")
         .slice(1)
         .map(r =>
-          r.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
-            .map(c => c.replace(/(^"|"$)/g, "").trim())
+          r.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c =>
+            c.replace(/(^"|"$)/g, "").trim()
+          )
         )
-        .filter(r => r.length >= 10);
+        .filter(r => r.length >= 7);
 
-      setRides(rows);
+      const newHash = rows.length + (rows[0]?.join() || "");
+      if (newHash === lastHash) return;
+      setLastHash(newHash);
+
+      if (rows.length > lastCount && lastCount > 0) {
+        new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg").play();
+      }
+
+      setLastCount(rows.length);
+
+      const sorted = rows.sort((a, b) =>
+        new Date(a[6]).getTime() - new Date(b[6]).getTime()
+      );
+
+      const filtered = sorted.filter(r =>
+        r[7] !== "Cancelado" && r[7] !== "Completado"
+      );
+
+      const unique = filtered.filter(
+        (v, i, a) =>
+          a.findIndex(t => t[1] === v[1] && t[6] === v[6]) === i
+      );
+
+      
+
+const newData = JSON.stringify(unique);
+
+if (newData !== ridesRef.current) {
+  ridesRef.current = newData;
+  setRides(unique);
+}
 
     } catch (err) {
-      console.error("ERROR CARGANDO:", err);
+      console.error(err);
     }
   };
 
   useEffect(() => {
     loadData();
-
-    const interval = setInterval(() => {
-      loadData();
-    }, 4000);
-
+    const interval = setInterval(loadData, 4000);
     return () => clearInterval(interval);
   }, []);
 
-  // 🔥 ACTUALIZAR STATUS (SIN HEADERS)
-  const updateStatus = async (phone: string, status: string) => {
+  // 📡 ENVIAR GPS
+  const sendLocation = (phone: string, dateTime: string, lat: number, lng: number) => {
+  fetch(SCRIPT_URL, {
+    method: "POST",
+    body: JSON.stringify({
+      updateLocation: true,
+      phone,
+      dateTime,
+      lat,
+      lng
+    })
+  });
+};
+
+  // 🔄 UPDATE STATUS
+  const updateStatus = async (name: string, phone: string, dateTime: string, status: string) => {
     try {
       await fetch(SCRIPT_URL, {
         method: "POST",
         body: JSON.stringify({
           updateStatus: true,
+          name,
           phone,
-          status,
-        }),
-      });
-
-      loadData();
-
-    } catch (err) {
-      console.error("ERROR STATUS:", err);
-    }
-  };
-
-  // 🔥 GPS TRACKING
-  useEffect(() => {
-    if (!navigator.geolocation) return;
-
-    const watch = navigator.geolocation.watchPosition((pos) => {
-
-      fetch(SCRIPT_URL, {
-        method: "POST",
-        body: JSON.stringify({
-          updateLocation: true,
-          phone: "driver",
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude
+          dateTime,
+          status
         })
       });
-
-    });
-
-    return () => navigator.geolocation.clearWatch(watch);
-
-  }, []);
+    } catch (e) {
+      console.error("Error status:", e);
+    }
+  };
 
   // 🔐 LOGIN
   if (!authorized) {
     return (
       <div style={{ padding: 20 }}>
-        <h2>🔐 Acceso Driver</h2>
-
+        <h2>🔐 Driver</h2>
         <input
           type="password"
+          placeholder="Contraseña"
           value={inputPass}
           onChange={(e) => setInputPass(e.target.value)}
           style={input}
         />
-
         <button
           onClick={() => {
             if (inputPass === PASSWORD) setAuthorized(true);
@@ -114,87 +138,115 @@ export default function DriverPage() {
   }
 
   return (
-    <div style={{ padding: 20 }}>
-      <h1>🚗 Driver PRO</h1>
+    <div style={{ padding: 12 }}>
+      <h2>🚗 Driver PRO</h2>
 
-      {rides.map((r, i) => (
-        <div key={i} style={card}>
+      {rides.map((r, i) => {
 
-          <p><b>{r[0]}</b></p>
-          <p>📞 {r[1]}</p>
-          <p>📍 {r[2]}</p>
-          <p>➡️ {r[3]}</p>
-          <p>💰 ${r[4]}</p>
+        const name = r[0];
+        const phone = r[1];
+        const pickup = r[2];
+        const dropoff = r[3];
+        const price = r[4];
+        const distance = r[5];
+        const dateTime = r[6];
+        const status = r[7] || "Pendiente";
 
-          <p>📅 {r[6]}</p>
-          <p>🟡 {r[7]}</p>
+        return (
+          <div key={`${phone}-${dateTime}-${i}`} style={card}>
 
-          {/* 🚗 NAVEGACIÓN */}
-          <button
-            onClick={() => {
-              const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r[2])}`;
-              window.open(url, "_blank");
-            }}
-            style={btn}
-          >
-            🧭 Ir a recoger
-          </button>
+            <b>{name}</b>
+            <p>📅 {new Date(dateTime).toLocaleString()}</p>
+            <p>📞 {phone}</p>
+            <p>📍 {pickup}</p>
+            <p>➡️ {dropoff}</p>
 
-          <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+            <p>💰 ${price} | 📏 {distance} mi</p>
+            <p>📌 Estado: {status}</p>
 
             <button
-              onClick={() => updateStatus(r[1], "Pendiente")}
-              style={{ ...btn, background: "#ffc107" }}
+              onClick={() =>
+                window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pickup)}`)
+              }
+              style={btnNav}
             >
-              🟡 Pendiente
+              🧭 Ir a recoger
             </button>
 
-            <button
-              onClick={() => {
-                updateStatus(r[1], "En camino");
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
 
-                const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r[2])}`;
-                window.open(url, "_blank");
-              }}
-              style={{ ...btn, background: "#17a2b8" }}
-            >
-              🚗 En camino
-            </button>
+  <button
+    onClick={() => updateStatus(name, phone, dateTime, "Pendiente")}
+    style={{ ...btn, background: "#ffc107" }}
+  >
+    🟡 Pendiente
+  </button>
 
-            <button
-              onClick={() => {
-                const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r[3])}`;
-                window.open(url, "_blank");
-              }}
-              style={{ ...btn, background: "#007bff" }}
-            >
-              🧭 Destino
-            </button>
+  <button
+   onClick={() => {
+  updateStatus(
+    name,
+    phone,
+    new Date(dateTime).toISOString(),
+    "En camino"
+  );
 
-            <button
-              onClick={() => updateStatus(r[1], "Completado")}
-              style={{ ...btn, background: "#28a745" }}
-            >
-              ✅ Finalizar
-            </button>
+  if (watchRef.current) {
+    navigator.geolocation.clearWatch(watchRef.current);
+  }
 
+  watchRef.current = navigator.geolocation.watchPosition((pos) => {
+    sendLocation(
+      phone,
+      new Date(dateTime).toISOString(),
+      pos.coords.latitude,
+      pos.coords.longitude
+    );
+  });
+
+  const msg = `🚗 Tu conductor va en camino\n\n📍 Origen: ${pickup}`;
+  window.open(`https://wa.me/1${phone}?text=${encodeURIComponent(msg)}`);
+}}
+    style={{ ...btn, background: "#17a2b8" }}
+  >
+    🚗 En camino
+  </button>
+
+  <button
+    onClick={() => updateStatus(name, phone, dateTime, "Completado")}
+    style={{ ...btn, background: "#28a745" }}
+  >
+    ✅ Finalizar
+  </button>
+
+  <button
+    onClick={() => {
+      if (!confirm("¿Cancelar viaje?")) return;
+
+      updateStatus(
+  name,
+  phone,
+  new Date(dateTime).toISOString(),
+  "Cancelado"
+);
+
+      const msg = `❌ VIAJE CANCELADO`;
+      window.open(`https://wa.me/1${phone}?text=${encodeURIComponent(msg)}`);
+    }}
+    style={{ ...btn, background: "#dc3545" }}
+  >
+    ❌ Cancelar
+  </button>
+
+</div>
           </div>
-        </div>
-      ))}
-
+        );
+      })}
     </div>
   );
 }
 
-// 🎨 estilos
-const card = {
-  background: "white",
-  padding: 15,
-  borderRadius: 15,
-  marginBottom: 12,
-  boxShadow: "0 4px 10px rgba(0,0,0,0.1)"
-};
-
+// estilos
 const btn = {
   flex: 1,
   padding: 10,
@@ -202,22 +254,10 @@ const btn = {
   borderRadius: 10,
   border: "none",
   fontSize: 12,
-  fontWeight: "bold"
+  fontWeight: "bold",
+  minWidth: 100
 };
-
-const input = {
-  width: "100%",
-  padding: 10,
-  marginBottom: 10,
-  borderRadius: 10,
-  border: "1px solid #ccc"
-};
-
-const btnMain = {
-  width: "100%",
-  padding: 12,
-  background: "black",
-  color: "white",
-  borderRadius: 10,
-  border: "none"
-};
+const btnNav = { width: "100%", padding: 10, background: "#007bff", color: "white", borderRadius: 10 };
+const btnMain = { width: "100%", padding: 12, background: "black", color: "white", borderRadius: 10 };
+const input = { width: "100%", padding: 10, marginBottom: 10, borderRadius: 10 };
+const card = { background: "white", padding: 12, borderRadius: 12, marginBottom: 10 };
