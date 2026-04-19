@@ -2,6 +2,16 @@
 
 import { useEffect, useState, useRef } from "react";
 
+const pressIn = (e: any) => {
+  e.currentTarget.style.transform = "scale(0.95)";
+  e.currentTarget.style.opacity = "0.8";
+};
+
+const pressOut = (e: any) => {
+  e.currentTarget.style.transform = "scale(1)";
+  e.currentTarget.style.opacity = "1";
+};
+
 type Ride = string[];
 
 export default function DriverPage() {
@@ -60,14 +70,12 @@ export default function DriverPage() {
           a.findIndex(t => t[1] === v[1] && t[6] === v[6]) === i
       );
 
-      
+      const newData = JSON.stringify(unique);
 
-const newData = JSON.stringify(unique);
-
-if (newData !== ridesRef.current) {
-  ridesRef.current = newData;
-  setRides(unique);
-}
+      if (newData !== ridesRef.current) {
+        ridesRef.current = newData;
+        setRides(unique);
+      }
 
     } catch (err) {
       console.error(err);
@@ -80,25 +88,27 @@ if (newData !== ridesRef.current) {
     return () => clearInterval(interval);
   }, []);
 
-  // 📡 ENVIAR GPS
+  // 📡 GPS
   const sendLocation = (phone: string, dateTime: string, lat: number, lng: number) => {
-  fetch(SCRIPT_URL, {
-    method: "POST",
-    body: JSON.stringify({
-      updateLocation: true,
-      phone,
-      dateTime,
-      lat,
-      lng
-    })
-  });
-};
+    fetch(SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        updateLocation: true,
+        phone,
+        dateTime,
+        lat,
+        lng
+      })
+    });
+  };
 
-  // 🔄 UPDATE STATUS
+  // 🔄 STATUS (CORREGIDO)
   const updateStatus = async (name: string, phone: string, dateTime: string, status: string) => {
     try {
       await fetch(SCRIPT_URL, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           updateStatus: true,
           name,
@@ -130,6 +140,8 @@ if (newData !== ridesRef.current) {
             else alert("Incorrecta");
           }}
           style={btnMain}
+          onMouseDown={pressIn}
+          onMouseUp={pressOut}
         >
           Entrar
         </button>
@@ -160,93 +172,86 @@ if (newData !== ridesRef.current) {
             <p>📞 {phone}</p>
             <p>📍 {pickup}</p>
             <p>➡️ {dropoff}</p>
-
             <p>💰 ${price} | 📏 {distance} mi</p>
             <p>📌 Estado: {status}</p>
 
+            {/* 🚗 IR A RECOGER */}
             <button
-  onClick={() => {
+              onClick={() => {
 
-    // 🧭 abrir navegación
-    window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pickup)}`);
+                window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pickup)}`);
 
-    // ✅ actualizar estado
-    updateStatus(
-      name,
-      phone,
-      new Date(dateTime).toISOString(),
-      "En camino"
-    );
+                updateStatus(name, phone, dateTime, "En camino");
 
-    // ✅ activar GPS
-    if (watchRef.current) {
-      navigator.geolocation.clearWatch(watchRef.current);
-    }
+                if (watchRef.current) {
+                  navigator.geolocation.clearWatch(watchRef.current);
+                }
 
-    watchRef.current = navigator.geolocation.watchPosition((pos) => {
-      sendLocation(
-        phone,
-        new Date(dateTime).toISOString(),
-        pos.coords.latitude,
-        pos.coords.longitude
-      );
-    });
+                if ("geolocation" in navigator) {
+                  watchRef.current = navigator.geolocation.watchPosition((pos) => {
+                    sendLocation(
+                      phone,
+                      new Date(dateTime).toISOString(),
+                      pos.coords.latitude,
+                      pos.coords.longitude
+                    );
+                  });
+                }
 
-    // ✅ mensaje cliente
-    const msg = `🚗 Tu conductor va en camino
+                const msg = `🚗 Tu conductor va en camino
 
 📍 Origen: ${pickup}
 ⏱️ Hora: ${dateTime}`;
 
-    window.open(`https://wa.me/1${phone}?text=${encodeURIComponent(msg)}`);
-  }}
-  style={btnNav}
->
-  🚗 Ir a recoger
-</button>
+                window.open(`https://wa.me/1${phone}?text=${encodeURIComponent(msg)}`);
+              }}
+              style={btnNav}
+              onMouseDown={pressIn}
+              onMouseUp={pressOut}
+              onTouchStart={pressIn}
+              onTouchEnd={pressOut}
+            >
+              🚗 Ir a recoger
+            </button>
 
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
 
-  <button
-    onClick={() => updateStatus(name, phone, dateTime, "Pendiente")}
-    style={{ ...btn, background: "#ffc107" }}
-  >
-    🟡 Pendiente
-  </button>
+              <button
+                onClick={() => updateStatus(name, phone, dateTime, "Pendiente")}
+                style={{ ...btn, background: "#ffc107" }}
+                onMouseDown={pressIn}
+                onMouseUp={pressOut}
+              >
+                🟡 Pendiente
+              </button>
 
+              <button
+                onClick={() => updateStatus(name, phone, dateTime, "Completado")}
+                style={{ ...btn, background: "#28a745" }}
+                onMouseDown={pressIn}
+                onMouseUp={pressOut}
+              >
+                ✅ Finalizar
+              </button>
 
-  <button
-    onClick={() => updateStatus(
-  name,
-  phone,
-  new Date(dateTime).toISOString(),
-  "Completado"
-)}
-    style={{ ...btn, background: "#28a745" }}
-  >
-    ✅ Finalizar
-  </button>
+              <button
+                onClick={() => {
+                  if (!confirm("¿Cancelar viaje?")) return;
 
-  <button
-    onClick={() => {
-      if (!confirm("¿Cancelar viaje?")) return;
+                  updateStatus(name, phone, dateTime, "Cancelado");
 
-      updateStatus(
-  name,
-  phone,
-  dateTime,
-  "Cancelado"
-);
+                  const msg = `❌ VIAJE CANCELADO`;
+                  window.open(`https://wa.me/1${phone}?text=${encodeURIComponent(msg)}`);
+                }}
+                style={{ ...btn, background: "#dc3545" }}
+                onMouseDown={pressIn}
+                onMouseUp={pressOut}
+              >
+                ❌ Cancelar
+              </button>
 
-      const msg = `❌ VIAJE CANCELADO`;
-      window.open(`https://wa.me/1${phone}?text=${encodeURIComponent(msg)}`);
-    }}
-    style={{ ...btn, background: "#dc3545" }}
-  >
-    ❌ Cancelar
-  </button>
+            </div>
 
-</div>
           </div>
         );
       })}
@@ -259,13 +264,28 @@ const btn = {
   flex: 1,
   padding: 10,
   color: "white",
-  borderRadius: 10,
+  borderRadius: 12,
   border: "none",
   fontSize: 12,
   fontWeight: "bold",
-  minWidth: 100
+  minWidth: 100,
+  transition: "all 0.15s ease",
+  cursor: "pointer",
+  boxShadow: "0 4px 10px rgba(0,0,0,0.2)"
 };
-const btnNav = { width: "100%", padding: 10, background: "#007bff", color: "white", borderRadius: 10 };
+
+const btnNav = {
+  width: "100%",
+  padding: 12,
+  background: "#007bff",
+  color: "white",
+  borderRadius: 12,
+  border: "none",
+  fontWeight: "bold",
+  transition: "all 0.15s ease",
+  boxShadow: "0 4px 10px rgba(0,0,0,0.2)"
+};
+
 const btnMain = { width: "100%", padding: 12, background: "black", color: "white", borderRadius: 10 };
 const input = { width: "100%", padding: 10, marginBottom: 10, borderRadius: 10 };
 const card = { background: "white", padding: 12, borderRadius: 12, marginBottom: 10 };

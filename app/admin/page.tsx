@@ -155,28 +155,33 @@ export default function AdminPage() {
             <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
 
               <button
-                onClick={() => updateStatus(name, phone, dateTime, "Pendiente")}
+                onClick={() => updateStatus(name, phone, dateTime, "Estado")}
                 style={{ ...btn, background: "#ffc107" }}
               >
                 🟡
               </button>
 
               <button
-                onClick={() => updateStatus(name, phone, dateTime, "En camino")}
+                onClick={() => updateStatus(name, phone, dateTime, "Estado")}
                 style={{ ...btn, background: "#17a2b8" }}
               >
                 🚗
               </button>
 
               <button
-                onClick={() => updateStatus(name, phone, dateTime, "Completado")}
+                onClick={() => updateStatus(
+  name,
+  phone,
+  new Date(dateTime).toISOString(),
+  "Completado"
+)}
                 style={{ ...btn, background: "#28a745" }}
               >
                 ✅
               </button>
 
               <button
-                onClick={() => updateStatus(name, phone, dateTime, "Cancelado")}
+                onClick={() => updateStatus(name, phone, dateTime, "Estado")}
                 style={{ ...btn, background: "#dc3545" }}
               >
                 ❌
