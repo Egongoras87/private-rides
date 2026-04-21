@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 const PASSWORD = "8887";
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzxbADQMOyzmYTPHZoLrHAZtMRYNrJjGDTQq8FbJkNlvcGEuZvAl7hUPFlrwAcHZFa-BA/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzwnFUTFp6WzPwHoPg100dwmrSg3EUfEBOTcVJD0Dz2ikld9_XbjcR3QlyAFeT1vtQGZw/exec";
 
 export default function AdminPage() {
 
@@ -11,7 +11,17 @@ export default function AdminPage() {
   const [authorized, setAuthorized] = useState(false);
   const [inputPass, setInputPass] = useState("");
 
-  // 🔥 CARGAR DATOS
+  // 🔥 EFECTOS DE BOTONES
+  const pressIn = (e: any) => {
+    e.currentTarget.style.transform = "scale(0.95)";
+    e.currentTarget.style.opacity = "0.8";
+  };
+  const pressOut = (e: any) => {
+    e.currentTarget.style.transform = "scale(1)";
+    e.currentTarget.style.opacity = "1";
+  };
+
+  // 🔥 CARGAR DATOS (FILTRANDO ACTIVOS)
   const loadData = async () => {
     try {
       const res = await fetch(
@@ -20,175 +30,140 @@ export default function AdminPage() {
       );
 
       const text = await res.text();
-
       const rows = text
         .split("\n")
         .slice(1)
-        .map(r =>
-          r.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c =>
-            c.replace(/(^"|"$)/g, "").trim()
-          )
-        )
-        .filter(r => r.length >= 8);
+        .map(r => r.split(/,(?=(?:(?:[^\"]*\"){2})*[^\"]*$)/).map(c => c.replace(/(^\"|\"$)/g, "").trim()))
+        .filter(r => r.length >= 10); // Aseguramos que llegue hasta la columna K (tripId)
 
-      // 🔥 FILTRAR SOLO ACTIVOS
-      const filtered = rows.filter(r => {
-        const status = r[7];
-        return status !== "Cancelado" && status !== "Completado";
-      });
-
-      setData(filtered);
+      // Filtrar para no mostrar los ya terminados o cancelados
+      const activeRides = rows.filter(r => r[7] !== "Completado" && r[7] !== "Cancelado");
+      setData(activeRides.reverse()); // Los más nuevos arriba
 
     } catch (error) {
-      console.error("ERROR CARGANDO CSV:", error);
+      console.error("ERROR CARGANDO DATOS:", error);
     }
   };
 
-  // 🔄 AUTO ACTUALIZACIÓN
   useEffect(() => {
-    loadData();
-    const interval = setInterval(loadData, 4000);
-    return () => clearInterval(interval);
-  }, []);
+    if (authorized) {
+      loadData();
+      const interval = setInterval(loadData, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [authorized]);
 
-  // 🔥 UPDATE STATUS CORRECTO
-  const updateStatus = async (
-    name: string,
-    phone: string,
-    dateTime: string,
-    status: string
-  ) => {
+  // 🔥 ACTUALIZACIÓN POR TRIP ID (MÁS SEGURO)
+  const updateStatus = async (tripId: string, status: string) => {
+    if (!tripId) return alert("Error: Este viaje no tiene ID");
+    
     try {
       await fetch(SCRIPT_URL, {
         method: "POST",
         body: JSON.stringify({
           updateStatus: true,
-          name,
-          phone,
-          dateTime,
-          status
+          tripId: tripId,
+          status: status
         })
       });
-
-      loadData();
-
+      loadData(); // Refrescar lista
     } catch (error) {
-      console.error("Error actualizando:", error);
+      alert("Error al actualizar estado");
     }
   };
 
-  // 🎨 COLOR STATUS
   const getColor = (status: string) => {
-    if (status === "Pendiente") return "#ffc107";
     if (status === "En camino") return "#17a2b8";
-    if (status === "Completado") return "#28a745";
-    if (status === "Cancelado") return "#dc3545";
-    return "#999";
+    if (status === "Pendiente") return "#ffc107";
+    return "#555";
   };
 
-  // 🔐 LOGIN
+  // 🔐 LOGIN SCREEN
   if (!authorized) {
     return (
-      <div style={{ padding: 20 }}>
-        <h2>🔐 Panel Admin</h2>
-
-        <input
-          type="password"
-          placeholder="Contraseña"
-          value={inputPass}
-          onChange={(e) => setInputPass(e.target.value)}
-          style={input}
-        />
-
-        <button
-          onClick={() => {
-            if (inputPass === PASSWORD) setAuthorized(true);
-            else alert("Contraseña incorrecta");
-          }}
-          style={btnMain}
-        >
-          Entrar
-        </button>
+      <div style={loginContainer}>
+        <div style={loginCard}>
+          <h2 style={{ marginBottom: 20 }}>🔐 Admin Access</h2>
+          <input
+            type="password"
+            placeholder="Introduce el código"
+            value={inputPass}
+            onChange={(e) => setInputPass(e.target.value)}
+            style={inputStyle}
+          />
+          <button
+            onClick={() => inputPass === PASSWORD ? setAuthorized(true) : alert("Código Incorrecto")}
+            onMouseDown={pressIn} onMouseUp={pressOut}
+            style={btnConfirm}
+          >
+            Entrar al Panel
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: 15, background: "#111", minHeight: "100vh" }}>
-      <h2 style={{ color: "#fff" }}>🚗 Admin PRO</h2>
+    <div style={{ padding: "20px 15px", background: "#0a0a0a", minHeight: "100vh" }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <h2 style={{ color: "#fff", margin: 0 }}>🚗 Viajes Activos</h2>
+        <button onClick={loadData} style={btnRefresh}>🔄</button>
+      </div>
 
-      {data.length === 0 && (
-        <p style={{ color: "#aaa" }}>No hay viajes activos</p>
-      )}
+      {data.length === 0 && <p style={{ color: "#666", textAlign: 'center' }}>No hay servicios pendientes.</p>}
 
       {data.map((row, i) => {
-
-        const name = row[0];
-        const phone = row[1];
-        const pickup = row[2];
-        const dropoff = row[3];
-        const price = row[4];
-        const distance = row[5];
-        const dateTime = row[6];
-        const status = row[7] || "Pendiente";
+        const [name, phone, pickup, dropoff, price, distance, dateTime, status, , , tripId] = row;
 
         return (
-          <div key={`${phone}-${dateTime}-${i}`} style={card}>
-
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <b>{name}</b>
-              <span style={{ ...badge, background: getColor(status) }}>
-                {status}
-              </span>
+          <div key={tripId || i} style={card}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+              <span style={{ fontWeight: 'bold', fontSize: 16 }}>{name}</span>
+              <span style={{ ...badge, background: getColor(status) }}>{status || "Pendiente"}</span>
             </div>
 
-            <p>📞 {phone}</p>
-            <p>📅 {new Date(dateTime).toLocaleString()}</p>
-
-            <div style={route}>
-              <p>📍 {pickup}</p>
-              <p>➡️ {dropoff}</p>
+            <div style={infoGrid}>
+              <span>📞 {phone}</span>
+              <span>📅 {new Date(dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
 
-            <p>💰 ${price} | 📏 {distance} mi</p>
-
-            <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-
-              <button
-                onClick={() => updateStatus(name, phone, dateTime, "Estado")}
-                style={{ ...btn, background: "#ffc107" }}
-              >
-                🟡
-              </button>
-
-              <button
-                onClick={() => updateStatus(name, phone, dateTime, "Estado")}
-                style={{ ...btn, background: "#17a2b8" }}
-              >
-                🚗
-              </button>
-
-              <button
-                onClick={() => updateStatus(
-  name,
-  phone,
-  new Date(dateTime).toISOString(),
-  "Completado"
-)}
-                style={{ ...btn, background: "#28a745" }}
-              >
-                ✅
-              </button>
-
-              <button
-                onClick={() => updateStatus(name, phone, dateTime, "Estado")}
-                style={{ ...btn, background: "#dc3545" }}
-              >
-                ❌
-              </button>
-
+            <div style={routeBox}>
+              <div style={routeItem}>📍 <span style={addressText}>{pickup}</span></div>
+              <div style={{ borderLeft: "2px dashed #444", height: 15, marginLeft: 6 }}></div>
+              <div style={routeItem}>🏁 <span style={addressText}>{dropoff}</span></div>
             </div>
 
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+              <span style={priceLabel}>💰 ${price} | {distance} mi</span>
+              <span style={{ fontSize: 10, color: '#444' }}>ID: {tripId?.slice(-6)}</span>
+            </div>
+
+            {/* BOTONES DE ACCIÓN */}
+            <div style={{ display: "flex", gap: 8, marginTop: 15 }}>
+              <button 
+                style={{ ...btnAction, background: "#ffc107" }} 
+                onClick={() => updateStatus(tripId, "Pendiente")}
+                onMouseDown={pressIn} onMouseUp={pressOut}
+              >🟡</button>
+              
+              <button 
+                style={{ ...btnAction, background: "#17a2b8" }} 
+                onClick={() => updateStatus(tripId, "En camino")}
+                onMouseDown={pressIn} onMouseUp={pressOut}
+              >🚗</button>
+
+              <button 
+                style={{ ...btnAction, background: "#28a745", flex: 2 }} 
+                onClick={() => confirm("¿Finalizar viaje?") && updateStatus(tripId, "Completado")}
+                onMouseDown={pressIn} onMouseUp={pressOut}
+              >✅ Finalizar</button>
+
+              <button 
+                style={{ ...btnAction, background: "#dc3545" }} 
+                onClick={() => confirm("¿Cancelar viaje?") && updateStatus(tripId, "Cancelado")}
+                onMouseDown={pressIn} onMouseUp={pressOut}
+              >❌</button>
+            </div>
           </div>
         );
       })}
@@ -196,51 +171,20 @@ export default function AdminPage() {
   );
 }
 
-// 🎨 ESTILOS
-const card = {
-  background: "#1e1e1e",
-  color: "#fff",
-  padding: 14,
-  borderRadius: 14,
-  marginBottom: 12,
-  boxShadow: "0 4px 10px rgba(0,0,0,0.3)"
-};
+// 🎨 DISEÑO PRO
+const loginContainer = { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#000' };
+const loginCard = { background: '#1e1e1e', padding: 30, borderRadius: 20, textAlign: 'center' as const, color: '#fff', width: '90%', maxWidth: 400 };
+const inputStyle = { width: '100%', padding: 12, borderRadius: 10, border: 'none', background: '#333', color: '#fff', marginBottom: 15, textAlign: 'center' as const, fontSize: 18 };
 
-const route = {
-  background: "#2a2a2a",
-  padding: 10,
-  borderRadius: 10,
-  marginTop: 6
-};
+const card = { background: "#181818", color: "#eee", padding: 16, borderRadius: 18, marginBottom: 15, border: "1px solid #222" };
+const infoGrid = { display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#aaa', marginBottom: 10 };
+const routeBox = { background: "#222", padding: 12, borderRadius: 12 };
+const routeItem = { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 };
+const addressText = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } as any;
 
-const badge = {
-  padding: "4px 10px",
-  borderRadius: 10,
-  fontSize: 12,
-  color: "#000"
-};
+const badge = { padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 'bold', color: '#000' };
+const priceLabel = { fontWeight: 'bold', color: '#00c853', fontSize: 15 };
 
-const btn = {
-  flex: 1,
-  padding: 8,
-  borderRadius: 8,
-  border: "none",
-  color: "#000",
-  fontWeight: "bold"
-};
-
-const btnMain = {
-  width: "100%",
-  padding: 12,
-  background: "#000",
-  color: "#fff",
-  borderRadius: 10,
-  marginTop: 10
-};
-
-const input = {
-  width: "100%",
-  padding: 10,
-  marginBottom: 10,
-  borderRadius: 10
-};
+const btnAction = { flex: 1, padding: 12, borderRadius: 12, border: "none", cursor: "pointer", fontWeight: "bold", transition: "all 0.1s" };
+const btnConfirm = { width: '100%', padding: 14, background: '#00c853', color: '#fff', borderRadius: 12, border: 'none', fontWeight: 'bold', cursor: 'pointer' };
+const btnRefresh = { background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' };

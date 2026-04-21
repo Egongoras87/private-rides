@@ -11,8 +11,7 @@ import {
 const libraries: ("places")[] = ["places"];
 
 export default function Page() {
-
-  // 🔥 FIX PERSISTENCIA
+  // --- PERSISTENCIA DE DATOS ---
   const getSaved = () => {
     if (typeof window === "undefined") return null;
     const data = localStorage.getItem("rideData");
@@ -26,146 +25,46 @@ export default function Page() {
   const [pickup, setPickup] = useState(saved?.pickup || "");
   const [dropoff, setDropoff] = useState(saved?.dropoff || "");
   const [price, setPrice] = useState<number | null>(saved?.price || null);
-  const [driverPos, setDriverPos] = useState<any>(null);
   const [directions, setDirections] = useState<any>(null);
   const [distance, setDistance] = useState<number | null>(saved?.distance || null);
   const [dateTime, setDateTime] = useState(saved?.dateTime || "");
   const [isLoaded, setIsLoaded] = useState(false);
   const [map, setMap] = useState<any>(null);
-  const [userPos, setUserPos] = useState<any>(null);
-  
+
   const pickupRef = useRef<HTMLInputElement>(null);
   const dropoffRef = useRef<HTMLInputElement>(null);
-  const watchRef = useRef<any>(null);
-  const prevPosRef = useRef<any>(null);
-  const handleLoad = () => setIsLoaded(true);
-  const isGoogleReady = () =>
-    typeof window !== "undefined" && window.google?.maps;
 
+  // --- EFECTOS VISUALES (UX/UI) ---
+  const pressIn = (e: any) => {
+    e.currentTarget.style.transform = "scale(0.96)";
+    e.currentTarget.style.filter = "brightness(0.9)";
+  };
+  const pressOut = (e: any) => {
+    e.currentTarget.style.transform = "scale(1)";
+    e.currentTarget.style.filter = "brightness(1)";
+  };
+
+  const handleLoad = () => setIsLoaded(true);
+  const isGoogleReady = () => typeof window !== "undefined" && window.google?.maps;
   const cleanPhone = (p: string) => p.replace(/\D/g, "");
   const isValidPhone = (p: string) => cleanPhone(p).length === 10;
 
-  // 🔥 GUARDADO PROTEGIDO
+  // --- GUARDADO AUTOMÁTICO ---
   useEffect(() => {
     if (!name && !phone && !pickup && !dropoff) return;
-
     localStorage.setItem("rideData", JSON.stringify({
-      name,
-      phone,
-      pickup,
-      dropoff,
-      price,
-      distance,
-      dateTime
+      name, phone, pickup, dropoff, price, distance, dateTime
     }));
   }, [name, phone, pickup, dropoff, price, distance, dateTime]);
 
   const clearData = () => {
     localStorage.removeItem("rideData");
+    setName(""); setPhone(""); setPickup(""); setDropoff(""); setPrice(null); setDistance(null); setDateTime("");
   };
 
-  const parseDate = (str: string) =>
-    new Date(str.replace(" ", "T")).getTime();
+  // --- AUTOCOMPLETE (UBER STYLE) ---
   useEffect(() => {
-  return () => {
-    if (watchRef.current) {
-      navigator.geolocation.clearWatch(watchRef.current);
-    }
-  };
-}, []);
-
-  // 📍 ubicación
-  const getCurrentLocation = () => {
-  if (!isGoogleReady()) {
-  alert("Mapa no listo, intenta de nuevo");
-  return;
-}  
-  if (!navigator.geolocation) {
-    alert("GPS no disponible");
-    return;
-  }
-
-  navigator.geolocation.getCurrentPosition(
-    async (pos) => {
-      try {
-        const geocoder = new window.google.maps.Geocoder();
-
-        const res = await geocoder.geocode({
-          location: {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude
-          }
-        });
-
-        if (res.results?.[0]) {
-          setPickup(res.results[0].formatted_address);
-        } else {
-          alert("No se pudo obtener dirección");
-        }
-      } catch (err) {
-        alert("Error obteniendo dirección");
-      }
-    },
-    (error) => {
-      alert("Debes permitir ubicación en tu teléfono");
-      console.log(error);
-    },
-    {
-      enableHighAccuracy: true,
-      timeout: 10000
-    }
-  );
-};
-
-  // 🚗 GPS
-  const startTracking = () => {
-  if (!navigator.geolocation) {
-    alert("GPS no disponible");
-    return;
-  }
-
-  if (watchRef.current) {
-    navigator.geolocation.clearWatch(watchRef.current);
-  }
-
-  watchRef.current = navigator.geolocation.watchPosition(
-    (pos) => {
-  setUserPos({
-    lat: pos.coords.latitude,
-    lng: pos.coords.longitude
-  });
-},
-    (error) => {
-      alert("Activa el GPS en tu teléfono");
-      console.log(error);
-    },
-    {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 10000
-    }
-  );
-
-  alert("GPS activado 🚗");
-};
-const getHeading = (from: any, to: any) => {
-  const lat1 = from.lat * Math.PI / 180;
-  const lat2 = to.lat * Math.PI / 180;
-  const dLng = (to.lng - from.lng) * Math.PI / 180;
-
-  const y = Math.sin(dLng) * Math.cos(lat2);
-  const x =
-    Math.cos(lat1) * Math.sin(lat2) -
-    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
-
-  return Math.atan2(y, x) * (180 / Math.PI);
-};
-
-  // 🔥 AUTOCOMPLETE
-  useEffect(() => {
-  
     if (!isLoaded || !isGoogleReady()) return;
-
     const auto1 = new window.google.maps.places.Autocomplete(pickupRef.current!);
     const auto2 = new window.google.maps.places.Autocomplete(dropoffRef.current!);
 
@@ -173,379 +72,191 @@ const getHeading = (from: any, to: any) => {
       const p = auto1.getPlace();
       if (p.formatted_address) setPickup(p.formatted_address);
     });
-
     auto2.addListener("place_changed", () => {
       const p = auto2.getPlace();
       if (p.formatted_address) setDropoff(p.formatted_address);
     });
-    
-
   }, [isLoaded]);
 
-  // 🚗 TRACKING EN TIEMPO REAL
-useEffect(() => {
-  if (!phone || !dateTime) return;
-
-  const interval = setInterval(() => {
-    fetchDriverLocation();
-  }, 3000);
-
-  return () => clearInterval(interval);
-}, [phone, dateTime]);
-useEffect(() => {
-  if (!map || !driverPos) return;
-
-  map.setCenter(driverPos);
-
-  if (prevPosRef.current) {
-    const heading = getHeading(prevPosRef.current, driverPos);
-
-    map.setHeading(heading);
-    map.setTilt(45);
-  }
-
-  prevPosRef.current = driverPos;
-}, [driverPos]);
-
-
-  // 🚗 calcular
+  // --- LÓGICA DE RUTA Y COSTO ---
   const calculateRoute = async () => {
     if (!pickup || !dropoff || !isGoogleReady()) return;
-
     const service = new window.google.maps.DirectionsService();
+    service.route({
+      origin: pickup,
+      destination: dropoff,
+      travelMode: window.google.maps.TravelMode.DRIVING
+    }, (res, status) => {
+      if (status === "OK") {
+        const r = res!.routes[0].legs[0];
+        const miles = r.distance!.value / 1609;
+        const minutes = r.duration!.value / 60;
+        setDistance(+miles.toFixed(2));
+        setPrice(+(10 + miles * 1.5 + minutes * 0.5).toFixed(2));
+        setDirections(res);
+      }
+    });
+  };
 
-    const result: any = await new Promise((resolve, reject) => {
-      service.route({
-        origin: pickup,
-        destination: dropoff,
-        travelMode: window.google.maps.TravelMode.DRIVING
-      }, (res: any, status: any) => {
-        status === "OK" ? resolve(res) : reject();
+  // --- LOCALIZACIÓN GPS ---
+  const getCurrentLocation = () => {
+    if (!navigator.geolocation) return alert("GPS no disponible");
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const geocoder = new window.google.maps.Geocoder();
+      const res = await geocoder.geocode({
+        location: { lat: pos.coords.latitude, lng: pos.coords.longitude }
       });
-    });
-
-    const r = result.routes[0].legs[0];
-    const miles = r.distance.value / 1609;
-    const minutes = r.duration.value / 60;
-
-    setDistance(+miles.toFixed(2));
-    setPrice(+(10 + miles * 1.5 + minutes * 0.5).toFixed(2));
-    setDirections(result);
+      if (res.results?.[0]) setPickup(res.results[0].formatted_address);
+    }, () => alert("Activa los permisos de ubicación"));
   };
 
-  // 🔥 DISPONIBILIDAD
-  const checkAvailability = async () => {
-    const res = await fetch("https://docs.google.com/spreadsheets/d/e/2PACX-1vTpBB4Sb-wzWPSPT-Yvo_jA5KB0rDOR5epN0F3iHdHTOzd-tZnYbz3_336twwe1FKf14lBqOokS865i/pub?output=csv");
-    const text = await res.text();
-
-    const rows = text.split("\n").slice(1);
-    const selected = parseDate(dateTime);
-
-    return !rows.some(r => {
-      const c = r.split(",").map(x => x.replace(/(^"|"$)/g, "").trim());
-      const t = parseDate(c[6]);
-      return t && Math.abs(t - selected) < 30 * 60 * 1000;
-    });
-  };
-const fetchDriverLocation = async () => {
-  try {
-    const res = await fetch(
-      "https://docs.google.com/spreadsheets/d/e/2PACX-1vTpBB4Sb-wzWPSPT-Yvo_jA5KB0rDOR5epN0F3iHdHTOzd-tZnYbz3_336twwe1FKf14lBqOokS865i/pub?output=csv",
-      { cache: "no-store" }
-    );
-
-    const text = await res.text();
-    const rows = text.split("\n").slice(1);
-
-    let found = false;
-
-   for (let r of rows.reverse()) {
-
-  const c = r.split(",").map(x => x.replace(/(^"|"$)/g, "").trim());
-
-  const lat = parseFloat(c[8]);
-  const lng = parseFloat(c[9]);
-
-  const sheetPhone = c[1]?.replace(/\D/g, "");
-  const userPhone = phone.replace(/\D/g, "");
-
-  console.log("CHECK:", sheetPhone, userPhone, lat, lng); // 👈 AQUÍ
-
-  if (
-    sheetPhone.includes(userPhone) &&
-    !isNaN(lat) &&
-    !isNaN(lng)
-  ) {
-    setDriverPos({ lat, lng });
-    break;
-  }
-}
-
-    if (!found) {
-      console.log("⛔ Driver no encontrado aún");
+  // 🔥 ARREGLO 1: FUNCIÓN DE CONFIRMACIÓN MAESTRA
+  const confirmRide = async () => {
+    if (!name || !phone || !pickup || !dropoff || !dateTime) {
+      return alert("Por favor completa todos los campos.");
+    }
+    if (!isValidPhone(phone)) {
+      return alert("El teléfono debe tener 10 dígitos.");
     }
 
-  } catch (error) {
-    console.error("🔥 ERROR TRACKING:", error);
-  }
-};
-  const saveBooking = async () => {
-  return await fetch("/api/route", {
-    method: "POST",
-    body: JSON.stringify({
+    // Generamos el ID único (Llave para el Tracking)
+    const tripId = "TRIP-" + Math.random().toString(36).substr(2, 9).toUpperCase();
+
+    const rideData = {
+      tripId,
       name,
-      phone,
+      phone: cleanPhone(phone),
       pickup,
       dropoff,
       price,
       distance,
-      dateTime
-    })
-  });
-};
+      dateTime: new Date(dateTime).toISOString(),
+      status: "Pendiente"
+    };
+
+    try {
+      const res = await fetch("/api/route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(rideData),
+      });
+
+      const result = await res.json();
+
+      if (result.success) {
+        // Notificación vía WhatsApp para el Admin
+        const adminMsg = `🚗 NUEVA RESERVA\n👤 Cliente: ${name}\n📞 Tel: ${phone}\n📍 Recogida: ${pickup}\n🏁 Destino: ${dropoff}\n📅 Hora: ${dateTime}\n🆔 ID: ${tripId}`;
+        window.open(`https://wa.me/17252876197?text=${encodeURIComponent(adminMsg)}`);
+
+        // Limpieza y Redirección al Tracking
+        clearData();
+        window.location.href = `/tracking?tripId=${tripId}`;
+      } else {
+        alert("Error al procesar la reserva en el servidor.");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Error de conexión con la API.");
+    }
+  };
+
   return (
     <LoadScript googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ""} libraries={libraries} onLoad={handleLoad}>
-      <div style={{ height: "100vh", position: "relative" }}>
-
+      <div style={{ height: "100vh", position: "relative", background: "#000", overflow: "hidden" }}>
+        
         <GoogleMap
-  center={driverPos || { lat: 36.1699, lng: -115.1398 }}
-  zoom={16}
-  onLoad={(m) => setMap(m)}
-  options={{
-    disableDefaultUI: true,
-    zoomControl: true,
-    heading: 0,
-    tilt: 45
-  }}
-  mapContainerStyle={{ width: "100%", height: "100%" }}
->
-          {directions && <DirectionsRenderer directions={directions} />}
-          {/* 👤 USUARIO */}
-{userPos && (
-  <Marker
-    position={userPos}
-    icon={{
-      url: "https://maps.google.com/mapfiles/kml/shapes/man.png",
-      scaledSize: new window.google.maps.Size(35, 35)
-    }}
-  />
-)}
-
-{/* 🚗 DRIVER */}
-{driverPos && (
-  <Marker
-    position={driverPos}
-    icon={{
-      url: "https://maps.google.com/mapfiles/kml/shapes/cabs.png",
-      scaledSize: new window.google.maps.Size(40, 40)
-    }}
-  />
-)}
+          center={{ lat: 36.1699, lng: -115.1398 }}
+          zoom={13}
+          onLoad={(m) => setMap(m)}
+          options={{ disableDefaultUI: true, zoomControl: false, styles: mapStyle }}
+          mapContainerStyle={{ width: "100%", height: "100%" }}
+        >
+          {directions && <DirectionsRenderer directions={directions} options={{ polylineOptions: { strokeColor: "#000", strokeWeight: 5 } }} />}
         </GoogleMap>
 
+        {/* PANEL DE RESERVA */}
         <div style={panel}>
-
-          <input placeholder="Nombre" value={name} onChange={(e) => setName(e.target.value)} style={input} />
-          <input placeholder="Teléfono (10 dígitos)" value={phone} onChange={(e) => setPhone(e.target.value)} style={input} />
+          <div style={dragHandle}></div>
+          
+          <input placeholder="Nombre completo" value={name} onChange={(e) => setName(e.target.value)} style={input} />
+          <input placeholder="Teléfono de contacto" value={phone} onChange={(e) => setPhone(e.target.value)} style={input} />
           <input type="datetime-local" value={dateTime} onChange={(e) => setDateTime(e.target.value)} style={input} />
 
           <div style={{ display: "flex", gap: 6 }}>
-            <input ref={pickupRef} value={pickup} onChange={(e) => setPickup(e.target.value)} placeholder="Origen" style={{ ...input, flex: 1 }} />
-            <button
-  style={btnIcon}
-  onClick={getCurrentLocation}
-  onMouseDown={pressIn}
-  onMouseUp={pressOut}
-  onTouchStart={pressIn}
-  onTouchEnd={pressOut}
->
-  📍
-</button>
+            <input ref={pickupRef} value={pickup} onChange={(e) => setPickup(e.target.value)} placeholder="¿Dónde te recogemos?" style={{ ...input, flex: 1 }} />
+            <button style={btnIcon} onClick={getCurrentLocation} onMouseDown={pressIn} onMouseUp={pressOut}>📍</button>
           </div>
 
-          <input ref={dropoffRef} value={dropoff} onChange={(e) => setDropoff(e.target.value)} placeholder="Destino" style={input} />
+          <input ref={dropoffRef} value={dropoff} onChange={(e) => setDropoff(e.target.value)} placeholder="¿A dónde vas?" style={input} />
 
-          <div style={row}>
-            <button
-  style={btn}
-  onClick={calculateRoute}
-  onMouseDown={pressIn}
-  onMouseUp={pressOut}
-  onTouchStart={pressIn}
-  onTouchEnd={pressOut}
->
-  Calcular
-</button>
-            <button
-  style={btn}
-  onClick={startTracking}
-  onMouseDown={pressIn}
-  onMouseUp={pressOut}
-  onTouchStart={pressIn}
-  onTouchEnd={pressOut}
->
-  GPS
-</button>
-          </div>
+          <button style={btnCalc} onClick={calculateRoute} onMouseDown={pressIn} onMouseUp={pressOut}>
+            Calcular Tarifa
+          </button>
 
           {price && (
-            <>
-              <h3>💰 ${price} | 📏 {distance} mi</h3>
+            <div style={resultArea}>
+              <h3 style={priceText}>💰 Total: ${price} <span style={{fontSize: 12, fontWeight: 400}}>({distance} mi)</span></h3>
 
+              <p style={sectionTitle}>Método de Pago</p>
               <div style={row}>
-  <button
-    style={btnPay}
-    onClick={() => alert("Zelle: 725-287-6197")}
-    onMouseDown={pressIn}
-onMouseUp={pressOut}
-onTouchStart={pressIn}
-onTouchEnd={pressOut}
-
-  >
-    Zelle
-  </button>
-
-  <button
-    style={btnPay}
-    onClick={() =>
-      window.open("https://www.paypal.com/paypalme/ernestogongorasaco")
-    }
-    onMouseDown={pressIn}
-onMouseUp={pressOut}
-onTouchStart={pressIn}
-onTouchEnd={pressOut}
-  >
-    PayPal
-  </button>
-
-  <button
-    style={btnPay}
-    onClick={() =>
-      window.open("https://venmo.com/code?user_id=4536118275999433880")
-    }
-   onMouseDown={pressIn}
-onMouseUp={pressOut}
-onTouchStart={pressIn}
-onTouchEnd={pressOut}
-  >
-    Venmo
-  </button>
-</div>
+                <button style={btnZelle} onClick={() => alert("Zelle: 725-287-6197")} onMouseDown={pressIn} onMouseUp={pressOut}>Zelle</button>
+                <button style={btnPaypal} onClick={() => window.open("https://www.paypal.com/paypalme/ernestogongorasaco")} onMouseDown={pressIn} onMouseUp={pressOut}>PayPal</button>
+                <button style={btnVenmo} onClick={() => window.open("https://venmo.com/code?user_id=4536118275999433880")} onMouseDown={pressIn} onMouseUp={pressOut}>Venmo</button>
+              </div>
 
               <div style={row}>
                 <button
                   style={btnMain}
-                 onClick={async () => {
-   if (!isValidPhone(phone)) return alert("Número inválido");
-if (!dateTime) return alert("Selecciona fecha y hora");
-
-  const ok = await checkAvailability();
-  if (!ok) return alert("Horario ocupado");
-
-  const res = await saveBooking();
-
-  let result;
-  try {
-    result = await res.json();
-  } catch {
-    result = { success: true };
-  }
-
-  if (!result.success) {
-    alert("Horario ocupado");
-    return;
-  }
-
-  const clean = cleanPhone(phone);
-
-  const adminMsg = `🚗 NUEVA RESERVA
-👤 ${name}
-📞 ${clean}
-
-📍 ORIGEN:
-${pickup}
-
-🏁 DESTINO:
-${dropoff}
-
-💰 $${price}
-📏 ${distance} mi
-
-📅 ${dateTime}`;
-
-  window.open(`https://wa.me/17252876197?text=${encodeURIComponent(adminMsg)}`);
-
-  clearData();
-
-  alert("Reserva confirmada 🚗");
- window.open(`/tracking?phone=${phone}&dateTime=${encodeURIComponent(dateTime)}`);
-}}
-onMouseDown={pressIn}
-onMouseUp={pressOut}
-onTouchStart={pressIn}
-onTouchEnd={pressOut}
+                  onMouseDown={pressIn} onMouseUp={pressOut}
+                  onClick={confirmRide}
                 >
-                  Confirmar
+                  Confirmar Viaje
                 </button>
 
                 <button
                   style={btnCancel}
-                 onClick={() => {
-  const clean = cleanPhone(phone);
-
-  // 🔥 MENSAJE ADMIN CANCELACIÓN
-  const adminMsg = `❌ RESERVA CANCELADA
-👤 ${name}
-📞 ${clean}
-
-📍 ${pickup}
-🏁 ${dropoff}
-
-💰 $${price}
-📏 ${distance} mi
-
-📅 ${dateTime}`;
-
-  window.open(`https://wa.me/17252876197?text=${encodeURIComponent(adminMsg)}`);
-
-  clearData();
-
-  alert("Reserva cancelada");
-}}
-onMouseDown={pressIn}
-onMouseUp={pressOut}
-onTouchStart={pressIn}
-onTouchEnd={pressOut}
+                  onMouseDown={pressIn} onMouseUp={pressOut}
+                  onClick={() => {
+                    if(confirm("¿Seguro que deseas limpiar los datos?")) {
+                      clearData();
+                      window.location.reload();
+                    }
+                  }}
                 >
-                  Cancelar
+                  ✕
                 </button>
               </div>
-            </>
+            </div>
           )}
-
         </div>
       </div>
     </LoadScript>
   );
 }
 
-// 🎨 estilos (sin cambios)
-const panel = { position: "absolute" as const, bottom: 0, width: "100%", background: "#948f8f", padding: 14, borderTopLeftRadius: 20, borderTopRightRadius: 20 };
-const input = { width: "100%", padding: 10, marginBottom: 6, borderRadius: 10, border: "1px solid #444", background: "#2a2a2a", color: "#fff" };
-const row = { display: "flex", gap: 6, marginBottom: 6 };
-const pressIn = (e: any) => e.currentTarget.style.transform = "scale(0.95)";
-const pressOut = (e: any) => e.currentTarget.style.transform = "scale(1)";
-const btn = {
-  flex: 1,
-  padding: 10,
-  background: "#2d2d2d",
-  color: "#fff",
-  borderRadius: 10,
-  border: "1px solid #555",
-  transition: "all 0.15s ease",
-  cursor: "pointer"
+// --- ESTILOS VISUALES ---
+const panel = { 
+  position: "absolute" as const, bottom: 0, width: "100%", 
+  background: "#f8f9fa", padding: "10px 20px 30px 20px", 
+  borderTopLeftRadius: 28, borderTopRightRadius: 28,
+  boxShadow: "0 -10px 30px rgba(0,0,0,0.2)", color: "#000"
 };
-const btnMain = { flex: 1, padding: 12, background: "#00c853", color: "#fff", borderRadius: 12 };
-const btnCancel = { flex: 1, padding: 12, background: "#d32f2f", color: "#fff", borderRadius: 12 };
-const btnPay = { flex: 1, padding: 8, background: "#333", color: "#fff", borderRadius: 10 };
-const btnIcon = { padding: 10, borderRadius: 10, border: "1px solid #555", background: "#2a2a2a", color: "#fff" };
+
+const dragHandle = { width: 40, height: 5, background: "#ccc", borderRadius: 10, margin: "0 auto 15px auto" };
+const input = { width: "100%", padding: 14, marginBottom: 10, borderRadius: 12, border: "1px solid #e2e2e2", background: "#eee", color: "#000", fontSize: 15 };
+const btnCalc = { width: "100%", padding: 14, background: "#000", color: "#fff", borderRadius: 12, border: "none", fontWeight: "bold", cursor: "pointer" };
+const resultArea = { marginTop: 15 };
+const priceText = { textAlign: "center" as const, fontSize: 22, marginBottom: 15, fontWeight: 700 };
+const sectionTitle = { fontSize: 13, color: "#666", marginBottom: 8, fontWeight: 600 };
+const row = { display: "flex", gap: 10, marginBottom: 10 };
+const btnMain = { flex: 4, padding: 16, background: "#27ae60", color: "#fff", borderRadius: 14, border: "none", fontWeight: "bold", fontSize: 16, cursor: "pointer" };
+const btnCancel = { flex: 1, padding: 16, background: "#ebedef", color: "#333", borderRadius: 14, border: "none", fontWeight: "bold", cursor: "pointer" };
+const btnZelle = { flex: 1, padding: 10, background: "#6d1ed1", color: "#fff", borderRadius: 10, border: "none", fontSize: 12, fontWeight: "bold" };
+const btnPaypal = { flex: 1, padding: 10, background: "#003087", color: "#fff", borderRadius: 10, border: "none", fontSize: 12, fontWeight: "bold" };
+const btnVenmo = { flex: 1, padding: 10, background: "#3d95ce", color: "#fff", borderRadius: 10, border: "none", fontSize: 12, fontWeight: "bold" };
+const btnIcon = { padding: "0 15px", borderRadius: 12, border: "1px solid #e2e2e2", background: "#eee", color: "#000", cursor: "pointer" };
+
+const mapStyle = [
+  { "featureType": "poi", "stylers": [{ "visibility": "off" }] },
+  { "featureType": "transit", "stylers": [{ "visibility": "off" }] }
+];
