@@ -22,7 +22,7 @@ export default function DriverPage() {
   const watchRef = useRef<any>(null);
 
   const PASSWORD = "8887";
-  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzwnFUTFp6WzPwHoPg100dwmrSg3EUfEBOTcVJD0Dz2ikld9_XbjcR3QlyAFeT1vtQGZw/exec";
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx0sL8G_fj_-ZddY2aJXY02wfjqzB4LN2Bk0bGU6k_ew9SY7Cyx1CC2WNUj5_DIVYHSNA/exec";
   const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTpBB4Sb-wzWPSPT-Yvo_jA5KB0rDOR5epN0F3iHdHTOzd-tZnYbz3_336twwe1FKf14lBqOokS865i/pub?output=csv";
 
   // 🔥 CARGA DE DATOS FILTRADA Y OPTIMIZADA
@@ -74,16 +74,17 @@ export default function DriverPage() {
     if ("geolocation" in navigator) {
       watchRef.current = navigator.geolocation.watchPosition(
         async (pos) => {
-          // Envío silencioso de coordenadas
+          // Cambiamos JSON por FormData para que Google Sheets lo lea sin errores
+          const formData = new FormData();
+          formData.append('updateLocation', 'true');
+          formData.append('tripId', tripId);
+          formData.append('lat', pos.coords.latitude.toString());
+          formData.append('lng', pos.coords.longitude.toString());
+
           fetch(SCRIPT_URL, {
             method: "POST",
-            mode: "no-cors", // 🔥 Importante para no bloquear la ejecución
-            body: JSON.stringify({
-              updateLocation: true,
-              tripId: tripId,
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude
-            })
+            mode: "no-cors", // Mantener no-cors para evitar problemas de seguridad
+            body: formData
           });
         },
         (err) => console.error("GPS Error:", err),
@@ -92,16 +93,22 @@ export default function DriverPage() {
     }
   };
 
-  // 🔄 ACTUALIZAR ESTADO
+  // 🔄 BUSCA ESTA FUNCIÓN Y REEMPLÁZALA COMPLETAMENTE
   const updateStatus = async (tripId: string, status: string) => {
     try {
+      const formData = new FormData();
+      formData.append('updateStatus', 'true');
+      formData.append('tripId', tripId);
+      formData.append('status', status);
+
       await fetch(SCRIPT_URL, {
         method: "POST",
-        body: JSON.stringify({ updateStatus: true, tripId, status })
+        mode: "no-cors",
+        body: formData
       });
       loadData();
     } catch (e) {
-      alert("Error al actualizar");
+      console.error("Error:", e);
     }
   };
 
@@ -146,13 +153,17 @@ export default function DriverPage() {
         const [name, phone, pickup, dropoff, price, distance, dateTime, status, , , tripId] = r;
 
         return (
-          <div key={tripId || i} style={card}>
-            <div style={cardHeader}>
-              <span style={clientName}>👤 {name}</span>
-              <span style={{ ...statusLabel, background: status === "En camino" ? "#17a2b8" : "#f1c40f", color: "#fff" }}>
-                {status || "Pendiente"}
-              </span>
-            </div>
+  <div key={tripId || i} style={card}>
+    <div style={cardHeader}>
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        <span style={clientName}>👤 {name}</span>
+        {/* AQUÍ AGREGAMOS EL TELÉFONO DEBAJO DEL NOMBRE */}
+        <span style={{ fontSize: 14, color: "#888", marginTop: 2 }}>📞 {phone}</span>
+      </div>
+      <span style={{ ...statusLabel, height: "fit-content", background: status === "En camino" ? "#17a2b8" : "#f1c40f", color: "#fff" }}>
+        {status || "Pendiente"}
+      </span>
+    </div>
 
             <div style={routeContainer}>
               <div style={routeStep}>📍 <b>Recogida:</b> {pickup}</div>
