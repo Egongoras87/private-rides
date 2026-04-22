@@ -71,7 +71,7 @@ export async function POST(req: Request) {
 // 🚀 FUNCIÓN AUXILIAR DE ENVÍO A GOOGLE APPS SCRIPT
 async function forwardToGoogle(payload: any) {
   try {
-    const res = await fetch(SCRIPT_URL, {
+    const res = await fetch("/api/route", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",

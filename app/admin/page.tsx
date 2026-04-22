@@ -58,7 +58,7 @@ export default function AdminPage() {
     if (!tripId) return alert("Error: Este viaje no tiene ID");
     
     try {
-      await fetch(SCRIPT_URL, {
+      await fetch("/api/route", {
         method: "POST",
         body: JSON.stringify({
           updateStatus: true,

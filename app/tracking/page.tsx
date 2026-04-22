@@ -18,40 +18,50 @@ function TrackingContent() {
     if (!tripId) return;
 
     const fetchLocation = async () => {
-      try {
-        const res = await fetch(CSV_URL, { cache: "no-store" });
-        const text = await res.text();
-        const rows = text
-          .split("\n")
-          .slice(1)
-          .map(r => r.split(/,(?=(?:(?:[^\"]*\"){2})*[^\"]*$)/).map(c => c.replace(/(^\"|\"$)/g, "").trim()))
-          .filter(r => r.length >= 11);
+  try {
 
-        // Buscar el viaje por el tripId (Columna K / Índice 10)
-        const match = rows.find(r => r[10] === tripId);
+    const res = await fetch(CSV_URL, { cache: "no-store" });
+    const text = await res.text();
 
-        if (match) {
-          setRideData({
-            name: match[0],
-            status: match[7],
-            pickup: match[2],
-            dropoff: match[3]
-          });
+    const rows = text
+      .split("\n")
+      .slice(1)
+      .map(r => r.split(/,(?=(?:(?:[^\"]*\"){2})*[^\"]*$)/).map(c => c.replace(/(^\"|\"$)/g, "").trim()))
+      .filter(r => r.length >= 11);
 
-          const lat = parseFloat(match[8]);
-          const lng = parseFloat(match[9]);
+    const match = rows.find(r => r[10]?.trim() === tripId?.trim());
 
-          if (!isNaN(lat) && !isNaN(lng) && lat !== 0) {
-            const newPos = { lat, lng };
-            setPos(newPos);
-            // Suavizar el movimiento de la cámara
-            if (map) map.panTo(newPos);
-          }
+    // ✅ AHORA SÍ
+    console.log("TRIP BUSCADO:", tripId);
+    console.log("FILAS:", rows.length);
+    console.log("MATCH:", match);
+
+    if (match) {
+      setRideData({
+        name: match[0],
+        status: match[7],
+        pickup: match[2],
+        dropoff: match[3]
+      });
+
+      const lat = parseFloat(match[8]);
+      const lng = parseFloat(match[9]);
+
+      if (!isNaN(lat) && !isNaN(lng) && lat !== 0) {
+
+        setPos({ lat, lng });
+
+        if (map) {
+          map.panTo({ lat, lng });
+          map.setZoom(16);
         }
-      } catch (e) {
-        console.error("Error obteniendo ubicación:", e);
       }
-    };
+    }
+
+  } catch (e) {
+    console.error("Error obteniendo ubicación:", e);
+  }
+};
 
     fetchLocation();
     const interval = setInterval(fetchLocation, 3000); // Actualiza cada 3 segundos

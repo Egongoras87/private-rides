@@ -139,7 +139,7 @@ export default function Page() {
   console.log("DATA QUE ENVÍAS:", rideData);
 
   try {
-    const res = await fetch(SCRIPT_URL, {
+    const res = await fetch("/api/route", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"

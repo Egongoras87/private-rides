@@ -90,7 +90,7 @@ const startTracking = (tripId: string) => {
   lng: pos.coords.longitude
 };
 
-fetch(SCRIPT_URL, {
+fetch("/api/route", {
   method: "POST",
   headers: {
     "Content-Type": "application/json"
@@ -105,7 +105,7 @@ fetch(SCRIPT_URL, {
   lng: pos.coords.longitude
 });
 
-      fetch(SCRIPT_URL, {
+      fetch("/api/route", {
   method: "POST",
   headers: {
     "Content-Type": "application/json"
@@ -130,7 +130,7 @@ fetch(SCRIPT_URL, {
 
   // ✅ STATUS LIMPIO
 const updateStatus = async (tripId: string, status: string) => {
-  await fetch(SCRIPT_URL, {
+  await fetch("/api/route", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
