@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 const PASSWORD = "8887";
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwYmAl_thVEeB3vJ6kAw7MxLsLej5Vt2JuzEgoXO83pkMLc9EQohRJ6EzzmoVeF6gG9yg/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyFNqIxvd-BENxjUOAz0uApP17pkd2RDdjcnBZFf3yaW8zf18YC4C1AviRjT1lbEaGlOg/exec";
 
 export default function AdminPage() {
 

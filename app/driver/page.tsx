@@ -22,7 +22,7 @@ export default function DriverPage() {
 
   const PASSWORD = "8887";
 
-  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwYmAl_thVEeB3vJ6kAw7MxLsLej5Vt2JuzEgoXO83pkMLc9EQohRJ6EzzmoVeF6gG9yg/exec";
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyFNqIxvd-BENxjUOAz0uApP17pkd2RDdjcnBZFf3yaW8zf18YC4C1AviRjT1lbEaGlOg/exec";
 
   const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTpBB4Sb-wzWPSPT-Yvo_jA5KB0rDOR5epN0F3iHdHTOzd-tZnYbz3_336twwe1FKf14lBqOokS865i/pub?output=csv";
 
@@ -76,14 +76,25 @@ export default function DriverPage() {
         const formData = new FormData();
         formData.append("updateLocation", "true");
         formData.append("tripId", tripId);
-        formData.append("lat", pos.coords.latitude.toString());
+        fetch(SCRIPT_URL, {
+  method: "POST",
+  body: JSON.stringify({
+    updateLocation: true,
+    tripId: tripId,
+    lat: pos.coords.latitude,
+    lng: pos.coords.longitude
+  })
+});
         formData.append("lng", pos.coords.longitude.toString());
 
         fetch(SCRIPT_URL, {
-          method: "POST",
-          mode: "no-cors",
-          body: formData,
-        });
+  method: "POST",
+  body: JSON.stringify({
+    updateStatus: true,
+    tripId: tripId,
+    status: status
+  })
+});
       },
       (err) => console.error("GPS:", err),
       { enableHighAccuracy: true }
@@ -97,11 +108,14 @@ export default function DriverPage() {
     formData.append("tripId", tripId);
     formData.append("status", status);
 
-    await fetch(SCRIPT_URL, {
-      method: "POST",
-      mode: "no-cors",
-      body: formData,
-    });
+    fetch(SCRIPT_URL, {
+  method: "POST",
+  body: JSON.stringify({
+    updateStatus: true,
+    tripId: tripId,
+    status: status
+  })
+});
 
     loadData();
   };
