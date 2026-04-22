@@ -3,13 +3,20 @@
 import { useEffect, useState, useRef } from "react";
 
 // 🎯 EFECTO BOTÓN
-const pressIn = (e: any) => {
-  e.currentTarget.style.transform = "scale(0.94)";
-  e.currentTarget.style.opacity = "0.7";
+const btn3D = {
+  transform: "translateY(0)",
+  boxShadow: "0 6px 0 #000",
+  transition: "all 0.1s ease"
 };
-const pressOut = (e: any) => {
-  e.currentTarget.style.transform = "scale(1)";
-  e.currentTarget.style.opacity = "1";
+
+const pressIn = (e:any) => {
+  e.currentTarget.style.transform = "translateY(4px)";
+  e.currentTarget.style.boxShadow = "0 2px 0 #000";
+};
+
+const pressOut = (e:any) => {
+  e.currentTarget.style.transform = "translateY(0)";
+  e.currentTarget.style.boxShadow = "0 6px 0 #000";
 };
 
 export default function DriverPage() {
@@ -22,7 +29,7 @@ export default function DriverPage() {
 
   const PASSWORD = "8887";
 
-  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyFNqIxvd-BENxjUOAz0uApP17pkd2RDdjcnBZFf3yaW8zf18YC4C1AviRjT1lbEaGlOg/exec";
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwJzEHEq_XzTb-IOe9JjlHXW4eyx7QY2IrayDumHOuIj_60atC3FUrqdNTHZQ4rko1bYg/exec";
 
   const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTpBB4Sb-wzWPSPT-Yvo_jA5KB0rDOR5epN0F3iHdHTOzd-tZnYbz3_336twwe1FKf14lBqOokS865i/pub?output=csv";
 
@@ -67,17 +74,42 @@ export default function DriverPage() {
     return () => clearInterval(interval);
   }, [authorized]);
 
-  // 📡 TRACKING GPS
-  const startTracking = (tripId: string) => {
-    if (watchRef.current) navigator.geolocation.clearWatch(watchRef.current);
+  /// ✅ TRACKING CORRECTO
+const startTracking = (tripId: string) => {
+  if (watchRef.current) {
+    navigator.geolocation.clearWatch(watchRef.current);
+  }
 
-    watchRef.current = navigator.geolocation.watchPosition(
-      (pos) => {
-        const formData = new FormData();
-        formData.append("updateLocation", "true");
-        formData.append("tripId", tripId);
-        fetch(SCRIPT_URL, {
+  watchRef.current = navigator.geolocation.watchPosition(
+    (pos) => {
+
+      const payload = {
+  updateLocation: true,
+  tripId,
+  lat: pos.coords.latitude,
+  lng: pos.coords.longitude
+};
+
+fetch(SCRIPT_URL, {
   method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify(payload)
+});
+
+      console.log("GPS ENVIANDO:", payload);
+      console.log("GPS QUE ENVÍAS:", {
+  tripId,
+  lat: pos.coords.latitude,
+  lng: pos.coords.longitude
+});
+
+      fetch(SCRIPT_URL, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
   body: JSON.stringify({
     updateLocation: true,
     tripId: tripId,
@@ -85,40 +117,33 @@ export default function DriverPage() {
     lng: pos.coords.longitude
   })
 });
-        formData.append("lng", pos.coords.longitude.toString());
 
-        fetch(SCRIPT_URL, {
-  method: "POST",
-  body: JSON.stringify({
-    updateStatus: true,
-    tripId: tripId,
-    status: status
-  })
-});
-      },
-      (err) => console.error("GPS:", err),
-      { enableHighAccuracy: true }
-    );
-  };
+    },
+    (err) => console.error("GPS ERROR:", err),
+    {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 5000
+    }
+  );
+};
 
-  // 🔄 STATUS
-  const updateStatus = async (tripId: string, status: string) => {
-    const formData = new FormData();
-    formData.append("updateStatus", "true");
-    formData.append("tripId", tripId);
-    formData.append("status", status);
+  // ✅ STATUS LIMPIO
+const updateStatus = async (tripId: string, status: string) => {
+  await fetch(SCRIPT_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      updateStatus: true,
+      tripId,
+      status
+    })
+  });
 
-    fetch(SCRIPT_URL, {
-  method: "POST",
-  body: JSON.stringify({
-    updateStatus: true,
-    tripId: tripId,
-    status: status
-  })
-});
-
-    loadData();
-  };
+  loadData();
+};
 
   // 🔐 LOGIN
   if (!authorized) {
@@ -158,7 +183,7 @@ export default function DriverPage() {
       {rides.length === 0 && <p>Esperando solicitudes...</p>}
 
       {rides.map((r) => {
-        const tripId = r[10] || r[1] + "_" + r[6];
+        const tripId = r[10]; // columna K real
 
         const name = r[0];
         const phone = r[1];
@@ -317,4 +342,14 @@ const input = {
   width: "100%",
   padding: 10,
   marginBottom: 10,
+};
+const panel = {
+  position: "absolute",
+  bottom: 10,
+  left: "5%",
+  width: "90%",
+  maxWidth: 500,
+  background: "#fff",
+  borderRadius: 20,
+  padding: 15,
 };

@@ -9,7 +9,7 @@ import {
 } from "@react-google-maps/api";
 
 const libraries: ("places")[] = ["places"];
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyFNqIxvd-BENxjUOAz0uApP17pkd2RDdjcnBZFf3yaW8zf18YC4C1AviRjT1lbEaGlOg/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwJzEHEq_XzTb-IOe9JjlHXW4eyx7QY2IrayDumHOuIj_60atC3FUrqdNTHZQ4rko1bYg/exec";
 
 export default function Page() {
   // --- PERSISTENCIA DE DATOS ---
@@ -46,7 +46,7 @@ export default function Page() {
   };
 
   const handleLoad = () => setIsLoaded(true);
-  const isGoogleReady = () => typeof window !== "undefined" && window.google?.maps;
+  const isGoogleReady = () => window.google && window.google.maps;
   const cleanPhone = (p: string) => p.replace(/\D/g, "");
   const isValidPhone = (p: string) => cleanPhone(p).length === 10;
 
@@ -135,10 +135,15 @@ export default function Page() {
     dateTime,
   };
 
-  try {
+  // ✅ AHORA SÍ EXISTE
+  console.log("DATA QUE ENVÍAS:", rideData);
 
+  try {
     const res = await fetch(SCRIPT_URL, {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify(rideData),
     });
 
@@ -221,7 +226,7 @@ try {
             Calcular Tarifa
           </button>
 
-          {price && (
+          {price !== null && (
             <div style={resultArea}>
               <h3 style={priceText}>💰 Total: ${price} <span style={{fontSize: 12, fontWeight: 400}}>({distance} mi)</span></h3>
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyFNqIxvd-BENxjUOAz0uApP17pkd2RDdjcnBZFf3yaW8zf18YC4C1AviRjT1lbEaGlOg/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwJzEHEq_XzTb-IOe9JjlHXW4eyx7QY2IrayDumHOuIj_60atC3FUrqdNTHZQ4rko1bYg/exec";
 
 // 🟢 GET: Verificación rápida de estado
 export async function GET() {
@@ -72,12 +72,12 @@ export async function POST(req: Request) {
 async function forwardToGoogle(payload: any) {
   try {
     const res = await fetch(SCRIPT_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8", 
-      },
-      body: JSON.stringify(payload)
-    });
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify(payload)
+});
 
     const responseText = await res.text();
     let result;
