@@ -22,7 +22,7 @@ export default function DriverPage() {
   const watchRef = useRef<any>(null);
 
   const PASSWORD = "8887";
-  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx0sL8G_fj_-ZddY2aJXY02wfjqzB4LN2Bk0bGU6k_ew9SY7Cyx1CC2WNUj5_DIVYHSNA/exec";
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxIL-9QQ9YZM3hVSGeB4kWxTOIBAU0gNQm2nDgq7FVahY-0WaGKsFZH9tlq66qNTbuKrQ/exec";
   const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTpBB4Sb-wzWPSPT-Yvo_jA5KB0rDOR5epN0F3iHdHTOzd-tZnYbz3_336twwe1FKf14lBqOokS865i/pub?output=csv";
 
   // 🔥 CARGA DE DATOS FILTRADA Y OPTIMIZADA
@@ -150,74 +150,99 @@ export default function DriverPage() {
       )}
 
       {rides.map((r, i) => {
-        const [name, phone, pickup, dropoff, price, distance, dateTime, status, , , tripId] = r;
+  const tripId = r[10]?.trim();
 
-        return (
-  <div key={tripId || i} style={card}>
-    <div style={cardHeader}>
-      <div style={{ display: "flex", flexDirection: "column" }}>
-        <span style={clientName}>👤 {name}</span>
-        {/* AQUÍ AGREGAMOS EL TELÉFONO DEBAJO DEL NOMBRE */}
-        <span style={{ fontSize: 14, color: "#888", marginTop: 2 }}>📞 {phone}</span>
+  if (!tripId) {
+    console.error("TripID no encontrado", r);
+    return null;
+  }
+
+  const name = r[0];
+  const phone = r[1];
+  const pickup = r[2];
+  const dropoff = r[3];
+  const price = r[4];
+  const distance = r[5];
+  const dateTime = r[6];
+  const status = r[7];
+
+  return (
+    <div key={tripId} style={card}>
+      
+      <div style={cardHeader}>
+        <div>
+          <span style={clientName}>👤 {name}</span>
+          <div style={{ fontSize: 13, color: "#888" }}>📞 {phone}</div>
+        </div>
+
+        <span style={{
+          ...statusLabel,
+          background: status === "En camino" ? "#17a2b8" : "#f1c40f",
+          color: "#fff"
+        }}>
+          {status}
+        </span>
       </div>
-      <span style={{ ...statusLabel, height: "fit-content", background: status === "En camino" ? "#17a2b8" : "#f1c40f", color: "#fff" }}>
-        {status || "Pendiente"}
-      </span>
+
+      <div style={routeContainer}>
+        <div style={routeStep}>📍 {pickup}</div>
+        <div style={routeStep}>🏁 {dropoff}</div>
+      </div>
+
+      <div style={statsRow}>
+        <span>💰 ${price}</span>
+        <span>📏 {distance} mi</span>
+        <span>⏰ {new Date(dateTime).toLocaleTimeString()}</span>
+      </div>
+
+      <button
+        style={btnNav}
+        onMouseDown={pressIn}
+        onMouseUp={pressOut}
+        onClick={() => {
+
+          window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pickup)}`);
+
+          updateStatus(tripId, "En camino");
+
+          startTracking(tripId);
+
+          const link = `${window.location.origin}/tracking?tripId=${tripId}`;
+
+          const msg = `🚗 Tu conductor va en camino\n📍 Sigue aquí:\n${link}`;
+
+          window.open(`https://wa.me/1${phone}?text=${encodeURIComponent(msg)}`);
+        }}
+      >
+        🚀 Iniciar Viaje
+      </button>
+
+      <div style={actionGrid}>
+
+        <button
+          style={{ ...btnSmall, background: "#2ecc71" }}
+          onClick={() => updateStatus(tripId, "Completado")}
+        >
+          ✅ Finalizar
+        </button>
+
+        <button
+          style={{ ...btnSmall, background: "#e74c3c" }}
+          onClick={() => {
+            updateStatus(tripId, "Cancelado");
+
+            window.open(`https://wa.me/1${phone}?text=Tu viaje ha sido cancelado`);
+          }}
+        >
+          ❌ Cancelar
+        </button>
+
+      </div>
+
     </div>
+  );
+})}
 
-            <div style={routeContainer}>
-              <div style={routeStep}>📍 <b>Recogida:</b> {pickup}</div>
-              <div style={routeStep}>🏁 <b>Destino:</b> {dropoff}</div>
-            </div>
-
-            <div style={statsRow}>
-              <span>💰 <b>${price}</b></span>
-              <span>📏 {distance} mi</span>
-              <span>⏰ {new Date(dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-            </div>
-
-            <div style={{ marginTop: 15 }}>
-              <button
-                onClick={() => {
-                  // 1. Abrir Navegación
-                  window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pickup)}`);
-                  // 2. Cambiar Estado
-                  updateStatus(tripId, "En camino");
-                  // 3. Iniciar Tracking
-                  startTracking(tripId);
-                  // 4. Notificar a Cliente con Link dinámico
-                  const trackingUrl = `${window.location.origin}/tracking?tripId=${tripId}`;
-                  const msg = `🚗 ¡Hola ${name}! Tu conductor ya va en camino hacia tu ubicación. Puedes seguir el mapa en tiempo real aquí: ${trackingUrl}`;
-                  window.open(`https://wa.me/1${phone.replace(/\D/g, "")}?text=${encodeURIComponent(msg)}`);
-                }}
-                style={btnNav}
-                onMouseDown={pressIn} onMouseUp={pressOut}
-              >
-                🚀 Iniciar Viaje / Abrir GPS
-              </button>
-
-              <div style={actionGrid}>
-                <button 
-                  style={{ ...btnSmall, background: "#2ecc71" }} 
-                  onClick={() => confirm("¿Completaste el viaje?") && updateStatus(tripId, "Completado")}
-                  onMouseDown={pressIn} onMouseUp={pressOut}
-                >✅ Finalizar</button>
-
-                <button 
-                  style={{ ...btnSmall, background: "#e74c3c" }} 
-                  onClick={() => {
-                    if (confirm("¿Deseas cancelar este servicio?")) {
-                      updateStatus(tripId, "Cancelado");
-                      window.open(`https://wa.me/1${phone.replace(/\D/g, "")}?text=Lo sentimos, tu viaje ha sido cancelado.`);
-                    }
-                  }}
-                  onMouseDown={pressIn} onMouseUp={pressOut}
-                >❌ Cancelar</button>
-              </div>
-            </div>
-          </div>
-        );
-      })}
     </div>
   );
 }

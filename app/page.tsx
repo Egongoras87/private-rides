@@ -120,7 +120,7 @@ export default function Page() {
     }
 
     // Generamos el ID único (Llave para el Tracking)
-    const tripId = "TRIP-" + Math.random().toString(36).substr(2, 9).toUpperCase();
+    const tripId = "TRIP-" + Date.now();
 
     const rideData = {
       tripId,

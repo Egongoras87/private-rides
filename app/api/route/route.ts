@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx0sL8G_fj_-ZddY2aJXY02wfjqzB4LN2Bk0bGU6k_ew9SY7Cyx1CC2WNUj5_DIVYHSNA/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxIL-9QQ9YZM3hVSGeB4kWxTOIBAU0gNQm2nDgq7FVahY-0WaGKsFZH9tlq66qNTbuKrQ/exec";
 
 // 🟢 GET: Verificación rápida de estado
 export async function GET() {
