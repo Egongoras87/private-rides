@@ -1,142 +1,141 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
-import { GoogleMap, LoadScript, Marker, InfoWindow } from "@react-google-maps/api";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTpBB4Sb-wzWPSPT-Yvo_jA5KB0rDOR5epN0F3iHdHTOzd-tZnYbz3_336twwe1FKf14lBqOokS865i/pub?output=csv";
+
+// ==============================
+// PARSER CSV ROBUSTO
+// ==============================
+const parseCSV = (text: string) => {
+  return text
+    .split("\n")
+    .slice(1)
+    .map(row =>
+      row
+        .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+        .map(cell => cell.replace(/(^"|"$)/g, "").trim())
+    )
+    .filter(r => r.length >= 11);
+};
+
+// ==============================
+// COMPONENTE PRINCIPAL
+// ==============================
 function TrackingContent() {
-  const searchParams = useSearchParams();
-  const tripId = searchParams.get("tripId");
+
+  const params = useSearchParams();
+  const tripId = params.get("tripId");
 
   const [pos, setPos] = useState<{ lat: number; lng: number } | null>(null);
-  const [rideData, setRideData] = useState<any>(null);
-  const [map, setMap] = useState<any>(null);
-
-  const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTpBB4Sb-wzWPSPT-Yvo_jA5KB0rDOR5epN0F3iHdHTOzd-tZnYbz3_336twwe1FKf14lBqOokS865i/pub?output=csv";
+  const [status, setStatus] = useState<string>("Loading...");
+  const [pickup, setPickup] = useState<string>("");
 
   useEffect(() => {
     if (!tripId) return;
 
-    const fetchLocation = async () => {
-  try {
+    let interval: any;
 
-    const res = await fetch(CSV_URL, { cache: "no-store" });
-    const text = await res.text();
+    const fetchData = async () => {
+      try {
+        const res = await fetch(CSV_URL + "&t=" + Date.now());
+        const text = await res.text();
 
-    const rows = text
-      .split("\n")
-      .slice(1)
-      .map(r => r.split(/,(?=(?:(?:[^\"]*\"){2})*[^\"]*$)/).map(c => c.replace(/(^\"|\"$)/g, "").trim()))
-      .filter(r => r.length >= 11);
+        const rows = parseCSV(text);
 
-    const match = rows.find(r => r[10]?.trim() === tripId?.trim());
+        const match = rows.find(r => r[10]?.trim() === tripId.trim());
 
-    // ✅ AHORA SÍ
-    console.log("TRIP BUSCADO:", tripId);
-    console.log("FILAS:", rows.length);
-    console.log("MATCH:", match);
+        if (match) {
 
-    if (match) {
-      setRideData({
-        name: match[0],
-        status: match[7],
-        pickup: match[2],
-        dropoff: match[3]
-      });
+          setStatus(match[7]);
+          setPickup(match[2]);
 
-      const lat = parseFloat(match[8]);
-      const lng = parseFloat(match[9]);
+          const lat = parseFloat(match[8]);
+          const lng = parseFloat(match[9]);
 
-      if (!isNaN(lat) && !isNaN(lng) && lat !== 0) {
-
-        setPos({ lat, lng });
-
-        if (map) {
-          map.panTo({ lat, lng });
-          map.setZoom(16);
+          if (!isNaN(lat) && !isNaN(lng)) {
+            setPos({ lat, lng });
+          }
         }
+
+      } catch (err) {
+        console.error("TRACKING ERROR:", err);
       }
-    }
+    };
 
-  } catch (e) {
-    console.error("Error obteniendo ubicación:", e);
-  }
-};
+    fetchData();
+    interval = setInterval(fetchData, 3000);
 
-    fetchLocation();
-    const interval = setInterval(fetchLocation, 3000); // Actualiza cada 3 segundos
     return () => clearInterval(interval);
-  }, [tripId, map]);
+
+  }, [tripId]);
 
   return (
-    <div style={{ height: "100vh", width: "100%", position: "relative", background: "#000" }}>
-      <LoadScript googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ""}>
-        <GoogleMap
-          center={pos || { lat: 36.1699, lng: -115.1398 }}
-          zoom={16}
-          onLoad={m => setMap(m)}
-          options={{ disableDefaultUI: true, styles: mapDarkStyle }}
-          mapContainerStyle={{ width: "100%", height: "100%" }}
-        >
-          {pos && (
-            <Marker
-              position={pos}
-              icon={{
-                url: "https://cdn-icons-png.flaticon.com/512/2643/2643441.png", // Icono de coche premium
-                scaledSize: new window.google.maps.Size(45, 45),
-                anchor: new window.google.maps.Point(22, 22)
-              }}
-            />
-          )}
-        </GoogleMap>
-      </LoadScript>
+    <div style={container}>
 
-      {/* PANEL FLOTANTE DE INFORMACIÓN (UBER STYLE) */}
-      <div style={statusPanel}>
-        {!rideData ? (
-          <p style={{ margin: 0, textAlign: 'center' }}>Buscando tu viaje...</p>
-        ) : (
-          <>
-            <div style={headerRow}>
-              <span style={statusText}>
-                {rideData.status === "En camino" ? "🚕 TU CONDUCTOR VA HACIA TI" : "⏳ PROCESANDO VIAJE"}
-              </span>
-              <div style={pulseDot}></div>
-            </div>
-            <p style={addressLabel}>📍 {rideData.pickup}</p>
-            <div style={divider}></div>
-            <p style={footerNote}>Mantén esta ventana abierta para ver el seguimiento en vivo.</p>
-          </>
-        )}
+      <h2 style={{ marginBottom: 10 }}>Live Tracking</h2>
+
+      <div style={card}>
+        <p><b>Status:</b> {status}</p>
+        <p><b>Pickup:</b> {pickup}</p>
       </div>
+
+      {pos ? (
+        <div style={mapBox}>
+          <p>📍 Driver Location</p>
+          <p>{pos.lat}, {pos.lng}</p>
+        </div>
+      ) : (
+        <div style={waiting}>
+          Waiting for driver location...
+        </div>
+      )}
+
     </div>
   );
 }
 
-// Layout de seguridad para parámetros de búsqueda en Next.js
+// ==============================
+// WRAPPER OBLIGATORIO (NEXT)
+// ==============================
 export default function TrackingPage() {
   return (
-    <Suspense fallback={<div style={{ background: '#000', color: '#fff', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Cargando Mapa...</div>}>
+    <Suspense fallback={<div style={{ padding: 20 }}>Loading tracking...</div>}>
       <TrackingContent />
     </Suspense>
   );
 }
 
-// --- ESTILOS ---
-const statusPanel = {
-  position: "absolute" as const, bottom: 30, left: "5%", width: "90%",
-  background: "white", padding: "20px", borderRadius: "20px",
-  boxShadow: "0 10px 30px rgba(0,0,0,0.3)", color: "#000", zIndex: 10
+// ==============================
+// ESTILOS
+// ==============================
+const container = {
+  padding: 15,
+  maxWidth: 420,
+  margin: "auto",
+  background: "#f4f4f4",
+  borderRadius: 12
 };
 
-const headerRow = { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 };
-const statusText = { fontWeight: "bold", fontSize: 14, color: "#000", letterSpacing: "0.5px" };
-const pulseDot = { width: 10, height: 10, background: "#27ae60", borderRadius: "50%", boxShadow: "0 0 10px #27ae60" };
-const addressLabel = { fontSize: 13, color: "#444", margin: "5px 0" };
-const divider = { height: "1px", background: "#eee", margin: "12px 0" };
-const footerNote = { fontSize: 11, color: "#999", textAlign: "center" as const };
+const card = {
+  background: "#fff",
+  padding: 10,
+  borderRadius: 10,
+  marginBottom: 10,
+  boxShadow: "0 4px 10px rgba(0,0,0,0.1)"
+};
 
-const mapDarkStyle = [
-  { "featureType": "poi", "stylers": [{ "visibility": "off" }] },
-  { "featureType": "transit", "stylers": [{ "visibility": "off" }] }
-];
+const mapBox = {
+  background: "#000",
+  color: "#fff",
+  padding: 15,
+  borderRadius: 10,
+  textAlign: "center" as const
+};
+
+const waiting = {
+  padding: 15,
+  textAlign: "center" as const,
+  color: "#777"
+};
