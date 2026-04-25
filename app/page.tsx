@@ -9,7 +9,6 @@ import {
 } from "@react-google-maps/api";
 
 const libraries: ("places")[] = ["places"];
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwJzEHEq_XzTb-IOe9JjlHXW4eyx7QY2IrayDumHOuIj_60atC3FUrqdNTHZQ4rko1bYg/exec";
 
 export default function Page() {
   // --- PERSISTENCIA DE DATOS ---
@@ -46,7 +45,7 @@ export default function Page() {
   };
 
   const handleLoad = () => setIsLoaded(true);
-  const isGoogleReady = () => window.google && window.google.maps;
+  const isGoogleReady = () => typeof window !== "undefined" && window.google?.maps;
   const cleanPhone = (p: string) => p.replace(/\D/g, "");
   const isValidPhone = (p: string) => cleanPhone(p).length === 10;
 
@@ -113,85 +112,53 @@ export default function Page() {
 
   // 🔥 ARREGLO 1: FUNCIÓN DE CONFIRMACIÓN MAESTRA
   const confirmRide = async () => {
-
-  if (!name || !phone || !pickup || !dropoff || !dateTime) {
-    return alert("Completa todos los campos");
-  }
-
-  if (!isValidPhone(phone)) {
-    return alert("Teléfono inválido");
-  }
-
-  const tripId = "TRIP-" + Date.now();
-
-  const rideData = {
-    tripId,
-    name,
-    phone: cleanPhone(phone),
-    pickup,
-    dropoff,
-    price,
-    distance,
-    dateTime,
-  };
-
-  // ✅ AHORA SÍ EXISTE
-  console.log("DATA QUE ENVÍAS:", rideData);
-
-  try {
-    const res = await fetch("/api/route", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(rideData),
-    });
-
-    const text = await res.text();
-    let result;
-
-try {
-  result = JSON.parse(text);
-} catch {
-  result = { status: "ok" }; // fallback
-}
-
-    if (result.status === "ok") {
-
-      // ✅ WhatsApp ADMIN
-      const message = `
-🚗 NUEVA RESERVA
-
-👤 ${name}
-📞 ${phone}
-
-📍 ${pickup}
-🏁 ${dropoff}
-
-💰 $${price}
-📏 ${distance} mi
-
-🆔 ${tripId}
-`;
-
-      window.open(
-        `https://wa.me/17252876197?text=${encodeURIComponent(message)}`,
-        "_blank"
-      );
-
-      // ✅ REDIRIGE AL TRACKING
-      clearData();
-      window.location.href = `/tracking?tripId=${tripId}`;
-
-    } else {
-      alert(result.message || "Error en reserva");
+    if (!name || !phone || !pickup || !dropoff || !dateTime) {
+      return alert("Por favor completa todos los campos.");
+    }
+    if (!isValidPhone(phone)) {
+      return alert("El teléfono debe tener 10 dígitos.");
     }
 
-  } catch (err) {
-    console.error(err);
-    alert("Error de conexión con el servidor");
-  }
-};
+    // Generamos el ID único (Llave para el Tracking)
+    const tripId = "TRIP-" + Math.random().toString(36).substr(2, 9).toUpperCase();
+
+    const rideData = {
+      tripId,
+      name,
+      phone: cleanPhone(phone),
+      pickup,
+      dropoff,
+      price,
+      distance,
+      dateTime: new Date(dateTime).toISOString(),
+      status: "Pendiente"
+    };
+
+    try {
+      const res = await fetch("/api/route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(rideData),
+      });
+
+      const result = await res.json();
+
+      if (result.success) {
+        // Notificación vía WhatsApp para el Admin
+        const adminMsg = `🚗 NUEVA RESERVA\n👤 Cliente: ${name}\n📞 Tel: ${phone}\n📍 Recogida: ${pickup}\n🏁 Destino: ${dropoff}\n📅 Hora: ${dateTime}\n🆔 ID: ${tripId}`;
+        window.open(`https://wa.me/17252876197?text=${encodeURIComponent(adminMsg)}`);
+
+        // Limpieza y Redirección al Tracking
+        clearData();
+        window.location.href = `/tracking?tripId=${tripId}`;
+      } else {
+        alert("Error al procesar la reserva en el servidor.");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Error de conexión con la API.");
+    }
+  };
 
   return (
     <LoadScript googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ""} libraries={libraries} onLoad={handleLoad}>
@@ -226,7 +193,7 @@ try {
             Calcular Tarifa
           </button>
 
-          {price !== null && (
+          {price && (
             <div style={resultArea}>
               <h3 style={priceText}>💰 Total: ${price} <span style={{fontSize: 12, fontWeight: 400}}>({distance} mi)</span></h3>
 
