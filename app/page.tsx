@@ -2,13 +2,20 @@
 
 import { useState, useRef, useEffect } from "react";
 import {
+  
   GoogleMap,
   LoadScript,
   DirectionsRenderer,
   Marker
 } from "@react-google-maps/api";
+declare global {
+  interface Window {
+    google: any;
+  }
+}
 
 const libraries: ("places")[] = ["places"];
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyFNqIxvd-BENxjUOAz0uApP17pkd2RDdjcnBZFf3yaW8zf18YC4C1AviRjT1lbEaGlOg/exec";
 
 export default function Page() {
   // --- PERSISTENCIA DE DATOS ---
@@ -30,9 +37,11 @@ export default function Page() {
   const [dateTime, setDateTime] = useState(saved?.dateTime || "");
   const [isLoaded, setIsLoaded] = useState(false);
   const [map, setMap] = useState<any>(null);
+  const [pickupCoords, setPickupCoords] = useState<any>(null);
+const [dropoffCoords, setDropoffCoords] = useState<any>(null);
 
-  const pickupRef = useRef<HTMLInputElement>(null);
-  const dropoffRef = useRef<HTMLInputElement>(null);
+  const pickupRef = useRef<HTMLInputElement | null>(null);
+const dropoffRef = useRef<HTMLInputElement | null>(null);
 
   // --- EFECTOS VISUALES (UX/UI) ---
   const pressIn = (e: any) => {
@@ -64,40 +73,87 @@ export default function Page() {
 
   // --- AUTOCOMPLETE (UBER STYLE) ---
   useEffect(() => {
-    if (!isLoaded || !isGoogleReady()) return;
-    const auto1 = new window.google.maps.places.Autocomplete(pickupRef.current!);
-    const auto2 = new window.google.maps.places.Autocomplete(dropoffRef.current!);
+  if (!isLoaded) return;
 
-    auto1.addListener("place_changed", () => {
-      const p = auto1.getPlace();
-      if (p.formatted_address) setPickup(p.formatted_address);
+  if (
+    typeof window === "undefined" ||
+    !window.google ||
+    !pickupRef.current ||
+    !dropoffRef.current
+  ) return;
+
+  const auto1 = new window.google.maps.places.Autocomplete(pickupRef.current);
+  const auto2 = new window.google.maps.places.Autocomplete(dropoffRef.current);
+
+  const listener1 = auto1.addListener("place_changed", () => {
+    const p = auto1.getPlace();
+
+    if (!p.geometry || !p.geometry.location) return;
+
+    setPickup(p.formatted_address || "");
+
+    setPickupCoords({
+      lat: p.geometry.location.lat(),
+      lng: p.geometry.location.lng()
     });
-    auto2.addListener("place_changed", () => {
-      const p = auto2.getPlace();
-      if (p.formatted_address) setDropoff(p.formatted_address);
+  });
+
+  const listener2 = auto2.addListener("place_changed", () => {
+    const p = auto2.getPlace();
+
+    if (!p.geometry || !p.geometry.location) return;
+
+    setDropoff(p.formatted_address || "");
+
+    setDropoffCoords({
+      lat: p.geometry.location.lat(),
+      lng: p.geometry.location.lng()
     });
-  }, [isLoaded]);
+  });
+
+  return () => {
+    listener1.remove();
+    listener2.remove();
+  };
+
+}, [isLoaded]);
 
   // --- LÓGICA DE RUTA Y COSTO ---
-  const calculateRoute = async () => {
-    if (!pickup || !dropoff || !isGoogleReady()) return;
-    const service = new window.google.maps.DirectionsService();
-    service.route({
+  const calculateRoute = () => {
+  if (!pickup || !dropoff || !isGoogleReady()) return;
+
+  const service = new window.google.maps.DirectionsService();
+
+  service.route(
+    {
       origin: pickup,
       destination: dropoff,
       travelMode: window.google.maps.TravelMode.DRIVING
-    }, (res, status) => {
-      if (status === "OK") {
-        const r = res!.routes[0].legs[0];
-        const miles = r.distance!.value / 1609;
-        const minutes = r.duration!.value / 60;
-        setDistance(+miles.toFixed(2));
-        setPrice(+(10 + miles * 1.5 + minutes * 0.5).toFixed(2));
-        setDirections(res);
-      }
-    });
-  };
+    },
+    (res: any, status: string) => {
 
+      if (status !== "OK" || !res) {
+        console.error("Error en ruta:", status);
+        return;
+      }
+
+      const route = res.routes?.[0];
+      const leg = route?.legs?.[0];
+
+      if (!leg || !leg.distance || !leg.duration) {
+        console.error("Datos de ruta incompletos");
+        return;
+      }
+
+      const miles = leg.distance.value / 1609;
+      const minutes = leg.duration.value / 60;
+
+      setDistance(Number(miles.toFixed(2)));
+      setPrice(Number((10 + miles * 1.5 + minutes * 0.5).toFixed(2)));
+      setDirections(res);
+    }
+  );
+};
   // --- LOCALIZACIÓN GPS ---
   const getCurrentLocation = () => {
     if (!navigator.geolocation) return alert("GPS no disponible");
@@ -112,53 +168,83 @@ export default function Page() {
 
   // 🔥 ARREGLO 1: FUNCIÓN DE CONFIRMACIÓN MAESTRA
   const confirmRide = async () => {
-    if (!name || !phone || !pickup || !dropoff || !dateTime) {
-      return alert("Por favor completa todos los campos.");
-    }
-    if (!isValidPhone(phone)) {
-      return alert("El teléfono debe tener 10 dígitos.");
-    }
 
-    // Generamos el ID único (Llave para el Tracking)
-    const tripId = "TRIP-" + Math.random().toString(36).substr(2, 9).toUpperCase();
+  if (!name || !phone || !pickup || !dropoff || !dateTime) {
+    return alert("Completa todos los campos");
+  }
 
-    const rideData = {
-      tripId,
-      name,
-      phone: cleanPhone(phone),
-      pickup,
-      dropoff,
-      price,
-      distance,
-      dateTime: new Date(dateTime).toISOString(),
-      status: "Pendiente"
-    };
+  if (!isValidPhone(phone)) {
+    return alert("Teléfono inválido");
+  }
 
+  if (!pickupCoords || !dropoffCoords) {
+    return alert("Selecciona direcciones del autocompletado");
+  }
+
+  const tripId = "TRIP-" + Date.now();
+
+  try {
+
+    const formData = new FormData();
+
+    formData.append("tripId", tripId);
+    formData.append("name", name);
+    formData.append("phone", cleanPhone(phone));
+    formData.append("pickup", pickup);
+    formData.append("dropoff", dropoff);
+    formData.append("price", String(price || 0));
+    formData.append("distance", String(distance || 0));
+    formData.append("dateTime", dateTime);
+
+    // 🔥 AQUÍ VA (ANTES ESTABA MAL UBICADO)
+    formData.append("pickupLat", pickupCoords.lat);
+    formData.append("pickupLng", pickupCoords.lng);
+    formData.append("dropoffLat", dropoffCoords.lat);
+    formData.append("dropoffLng", dropoffCoords.lng);
+
+    const res = await fetch(SCRIPT_URL, {
+      method: "POST",
+      body: formData,
+    });
+
+    const text = await res.text();
+
+    let result;
     try {
-      const res = await fetch("/api/route", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(rideData),
-      });
-
-      const result = await res.json();
-
-      if (result.success) {
-        // Notificación vía WhatsApp para el Admin
-        const adminMsg = `🚗 NUEVA RESERVA\n👤 Cliente: ${name}\n📞 Tel: ${phone}\n📍 Recogida: ${pickup}\n🏁 Destino: ${dropoff}\n📅 Hora: ${dateTime}\n🆔 ID: ${tripId}`;
-        window.open(`https://wa.me/17252876197?text=${encodeURIComponent(adminMsg)}`);
-
-        // Limpieza y Redirección al Tracking
-        clearData();
-        window.location.href = `/tracking?tripId=${tripId}`;
-      } else {
-        alert("Error al procesar la reserva en el servidor.");
-      }
-    } catch (error) {
-      console.error(error);
-      alert("Error de conexión con la API.");
+      result = JSON.parse(text);
+    } catch {
+      result = { status: "ok" };
     }
-  };
+
+    if (result.success) {
+
+      const message = `
+🚗 NUEVA RESERVA
+👤 ${name}
+📞 ${phone}
+📍 ${pickup}
+🏁 ${dropoff}
+💰 $${price}
+📏 ${distance} mi
+🆔 ${tripId}
+`;
+
+      window.open(
+        `https://wa.me/17252876197?text=${encodeURIComponent(message)}`
+      );
+
+      clearData();
+      window.location.href = `/tracking?tripId=${tripId}`;
+
+    } else {
+      alert(result.message || "Error en reserva");
+    }
+
+  } catch (err) {
+    console.error(err);
+    alert("Error de conexión");
+  }
+};
 
   return (
     <LoadScript googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ""} libraries={libraries} onLoad={handleLoad}>

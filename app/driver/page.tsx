@@ -20,6 +20,7 @@ export default function DriverPage() {
   const [lastHash, setLastHash] = useState(""); // 🔥 ARREGLO 2: Control de cambios reales
   const ridesRef = useRef<string>("");
   const watchRef = useRef<any>(null);
+  
 const stopTracking = () => {
   if (watchRef.current) {
     navigator.geolocation.clearWatch(watchRef.current);
@@ -27,7 +28,7 @@ const stopTracking = () => {
   }
 };
   const PASSWORD = "8887";
-  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyNebie7p5_oVRUof3sSTyuo7KHJ_zfriWO58QDVIM_d93jHZ4e9DkvA_9TpUTEZOEtDA/exec";
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw3UbXxmk1XaAIzTqdcMDiiktU5wfGrflG-PmM9Lg0XUE5YDSCQoO-duu5shePFDn6L1g/exec";
   const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTpBB4Sb-wzWPSPT-Yvo_jA5KB0rDOR5epN0F3iHdHTOzd-tZnYbz3_336twwe1FKf14lBqOokS865i/pub?output=csv";
 
   // 🔥 CARGA DE DATOS FILTRADA Y OPTIMIZADA
@@ -39,11 +40,29 @@ const stopTracking = () => {
       const rows = text
   .split("\n")
   .slice(1)
-  .map(r => r.split(","))
+  .map(r => {
+  const result = [];
+  let current = "";
+  let insideQuotes = false;
+
+  for (let char of r) {
+    if (char === '"') {
+      insideQuotes = !insideQuotes;
+    } else if (char === "," && !insideQuotes) {
+      result.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  result.push(current);
+
+  return result;
+})
         .filter(r => r.length >= 11);
 
       // 🔥 ARREGLO 2: Validar si hay cambios reales antes de actualizar estado
-      const currentHash = rows.map(r => r[10] + r[7]).join("|"); // Hash basado en ID y Estado
+      const currentHash = rows.map(r => r.join("|")).join("#"); // Hash basado en ID y Estado
       if (currentHash === lastHash) return;
       setLastHash(currentHash);
 
@@ -64,44 +83,62 @@ const stopTracking = () => {
     }
   };
 
-  useEffect(() => {
-    if (authorized) {
-      loadData();
-      const interval = setInterval(loadData, 5000);
-      return () => clearInterval(interval);
+ useEffect(() => {
+  if (authorized) {
+    loadData();
+    const interval = setInterval(loadData, 5000);
+    return () => clearInterval(interval);
+  }
+}, [authorized]);
+
+// 🔥 LIMPIEZA DE GPS AL SALIR DEL COMPONENTE
+useEffect(() => {
+  return () => {
+    if (watchRef.current) {
+      navigator.geolocation.clearWatch(watchRef.current);
     }
-  }, [authorized]);
+  };
+}, []);
 
   // 📡 TRACKING GPS EN TIEMPO REAL
  const startTracking = (tripId: string) => {
-  if (watchRef.current) navigator.geolocation.clearWatch(watchRef.current);
+
+  // 🛑 detener tracking anterior si existe
+  if (watchRef.current) {
+    navigator.geolocation.clearWatch(watchRef.current);
+    watchRef.current = null;
+  }
+
+  if (!navigator.geolocation) return;
 
   let lastSend = 0;
 
-  if ("geolocation" in navigator) {
-    watchRef.current = navigator.geolocation.watchPosition(
-      (pos) => {
+  watchRef.current = navigator.geolocation.watchPosition(
+    (pos) => {
 
-        const now = Date.now();
-        if (now - lastSend < 3000) return;
-        lastSend = now;
+      const now = Date.now();
+      if (now - lastSend < 3000) return; // ⏱ evita spam
+      lastSend = now;
 
-        const formData = new FormData();
-        formData.append("updateLocation", "true");
-        formData.append("tripId", tripId);
-        formData.append("lat", pos.coords.latitude.toString());
-        formData.append("lng", pos.coords.longitude.toString());
+      const formData = new FormData();
+      formData.append("tripId", tripId);
+      formData.append("updateLocation", "true");
+      formData.append("lat", pos.coords.latitude.toString());
+      formData.append("lng", pos.coords.longitude.toString());
 
-        fetch(SCRIPT_URL, {
-          method: "POST",
-          body: formData
-        });
+      fetch(SCRIPT_URL, {
+        method: "POST",
+        body: formData
+      });
 
-      },
-      (err) => console.error("GPS Error:", err),
-      { enableHighAccuracy: true }
-    );
-  }
+    },
+    (err) => console.error("GPS Error:", err),
+    {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 5000
+    }
+  );
 };
 
   // 🔄 BUSCA ESTA FUNCIÓN Y REEMPLÁZALA COMPLETAMENTE
@@ -170,6 +207,9 @@ const stopTracking = () => {
 
       {rides.map((r, i) => {
         const [name, phone, pickup, dropoff, price, distance, dateTime, status, , , tripId] = r;
+        const safePrice = Number((price || "").toString().trim()) || 0;
+const safeDistance = Number((distance || "").toString().trim()) || 0;
+
         if (!tripId) return null;
 
         return (
@@ -191,25 +231,27 @@ const stopTracking = () => {
             </div>
 
             <div style={statsRow}>
-              <span>💰 <b>${price}</b></span>
-              <span>📏 {distance} mi</span>
+              <span>💰 <b>${safePrice}</b></span>
+              <span>📏 {safeDistance} mi</span>
               <span>⏰ {new Date(dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
 
             <div style={{ marginTop: 15 }}>
               <button
                 onClick={() => {
-                  // 1. Abrir Navegación
-                  window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pickup)}`);
-                  // 2. Cambiar Estado
-                  updateStatus(tripId, "En camino");
-                  // 3. Iniciar Tracking
-                  startTracking(tripId);
-                  // 4. Notificar a Cliente con Link dinámico
-                  const trackingUrl = `${window.location.origin}/tracking?tripId=${tripId}`;
-                  const msg = `🚗 ¡Hola ${name}! Tu conductor ya va en camino hacia tu ubicación. Puedes seguir el mapa en tiempo real aquí: ${trackingUrl}`;
-                  window.open(`https://wa.me/1${phone.replace(/\D/g, "")}?text=${encodeURIComponent(msg)}`);
-                }}
+  if (status === "En camino") return; // 🔥 AQUÍ VA
+
+  window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pickup)}`);
+  updateStatus(tripId, "En camino");
+  startTracking(tripId);
+
+  const trackingUrl = `${window.location.origin}/tracking?tripId=${tripId}`;
+  const cleanPhone = (phone || "").replace(/\D/g, "");
+  if (cleanPhone) {
+    const msg = `🚗 ¡Hola ${name}! Tu conductor ya va en camino. Sigue el viaje aquí: ${trackingUrl}`;
+    window.open(`https://wa.me/1${cleanPhone}?text=${encodeURIComponent(msg)}`);
+  }
+}}
                 style={btnNav}
                 onMouseDown={pressIn} onMouseUp={pressOut}
               >
