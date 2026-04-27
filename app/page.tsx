@@ -2,347 +2,505 @@
 
 import { useState, useRef, useEffect } from "react";
 import {
-  
   GoogleMap,
   LoadScript,
   DirectionsRenderer,
+  Autocomplete,
   Marker
 } from "@react-google-maps/api";
-declare global {
-  interface Window {
-    google: any;
-  }
-}
 
-const libraries: ("places")[] = ["places"];
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyFNqIxvd-BENxjUOAz0uApP17pkd2RDdjcnBZFf3yaW8zf18YC4C1AviRjT1lbEaGlOg/exec";
-
-export default function Page() {
-  // --- PERSISTENCIA DE DATOS ---
-  const getSaved = () => {
-    if (typeof window === "undefined") return null;
-    const data = localStorage.getItem("rideData");
-    return data ? JSON.parse(data) : null;
-  };
-
-  const saved = getSaved();
-
-  const [name, setName] = useState(saved?.name || "");
-  const [phone, setPhone] = useState(saved?.phone || "");
-  const [pickup, setPickup] = useState(saved?.pickup || "");
-  const [dropoff, setDropoff] = useState(saved?.dropoff || "");
-  const [price, setPrice] = useState<number | null>(saved?.price || null);
-  const [directions, setDirections] = useState<any>(null);
-  const [distance, setDistance] = useState<number | null>(saved?.distance || null);
-  const [dateTime, setDateTime] = useState(saved?.dateTime || "");
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [map, setMap] = useState<any>(null);
-  const [pickupCoords, setPickupCoords] = useState<any>(null);
-const [dropoffCoords, setDropoffCoords] = useState<any>(null);
-
-  const pickupRef = useRef<HTMLInputElement | null>(null);
-const dropoffRef = useRef<HTMLInputElement | null>(null);
-
-  // --- EFECTOS VISUALES (UX/UI) ---
-  const pressIn = (e: any) => {
-    e.currentTarget.style.transform = "scale(0.96)";
-    e.currentTarget.style.filter = "brightness(0.9)";
-  };
-  const pressOut = (e: any) => {
-    e.currentTarget.style.transform = "scale(1)";
-    e.currentTarget.style.filter = "brightness(1)";
-  };
-
-  const handleLoad = () => setIsLoaded(true);
-  const isGoogleReady = () => typeof window !== "undefined" && window.google?.maps;
-  const cleanPhone = (p: string) => p.replace(/\D/g, "");
-  const isValidPhone = (p: string) => cleanPhone(p).length === 10;
-
-  // --- GUARDADO AUTOMÁTICO ---
-  useEffect(() => {
-    if (!name && !phone && !pickup && !dropoff) return;
-    localStorage.setItem("rideData", JSON.stringify({
-      name, phone, pickup, dropoff, price, distance, dateTime
-    }));
-  }, [name, phone, pickup, dropoff, price, distance, dateTime]);
-
-  const clearData = () => {
-    localStorage.removeItem("rideData");
-    setName(""); setPhone(""); setPickup(""); setDropoff(""); setPrice(null); setDistance(null); setDateTime("");
-  };
-
-  // --- AUTOCOMPLETE (UBER STYLE) ---
-  useEffect(() => {
-  if (!isLoaded) return;
-
-  if (
-    typeof window === "undefined" ||
-    !window.google ||
-    !pickupRef.current ||
-    !dropoffRef.current
-  ) return;
-
-  const auto1 = new window.google.maps.places.Autocomplete(pickupRef.current);
-  const auto2 = new window.google.maps.places.Autocomplete(dropoffRef.current);
-
-  const listener1 = auto1.addListener("place_changed", () => {
-    const p = auto1.getPlace();
-
-    if (!p.geometry || !p.geometry.location) return;
-
-    setPickup(p.formatted_address || "");
-
-    setPickupCoords({
-      lat: p.geometry.location.lat(),
-      lng: p.geometry.location.lng()
-    });
-  });
-
-  const listener2 = auto2.addListener("place_changed", () => {
-    const p = auto2.getPlace();
-
-    if (!p.geometry || !p.geometry.location) return;
-
-    setDropoff(p.formatted_address || "");
-
-    setDropoffCoords({
-      lat: p.geometry.location.lat(),
-      lng: p.geometry.location.lng()
-    });
-  });
-
-  return () => {
-    listener1.remove();
-    listener2.remove();
-  };
-
-}, [isLoaded]);
-
-  // --- LÓGICA DE RUTA Y COSTO ---
-  const calculateRoute = () => {
-  if (!pickup || !dropoff || !isGoogleReady()) return;
-
-  const service = new window.google.maps.DirectionsService();
-
-  service.route(
-    {
-      origin: pickup,
-      destination: dropoff,
-      travelMode: window.google.maps.TravelMode.DRIVING
-    },
-    (res: any, status: string) => {
-
-      if (status !== "OK" || !res) {
-        console.error("Error en ruta:", status);
-        return;
-      }
-
-      const route = res.routes?.[0];
-      const leg = route?.legs?.[0];
-
-      if (!leg || !leg.distance || !leg.duration) {
-        console.error("Datos de ruta incompletos");
-        return;
-      }
-
-      const miles = leg.distance.value / 1609;
-      const minutes = leg.duration.value / 60;
-
-      setDistance(Number(miles.toFixed(2)));
-      setPrice(Number((10 + miles * 1.5 + minutes * 0.5).toFixed(2)));
-      setDirections(res);
-    }
-  );
+export default function Home() {
+  const [directions, setDirections] =
+    useState<google.maps.DirectionsResult | null>(null);
+const [disponible, setDisponible] = useState(true);
+  const [distancia, setDistancia] = useState<number>(0);
+  const [precio, setPrecio] = useState<number>(0);
+  const [mensaje, setMensaje] = useState<string>("");
+const [latDestino, setLatDestino] = useState(0);
+const [lngDestino, setLngDestino] = useState(0);
+  const [nombre, setNombre] = useState("");
+  const [telefono, setTelefono] = useState("");
+const telefonoDriver = "17252876197"; // formato internacional sin +
+  const [miUbicacion, setMiUbicacion] =
+    useState<{ lat: number; lng: number } | null>(null);
+const [latOrigen, setLatOrigen] = useState(0);
+const [lngOrigen, setLngOrigen] = useState(0);
+  const [driverUbicacion, setDriverUbicacion] =
+    useState<{ lat: number; lng: number } | null>(null);
+const [mostrarZelle, setMostrarZelle] = useState(false);
+  const origenRef = useRef<HTMLInputElement | null>(null);
+  const destinoRef = useRef<HTMLInputElement | null>(null);
+  const estiloBoton = {
+  width: "100%",
+  padding: 14,
+  borderRadius: 10,
+  border: "none",
+  fontSize: 16,
+  cursor: "pointer",
+  transition: "all 0.15s ease",
+  boxShadow: "0 4px 0 rgba(0,0,0,0.2)"
 };
-  // --- LOCALIZACIÓN GPS ---
-  const getCurrentLocation = () => {
-    if (!navigator.geolocation) return alert("GPS no disponible");
-    navigator.geolocation.getCurrentPosition(async (pos) => {
+
+const presionarBoton = (e: any) => {
+  e.currentTarget.style.transform = "scale(0.96)";
+  e.currentTarget.style.boxShadow = "0 2px 0 rgba(0,0,0,0.2)";
+};
+
+const soltarBoton = (e: any) => {
+  e.currentTarget.style.transform = "scale(1)";
+  e.currentTarget.style.boxShadow = "0 4px 0 rgba(0,0,0,0.2)";
+};
+
+  // 📍 Calcular ruta
+  const calcularRuta = () => {
+    if (!origenRef.current || !destinoRef.current) return;
+
+    const origen = origenRef.current.value;
+    const destino = destinoRef.current.value;
+
+    if (!origen || !destino) {
+      alert("Completa origen y destino");
+      return;
+    }
+
+    if (!window.google) {
+      alert("Google Maps no cargó");
+      return;
+    }
+
+    const service = new window.google.maps.DirectionsService();
+
+    service.route(
+      {
+        origin: origen,
+        destination: destino,
+        travelMode: window.google.maps.TravelMode.DRIVING
+      },
+      (result, status) => {
+        if (status === "OK" && result) {
+          setDirections(result);
+          const leg = result.routes[0].legs[0];
+          const latOrigen = leg.start_location.lat();
+const lngOrigen = leg.start_location.lng();
+
+setLatOrigen(latOrigen);
+setLngOrigen(lngOrigen);
+
+const latDestino = leg.end_location.lat();
+const lngDestino = leg.end_location.lng();
+
+setLatDestino(latDestino);
+setLngDestino(lngDestino);
+
+          // 🔥 MILLAS
+          const distanciaMillas =
+            result.routes[0].legs[0].distance?.value
+              ? result.routes[0].legs[0].distance.value / 1609
+              : 0;
+
+          setDistancia(distanciaMillas);
+          setPrecio(distanciaMillas * 2.5);
+        }
+      }
+    );
+  };
+// VERIFICAR DISPONIBILIDAD
+  const verificarDisponibilidad = async () => {
+  try {
+    const res = await fetch("/api/disponibilidad");
+    const data = await res.json();
+
+    setDisponible(data.disponible);
+
+    if (!data.disponible) {
+      setMensaje("⛔ Driver not available right now");
+    }
+
+  } catch (error) {
+    console.error("Error disponibilidad:", error);
+  }
+};
+
+  // 📍 Obtener ubicación real + dirección
+  const obtenerUbicacion = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocalización no soportada");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition((pos) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+
+      setMiUbicacion({ lat, lng });
+
+      if (!window.google) return;
+
       const geocoder = new window.google.maps.Geocoder();
-      const res = await geocoder.geocode({
-        location: { lat: pos.coords.latitude, lng: pos.coords.longitude }
-      });
-      if (res.results?.[0]) setPickup(res.results[0].formatted_address);
-    }, () => alert("Activa los permisos de ubicación"));
+
+      geocoder.geocode(
+        { location: { lat, lng } },
+        (results, status) => {
+          if (status === "OK" && results && results[0]) {
+            if (origenRef.current) {
+              origenRef.current.value =
+                results[0].formatted_address;
+            }
+          }
+        }
+      );
+    });
   };
 
-  // 🔥 ARREGLO 1: FUNCIÓN DE CONFIRMACIÓN MAESTRA
-  const confirmRide = async () => {
+  // 📤 Reservar viaje
+ const reservar = async () => {
+  if (!origenRef.current || !destinoRef.current) return;
 
-  if (!name || !phone || !pickup || !dropoff || !dateTime) {
-    return alert("Completa todos los campos");
-  }
-
-  if (!isValidPhone(phone)) {
-    return alert("Teléfono inválido");
-  }
-
-  if (!pickupCoords || !dropoffCoords) {
-    return alert("Selecciona direcciones del autocompletado");
-  }
-
-  const tripId = "TRIP-" + Date.now();
+  const origen = origenRef.current.value;
+  const destino = destinoRef.current.value;
 
   try {
+    const id = Date.now();
 
-    const formData = new FormData();
-
-    formData.append("tripId", tripId);
-    formData.append("name", name);
-    formData.append("phone", cleanPhone(phone));
-    formData.append("pickup", pickup);
-    formData.append("dropoff", dropoff);
-    formData.append("price", String(price || 0));
-    formData.append("distance", String(distance || 0));
-    formData.append("dateTime", dateTime);
-
-    // 🔥 AQUÍ VA (ANTES ESTABA MAL UBICADO)
-    formData.append("pickupLat", pickupCoords.lat);
-    formData.append("pickupLng", pickupCoords.lng);
-    formData.append("dropoffLat", dropoffCoords.lat);
-    formData.append("dropoffLng", dropoffCoords.lng);
-
-    const res = await fetch(SCRIPT_URL, {
+    const res = await fetch("/api/reservar", {
       method: "POST",
-      body: formData,
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        id,
+        nombre,
+        telefono,
+        origen,
+        destino,
+        latOrigen,
+        lngOrigen,
+        latDestino,
+        lngDestino,
+        distancia,
+        precio
+      })
     });
 
-    const text = await res.text();
+    const data = await res.json();
+    console.log("RESPUESTA BACKEND:", data);
 
-    let result;
-    try {
-      result = JSON.parse(text);
-    } catch {
-      result = { status: "ok" };
+    // ❌ SI FALLA → SALIR
+    if (!data.success) {
+      setMensaje("❌ " + (data.message || "Not available"));
+      return;
     }
 
-    if (result.success) {
+    // ✅ OK
+    setMensaje("✅ Ride booked");
 
-      const message = `
-🚗 NUEVA RESERVA
-👤 ${name}
-📞 ${phone}
-📍 ${pickup}
-🏁 ${dropoff}
-💰 $${price}
-📏 ${distance} mi
-🆔 ${tripId}
-`;
+    // 🔥 guardar ID
+    localStorage.setItem("viajeId", id.toString());
 
-      window.open(
-        `https://wa.me/17252876197?text=${encodeURIComponent(message)}`
-      );
+    // 🔥 guardar datos
+    localStorage.setItem(
+      "viajeData",
+      JSON.stringify({
+        nombre,
+        telefono,
+        origen,
+        destino,
+        precio: Number(precio),
+        distancia: Number(distancia)
+      })
+    );
 
-      clearData();
-      window.location.href = `/tracking?tripId=${tripId}`;
+    // 📲 WhatsApp driver
+    const mensajeWhatsApp =
+      "🚗 NUEVO VIAJE\n\n" +
+      "👤 Nombre: " + nombre + "\n" +
+      "📞 Tel: " + telefono + "\n" +
+      "📍 Origen: " + origen + "\n" +
+      "🏁 Destino: " + destino + "\n" +
+      "💰 Precio: $" + Number(precio).toFixed(2) + "\n" +
+      "📏 Distancia: " + Number(distancia).toFixed(2) + " millas";
 
-    } else {
-      alert(result.message || "Error en reserva");
+    const urlWhatsApp =
+      "https://wa.me/" +
+      telefonoDriver +
+      "?text=" +
+      encodeURIComponent(mensajeWhatsApp);
+
+    window.open(urlWhatsApp, "_blank");
+
+    // 💳 Mensaje pago
+    const mensajePago =
+      "💳 PAGO DEL VIAJE\n\n" +
+      "Monto: $" + Number(precio).toFixed(2) + "\n\n" +
+      "Zelle: 7252876197\n" +
+      "PayPal: ernestogongorasaco@gmail.com\n" +
+      "Venmo: https://venmo.com/code?user_id=4536118275999433880&created=1777321277";
+
+    const urlPagoWhatsApp =
+      "https://wa.me/" +
+      telefono +
+      "?text=" +
+      encodeURIComponent(mensajePago);
+
+    window.open(urlPagoWhatsApp, "_blank");
+
+    // 🚀 redirigir
+    setTimeout(() => {
+      window.location.href = "/tracking";
+    }, 1000);
+
+  } catch (error) {
+    console.error("ERROR FETCH:", error);
+    setMensaje("❌ Error de conexión");
+  }
+};
+  // 📡 Leer ubicación del driver (simulación)
+  const obtenerDriver = async () => {
+  try {
+    const res = await fetch(
+      "https://script.google.com/macros/s/AKfycbyaLJPd6q1iipDqwytovCyoG0wJWesWQ_93_0tPS_9L6-RaGCR0Q53HpUfWJvKYf3XnWw/exec"
+    );
+
+    const data = await res.json();
+
+    if (!Array.isArray(data) || data.length < 2) return;
+
+    const viaje = data[data.length - 1];
+
+    const lat = parseFloat(viaje[13]);
+    const lng = parseFloat(viaje[14]);
+
+    if (!isNaN(lat) && !isNaN(lng)) {
+      setDriverUbicacion({ lat, lng });
     }
 
-  } catch (err) {
-    console.error(err);
-    alert("Error de conexión");
+  } catch (error) {
+    console.error("ERROR OBTENER DRIVER:", error);
   }
 };
 
+  // 🔁 actualización automática
+  useEffect(() => {
+    const interval = setInterval(() => {
+      obtenerDriver();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+  useEffect(() => {
+  verificarDisponibilidad();
+
+  const interval = setInterval(() => {
+    verificarDisponibilidad();
+  }, 10000);
+
+  return () => clearInterval(interval);
+}, []);
+
   return (
-    <LoadScript googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ""} libraries={libraries} onLoad={handleLoad}>
-      <div style={{ height: "100vh", position: "relative", background: "#000", overflow: "hidden" }}>
-        
+    <div
+  style={{
+    padding: 20,
+    maxWidth: 500,
+    margin: "auto",
+    fontFamily: "Arial",
+    background: "#f9f9f9"
+  }}
+>
+      <h1>App Viajes</h1>
+
+      <LoadScript
+        googleMapsApiKey={
+          process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ""
+        }
+        libraries={["places"]}
+      >
+        {/* 👤 DATOS USUARIO */}
+        <input
+          placeholder="Nombre"
+          onChange={(e) => setNombre(e.target.value)}
+        />
+
+        <br /><br />
+
+        <input
+          placeholder="Teléfono"
+          onChange={(e) => setTelefono(e.target.value)}
+        />
+
+        <br /><br />
+
+        {/* 📍 ORIGEN */}
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+  <Autocomplete>
+    <input
+      ref={origenRef}
+      placeholder="Origen"
+      style={{
+        flex: 1,
+        padding: 12,
+        borderRadius: 10,
+        border: "1px solid #ccc"
+      }}
+    />
+  </Autocomplete>
+
+  <button
+  onClick={obtenerUbicacion}
+  onMouseDown={presionarBoton}
+  onMouseUp={soltarBoton}
+  onMouseLeave={soltarBoton}
+  style={{
+    width: 30,
+    height: 40,
+    borderRadius: "30%",
+    background: "#999b9a",
+    color: "#ffffff",
+    border: "none",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 4px 0 rgba(0,0,0,0.2)"
+  }}
+>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    fill="white"
+    viewBox="0 0 24 24"
+  >
+    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 
+    0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 
+    2.5 2.5S13.38 11.5 12 11.5z"/>
+  </svg>
+</button>
+</div>
+
+        <br /><br />
+
+        {/* 📍 DESTINO */}
+        <Autocomplete>
+          <input ref={destinoRef} placeholder="Destino" />
+        </Autocomplete>
+
+        <br /><br />
+
+        <button
+  onClick={calcularRuta}
+  onMouseDown={presionarBoton}
+  onMouseUp={soltarBoton}
+  onMouseLeave={soltarBoton}
+  style={{
+    ...estiloBoton,
+    background: "#000",
+    color: "#fff"
+  }}
+>
+  Calculate Fare
+</button>
+
+        <p>Distancia: {distancia.toFixed(2)} millas</p>
+        <p>Precio: ${precio.toFixed(2)}</p>
+
+        <button
+  onClick={reservar}
+  disabled={!disponible}
+  onMouseDown={(e) => disponible && presionarBoton(e)}
+  onMouseUp={(e) => disponible && soltarBoton(e)}
+  onMouseLeave={(e) => disponible && soltarBoton(e)}
+  style={{
+    ...estiloBoton,
+    background: disponible ? "#2ecc71" : "#999",
+    color: "#fff",
+    opacity: disponible ? 1 : 0.6,
+    cursor: disponible ? "pointer" : "not-allowed",
+    boxShadow: disponible
+      ? "0 4px 0 rgba(0,0,0,0.2)"
+      : "0 2px 0 rgba(0,0,0,0.1)"
+  }}
+>
+  {disponible ? "Book Ride" : "Not Available"}
+</button>
+
+        <p>{mensaje}</p>
+        {mensaje.includes("✅") && (
+  <div style={{ marginTop: 20 }}>
+    <h3 style={{ marginBottom: 10 }}>💳 Métodos de pago</h3>
+
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      
+      <button
+  onClick={() => setMostrarZelle(!mostrarZelle)}
+  style={{
+    flex: 1,
+    padding: 10,
+    background: "#6f42c1",
+    color: "#fff",
+    borderRadius: 10,
+    border: "none"
+  }}
+>
+  Zelle
+</button>
+
+      <button
+        onClick={() =>
+          window.open(
+            "https://www.paypal.com/paypalme/ernestogongorasaco"
+          )
+        }
+        style={{
+          flex: 1,
+          padding: 12,
+          background: "#0070ba",
+          color: "#fff",
+          border: "none",
+          borderRadius: 10
+        }}
+      >
+        PayPal
+      </button>
+
+      <button
+        onClick={() =>
+          window.open(
+            "https://venmo.com/code?user_id=4536118275999433880&created=1777321277"
+          )
+        }
+        style={{
+          flex: 1,
+          padding: 12,
+          background: "#3d95ce",
+          color: "#fff",
+          border: "none",
+          borderRadius: 10
+        }}
+      >
+        Venmo
+      </button>
+
+    </div>
+  </div>
+)}
+
+        {/* 🗺️ MAPA */}
         <GoogleMap
-          center={{ lat: 36.1699, lng: -115.1398 }}
-          zoom={13}
-          onLoad={(m) => setMap(m)}
-          options={{ disableDefaultUI: true, zoomControl: false, styles: mapStyle }}
-          mapContainerStyle={{ width: "100%", height: "100%" }}
+          mapContainerStyle={{ width: "100%", height: "400px" }}
+          center={miUbicacion || { lat: 36.1699, lng: -115.1398 }}
+          zoom={14}
         >
-          {directions && <DirectionsRenderer directions={directions} options={{ polylineOptions: { strokeColor: "#000", strokeWeight: 5 } }} />}
-        </GoogleMap>
-
-        {/* PANEL DE RESERVA */}
-        <div style={panel}>
-          <div style={dragHandle}></div>
-          
-          <input placeholder="Nombre completo" value={name} onChange={(e) => setName(e.target.value)} style={input} />
-          <input placeholder="Teléfono de contacto" value={phone} onChange={(e) => setPhone(e.target.value)} style={input} />
-          <input type="datetime-local" value={dateTime} onChange={(e) => setDateTime(e.target.value)} style={input} />
-
-          <div style={{ display: "flex", gap: 6 }}>
-            <input ref={pickupRef} value={pickup} onChange={(e) => setPickup(e.target.value)} placeholder="¿Dónde te recogemos?" style={{ ...input, flex: 1 }} />
-            <button style={btnIcon} onClick={getCurrentLocation} onMouseDown={pressIn} onMouseUp={pressOut}>📍</button>
-          </div>
-
-          <input ref={dropoffRef} value={dropoff} onChange={(e) => setDropoff(e.target.value)} placeholder="¿A dónde vas?" style={input} />
-
-          <button style={btnCalc} onClick={calculateRoute} onMouseDown={pressIn} onMouseUp={pressOut}>
-            Calcular Tarifa
-          </button>
-
-          {price && (
-            <div style={resultArea}>
-              <h3 style={priceText}>💰 Total: ${price} <span style={{fontSize: 12, fontWeight: 400}}>({distance} mi)</span></h3>
-
-              <p style={sectionTitle}>Método de Pago</p>
-              <div style={row}>
-                <button style={btnZelle} onClick={() => alert("Zelle: 725-287-6197")} onMouseDown={pressIn} onMouseUp={pressOut}>Zelle</button>
-                <button style={btnPaypal} onClick={() => window.open("https://www.paypal.com/paypalme/ernestogongorasaco")} onMouseDown={pressIn} onMouseUp={pressOut}>PayPal</button>
-                <button style={btnVenmo} onClick={() => window.open("https://venmo.com/code?user_id=4536118275999433880")} onMouseDown={pressIn} onMouseUp={pressOut}>Venmo</button>
-              </div>
-
-              <div style={row}>
-                <button
-                  style={btnMain}
-                  onMouseDown={pressIn} onMouseUp={pressOut}
-                  onClick={confirmRide}
-                >
-                  Confirmar Viaje
-                </button>
-
-                <button
-                  style={btnCancel}
-                  onMouseDown={pressIn} onMouseUp={pressOut}
-                  onClick={() => {
-                    if(confirm("¿Seguro que deseas limpiar los datos?")) {
-                      clearData();
-                      window.location.reload();
-                    }
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
+          {directions && (
+            <DirectionsRenderer directions={directions} />
           )}
-        </div>
-      </div>
-    </LoadScript>
+
+          {miUbicacion && <Marker position={miUbicacion} />}
+
+          {driverUbicacion && (
+            <Marker position={driverUbicacion} />
+          )}
+        </GoogleMap>
+      </LoadScript>
+    </div>
   );
 }
-
-// --- ESTILOS VISUALES ---
-const panel = { 
-  position: "absolute" as const, bottom: 0, width: "100%", 
-  background: "#f8f9fa", padding: "10px 20px 30px 20px", 
-  borderTopLeftRadius: 28, borderTopRightRadius: 28,
-  boxShadow: "0 -10px 30px rgba(0,0,0,0.2)", color: "#000"
-};
-
-const dragHandle = { width: 40, height: 5, background: "#ccc", borderRadius: 10, margin: "0 auto 15px auto" };
-const input = { width: "100%", padding: 14, marginBottom: 10, borderRadius: 12, border: "1px solid #e2e2e2", background: "#eee", color: "#000", fontSize: 15 };
-const btnCalc = { width: "100%", padding: 14, background: "#000", color: "#fff", borderRadius: 12, border: "none", fontWeight: "bold", cursor: "pointer" };
-const resultArea = { marginTop: 15 };
-const priceText = { textAlign: "center" as const, fontSize: 22, marginBottom: 15, fontWeight: 700 };
-const sectionTitle = { fontSize: 13, color: "#666", marginBottom: 8, fontWeight: 600 };
-const row = { display: "flex", gap: 10, marginBottom: 10 };
-const btnMain = { flex: 4, padding: 16, background: "#27ae60", color: "#fff", borderRadius: 14, border: "none", fontWeight: "bold", fontSize: 16, cursor: "pointer" };
-const btnCancel = { flex: 1, padding: 16, background: "#ebedef", color: "#333", borderRadius: 14, border: "none", fontWeight: "bold", cursor: "pointer" };
-const btnZelle = { flex: 1, padding: 10, background: "#6d1ed1", color: "#fff", borderRadius: 10, border: "none", fontSize: 12, fontWeight: "bold" };
-const btnPaypal = { flex: 1, padding: 10, background: "#003087", color: "#fff", borderRadius: 10, border: "none", fontSize: 12, fontWeight: "bold" };
-const btnVenmo = { flex: 1, padding: 10, background: "#3d95ce", color: "#fff", borderRadius: 10, border: "none", fontSize: 12, fontWeight: "bold" };
-const btnIcon = { padding: "0 15px", borderRadius: 12, border: "1px solid #e2e2e2", background: "#eee", color: "#000", cursor: "pointer" };
-
-const mapStyle = [
-  { "featureType": "poi", "stylers": [{ "visibility": "off" }] },
-  { "featureType": "transit", "stylers": [{ "visibility": "off" }] }
-];

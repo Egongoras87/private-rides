@@ -1,26 +1,37 @@
-@import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* RESET BÁSICO */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* BODY APP STYLE */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  background: #f9f9f9;
+  color: #111;
+}
+
+/* EVITAR ZOOM EN INPUTS (iPhone) */
+input, button {
+  font-size: 16px;
+}
+
+/* BOTONES TOUCH */
+button {
+  touch-action: manipulation;
+}
+
+/* SUAVIDAD GENERAL */
+button, input {
+  outline: none;
+}
+
+/* SCROLL SUAVE */
+html {
+  scroll-behavior: smooth;
+}
+/* EVITA SELECCIÓN MOLESTA EN BOTONES */
+button {
+  user-select: none;
 }
