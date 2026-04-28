@@ -28,6 +28,10 @@ const [latOrigen, setLatOrigen] = useState(0);
 const [lngOrigen, setLngOrigen] = useState(0);
   const [driverUbicacion, setDriverUbicacion] =
     useState<{ lat: number; lng: number } | null>(null);
+    const BASE_FARE = 8;        // tarifa base
+const PRICE_PER_MILE = 2.0; // por milla
+const PRICE_PER_MIN = 0.3;  // por minuto
+const MIN_FARE = 12;        // mínimo
 const [mostrarZelle, setMostrarZelle] = useState(false);
   const origenRef = useRef<HTMLInputElement | null>(null);
   const destinoRef = useRef<HTMLInputElement | null>(null);
@@ -100,7 +104,20 @@ setLngDestino(lngDestino);
               : 0;
 
           setDistancia(distanciaMillas);
-          setPrecio(distanciaMillas * 2.5);
+          const duracionMin =
+  result.routes[0].legs[0].duration?.value
+    ? result.routes[0].legs[0].duration.value / 60
+    : 0;
+
+const precioCalculado =
+  BASE_FARE +
+  distanciaMillas * PRICE_PER_MILE +
+  duracionMin * PRICE_PER_MIN;
+
+// 🔥 aplicar mínimo
+const precioFinal = Math.max(precioCalculado, MIN_FARE);
+
+setPrecio(precioFinal);
         }
       }
     );
