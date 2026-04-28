@@ -24,6 +24,7 @@ const telefonoDriver = "17252876197"; // formato internacional sin +
 const [fechaHora, setFechaHora] = useState("");
   const [miUbicacion, setMiUbicacion] =
     useState<{ lat: number; lng: number } | null>(null);
+    const [modoOscuroMapa, setModoOscuroMapa] = useState(true);
 const [latOrigen, setLatOrigen] = useState(0);
 const [lngOrigen, setLngOrigen] = useState(0);
   const [driverUbicacion, setDriverUbicacion] =
@@ -334,6 +335,64 @@ useEffect(() => {
   }
 }, []);
 
+const darkMapStyle = [
+  {
+    elementType: "geometry",
+    stylers: [{ color: "#0f0f0f" }] // 🔥 negro profundo
+  },
+  {
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#cfcfcf" }] // texto claro
+  },
+  {
+    elementType: "labels.text.stroke",
+    stylers: [{ color: "#0f0f0f" }]
+  },
+
+  // 🛣️ calles normales
+  {
+    featureType: "road",
+    elementType: "geometry",
+    stylers: [{ color: "#2b2b2b" }]
+  },
+
+  // 🚗 autopistas (más visibles)
+  {
+    featureType: "road.highway",
+    elementType: "geometry",
+    stylers: [{ color: "#088b4a" }] // azul moderno 🔥
+  },
+
+  // 🧭 bordes de carretera
+  {
+    featureType: "road",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#aaaaaa" }]
+  },
+
+  // 🌊 agua
+  {
+    featureType: "water",
+    elementType: "geometry",
+    stylers: [{ color: "#0a1a2f" }]
+  },
+
+  // 🏙️ puntos de interés
+  {
+    featureType: "poi",
+    elementType: "geometry",
+    stylers: [{ color: "#1a1a1a" }]
+  },
+
+  // 🚉 transporte
+  {
+    featureType: "transit",
+    elementType: "geometry",
+    stylers: [{ color: "#1a1a1a" }]
+  }
+];
+
+const lightMapStyle = [];
 ////////////////////////////////RETURN////////////////////////////////
   return (
   <>
@@ -381,10 +440,11 @@ useEffect(() => {
   style={{
     width: "100%",
     padding: 14,
+    background: "transparent",
     borderRadius: 10,
     border: "1px solid #ccc",
     fontSize: 16,
-    marginBottom: 8
+    color: "#fff"
   }}
 />
 
@@ -395,9 +455,10 @@ useEffect(() => {
     width: "100%",
     padding: 14,
     borderRadius: 10,
+    background: "transparent",
     border: "1px solid #ccc",
     fontSize: 16,
-    marginBottom: 8
+    color: "#fff"
   }}
 />
        
@@ -411,10 +472,11 @@ useEffect(() => {
   style={{
     width: "100%",
     padding: 14,
+    background: "transparent",
     borderRadius: 10,
     border: "1px solid #ccc",
     fontSize: 16,
-    marginBottom: 8
+    color: "#fff"
   }}
 />
 
@@ -427,9 +489,11 @@ useEffect(() => {
   style={{
     width: "100%",
     padding: 14,
+    background: "transparent",
     borderRadius: 10,
     border: "1px solid #ccc",
-    fontSize: 16 // 👈 AQUÍ
+    fontSize: 16,
+    color: "#fff" // 👈 AQUÍ
   }}
 />
   </Autocomplete>
@@ -443,7 +507,7 @@ useEffect(() => {
     width: 30,
     height: 40,
     borderRadius: "30%",
-    background: "#999b9a",
+    background: "transparent",
     color: "#ffffff",
     border: "none",
     display: "flex",
@@ -470,16 +534,18 @@ useEffect(() => {
 
         {/* 📍 DESTINO */}
         <Autocomplete>
-          <input
+         <input
   ref={destinoRef}
   placeholder="Drop-off location"
   style={{
     width: "100%",
     padding: 14,
+    background: "transparent",
     borderRadius: 10,
     border: "1px solid #ccc",
     fontSize: 16,
-    marginTop: 8
+    marginTop: 8,
+    color: "#fff" // 👈 AQUÍ
   }}
 />
         </Autocomplete>
@@ -588,25 +654,48 @@ onMouseLeave={soltarBoton}
     </div>
   </div>
 )}
+<button
+  onClick={() => setModoOscuroMapa(!modoOscuroMapa)}
+  style={{
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 10,
+    border: "none",
+    background: "rgba(255,255,255,0.2)",
+    color: "#fff",
+    backdropFilter: "blur(5px)"
+  }}
+>
+  {modoOscuroMapa ? "☀️ Light Map" : "🌙 Dark Map"}
+</button>
 
         {/* 🗺️ MAPA */}
-        <GoogleMap
-          mapContainerStyle={{ width: "100%", height: "50vh" }}
-          center={miUbicacion || { lat: 36.1699, lng: -115.1398 }}
-          zoom={14}
-        >
-          {directions && (
-            <DirectionsRenderer directions={directions} />
-          )}
-
-          {miUbicacion && <Marker position={miUbicacion} />}
-
-          {driverUbicacion && (
-            <Marker position={driverUbicacion} />
-          )}
-        </GoogleMap>
-      </LoadScript>
-    </div>
+       <div
+  style={{
+    marginTop: 15,
+    borderRadius: 20,
+    overflow: "hidden",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.5)"
+  }}
+>
+  <GoogleMap
+  mapContainerStyle={{
+    width: "100%",
+    height: "50vh"
+  }}
+  center={miUbicacion || { lat: 36.1699, lng: -115.1398 }}
+  zoom={14}
+   options={{
+    styles: modoOscuroMapa ? darkMapStyle : []
+  }}
+>
+    {directions && <DirectionsRenderer directions={directions} />}
+    {miUbicacion && <Marker position={miUbicacion} />}
+    {driverUbicacion && <Marker position={driverUbicacion} />}
+  </GoogleMap>
+</div>
+</LoadScript>
+</div>
     </>
   );
 }
