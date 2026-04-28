@@ -274,9 +274,7 @@ const fechaISO = new Date(fechaHora).toISOString();
   // 📡 Leer ubicación del driver (simulación)
   const obtenerDriver = async () => {
   try {
-    const res = await fetch(
-      "https://script.google.com/macros/s/AKfycbzU7UWCBVBDcW5eqZLjHtQGoUz5pcwRCWmPGIIlcq1phLVrwUovnW16G6vXuSZqLN0OKg/exec"
-    );
+    const res = await fetch("/api/viajes");
 
     const data = await res.json();
 
@@ -336,18 +334,39 @@ useEffect(() => {
   }
 }, []);
 
-
+////////////////////////////////RETURN////////////////////////////////
   return (
-    <div
-  style={{
-    padding: 20,
-    maxWidth: 500,
-    margin: "auto",
-    fontFamily: "Arial",
-    background: "#f9f9f9"
-  }}
->
-      <h1>App Private Rides</h1>
+  <>
+  {/* FONDO */}
+  <div
+    style={{
+      position: "fixed",
+      top: 0,
+      left: 0,
+      width: "100%",
+      height: "100%",
+      backgroundImage: "url('/las-vegas-bg.PNG?v=2')",
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      zIndex: -2
+    }}
+  />
+  {/* CAPA OSCURA */}
+  <div
+    style={{
+      position: "fixed",
+      top: 0,
+      left: 0,
+      width: "100%",
+      height: "100%",
+      backgroundColor: "rgba(12, 3, 3, 0.5)",
+      zIndex: -1
+    }}
+  />
+    <div style={{ position: "relative", zIndex: 1, padding: 20 }}>
+    
+  
+      <h1 style={{ color: "#b19e36" }}>App Private Rides</h1>
 
       <LoadScript
         googleMapsApiKey={
@@ -357,7 +376,7 @@ useEffect(() => {
       >
         {/* 👤 DATOS USUARIO */}
        <input
-  placeholder="Nombre"
+  placeholder="Name"
   onChange={(e) => setNombre(e.target.value)}
   style={{
     width: "100%",
@@ -370,7 +389,7 @@ useEffect(() => {
 />
 
 <input
-  placeholder="Teléfono"
+  placeholder="Phone"
   onChange={(e) => setTelefono(e.target.value)}
   style={{
     width: "100%",
@@ -383,7 +402,9 @@ useEffect(() => {
 />
        
         
-        <input
+        <label style={{ color: "#fff" }}>Date & Time</label>
+
+<input
   type="datetime-local"
   value={fechaHora}
   onChange={(e) => setFechaHora(e.target.value)}
@@ -402,7 +423,7 @@ useEffect(() => {
   <Autocomplete>
     <input
   ref={origenRef}
-  placeholder="Origen"
+  placeholder="Pickup location"
   style={{
     width: "100%",
     padding: 14,
@@ -451,7 +472,7 @@ useEffect(() => {
         <Autocomplete>
           <input
   ref={destinoRef}
-  placeholder="Destino"
+  placeholder="Drop-off location"
   style={{
     width: "100%",
     padding: 14,
@@ -499,8 +520,13 @@ onMouseLeave={soltarBoton}
 
 </div>
 <div style={{ marginTop: 8 }}>
-  <p>Distancia: {distancia.toFixed(2)} millas</p>
-  <p>Precio: ${precio.toFixed(2)}</p>
+  <p style={{ color: "#00ff99" }}>
+  Distance: {distancia.toFixed(2)} miles
+</p>
+
+<p style={{ color: "#00ff99", fontWeight: "bold" }}>
+  Price: ${precio.toFixed(2)}
+</p>
 </div>
 
         {mensaje.includes("✅") && (
@@ -581,5 +607,6 @@ onMouseLeave={soltarBoton}
         </GoogleMap>
       </LoadScript>
     </div>
+    </>
   );
 }

@@ -40,44 +40,65 @@ export default function DriverPage() {
 
   // 📥 OBTENER VIAJES
   const obtenerViajes = async () => {
-    try {
-      const res = await fetch("/api/viajes");
-      const data = await res.json();
-
-      if (!Array.isArray(data)) return;
-
-      const filas = data.slice(1);
-
-      const activos = filas.filter((v) =>
-        ["Pendiente", "En camino"].includes(v[11])
-      );
-
-      activos.sort((a, b) => {
-        const fechaA = new Date(a[12]).getTime();
-        const fechaB = new Date(b[12]).getTime();
-        return fechaA - fechaB;
-      });
-
-      setViajes(activos);
-
-    } catch (error) {
-      console.error("Error obteniendo viajes:", error);
+  try {
+    if (!navigator.onLine) {
+      console.warn("Sin conexión...");
+      return;
     }
-  };
 
+    const res = await fetch("/api/viajes", {
+      cache: "no-store"
+    });
+
+    if (!res.ok) throw new Error("HTTP error");
+
+    const text = await res.text();
+
+    if (text.startsWith("<!DOCTYPE")) {
+      console.warn("HTML recibido, ignorando...");
+      return;
+    }
+
+    const data = JSON.parse(text);
+
+    if (!Array.isArray(data)) return;
+
+    const filas = data.slice(1);
+
+    const viajesActivos = filas.filter((v: any) =>
+      Array.isArray(v) &&
+      v.length > 11 &&
+      ["Pendiente", "En camino"].includes(v[11])
+    );
+
+    const viajesOrdenados = [...viajesActivos].sort(
+      (a, b) =>
+        new Date(b[12]).getTime() -
+        new Date(a[12]).getTime()
+    );
+
+    setViajes(viajesOrdenados);
+
+  } catch (error) {
+    console.error("⚠️ Error obteniendo viajes:", error);
+
+    // 🔁 reintento automático
+    setTimeout(() => {
+      obtenerViajes();
+    }, 5000);
+  }
+};
   useEffect(() => {
-    obtenerViajes();
+  obtenerViajes();
 
-    const interval = setInterval(obtenerViajes, 5000);
+  const interval = setInterval(() => {
+    if (document.visibilityState === "visible") {
+      obtenerViajes();
+    }
+  }, 7000);
 
-    return () => {
-      clearInterval(interval);
-
-      if (watchRef.current !== null) {
-        navigator.geolocation.clearWatch(watchRef.current);
-      }
-    };
-  }, []);
+  return () => clearInterval(interval);
+}, []);
 
   // 🚗 EN CAMINO
 const enCamino = async (v: any) => {
