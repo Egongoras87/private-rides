@@ -12,6 +12,7 @@ export default function TrackingPage() {
   const [posicionSuave, setPosicionSuave] =
     useState<{ lat: number; lng: number } | null>(null);
 const [mostrarZelle, setMostrarZelle] = useState(false);
+const [viajeId, setViajeId] = useState<string | null>(null);
   const [ruta, setRuta] =
     useState<google.maps.DirectionsResult | null>(null);
 const [viajeData, setViajeData] = useState<any>(null);
@@ -61,35 +62,50 @@ const soltarBoton = (e: any) => {
 
   // 📡 OBTENER DATOS DEL DRIVER
   const obtenerDriver = async () => {
-    try {
-      const res = await fetch("/api/viajes");
+  try {
+    if (!viajeId) return;
 
-      const data = await res.json();
-      if (!Array.isArray(data) || data.length < 2) return;
+    const res = await fetch(`/api/viajes?id=${viajeId}`);
+    const viaje = await res.json();
 
-      const viaje = data[data.length - 1];
-      const estado = viaje[11];
-      if (estado === "Finalizado") {
-  alert("✅ Viaje finalizado");
+    if (!viaje || viaje.length < 15) return;
 
+    setViajeData(viaje);
+
+    const estado = viaje[11];
+      if (estado === "Finalizado" || estado === "Cancelado") {
+
+  alert(
+    estado === "Finalizado"
+      ? "✅ Viaje finalizado"
+      : "❌ Viaje cancelado"
+  );
+
+  // 🧹 limpiar estados visuales
   setPosicionSuave(null);
   setRuta(null);
 
+  // 🧹 limpiar almacenamiento
   localStorage.removeItem("viajeId");
   localStorage.removeItem("viajeData");
+  localStorage.removeItem("formData"); // 👈 ESTE ES CLAVE
 
+  // ⏳ pequeña pausa para evitar glitches
+  setTimeout(() => {
+    setTimeout(() => {
   window.location.href = "/";
-  return;
-}
-if (estado === "Cancelado") {
-  alert("❌ Viaje cancelado");
+}, 300);
+  }, 500);
 
-  window.location.href = "/";
   return;
 }
 
       const lat = parseFloat(viaje[13]);
       const lng = parseFloat(viaje[14]);
+      if (isNaN(lat) || isNaN(lng)) {
+  console.warn("Driver sin ubicación aún");
+  return;
+}
 
       const origenLat = parseFloat(viaje[5]);
       const origenLng = parseFloat(viaje[6]);
@@ -271,10 +287,13 @@ const moverSuave = (nuevaPos: { lat: number; lng: number }) => {
 
         window.open(url, "_blank");
 
+        localStorage.removeItem("formData");
         localStorage.removeItem("viajeId");
         localStorage.removeItem("viajeData");
 
-        window.location.href = "/";
+        setTimeout(() => {
+  window.location.href = "/";
+}, 300);
       }
 
     } catch (error) {
@@ -282,23 +301,42 @@ const moverSuave = (nuevaPos: { lat: number; lng: number }) => {
     }
   };
 
-  // 🔁 ACTUALIZACIÓN
- useEffect(() => {
+  // 🔥 LEER ID (URL o localStorage)
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  const idFromUrl = params.get("id");
+
+  const idFromStorage = localStorage.getItem("viajeId");
+
+  const finalId = idFromUrl || idFromStorage;
+
+  if (!finalId) {
+    console.warn("No hay viajeId");
+    return;
+  }
+
+  setViajeId(finalId);
+}, []);
+
+// 🚀 CARGA INICIAL (cuando ya hay ID)
+useEffect(() => {
+  if (!viajeId) return;
+
+  obtenerDriver();
+}, [viajeId]);
+
+// 🔁 ACTUALIZACIÓN CONTINUA
+useEffect(() => {
+  if (!viajeId) return;
+
   const interval = setInterval(() => {
     obtenerDriver();
-  }, 5000);
+  }, 3000);
 
   return () => clearInterval(interval);
-}, []);
-  
-  useEffect(() => {
-  const iniciar = async () => {
-    await obtenerDriver(); // 👈 fuerza carga inicial
-  };
+}, [viajeId]);
 
-  iniciar();
-}, []);
-
+// 💾 DATOS DEL VIAJE (UI)
 useEffect(() => {
   const data = localStorage.getItem("viajeData");
 
@@ -306,7 +344,6 @@ useEffect(() => {
     setViajeData(JSON.parse(data));
   }
 }, []);
-
   return (
     <div style={{ height: "100vh", width: "100%", position: "relative" }}>
       <LoadScript

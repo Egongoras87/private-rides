@@ -1,48 +1,64 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 export default function DriverPage() {
   const [viajes, setViajes] = useState<any[]>([]);
-
-  const URL =
-    "https://script.google.com/macros/s/AKfycbyaLJPd6q1iipDqwytovCyoG0wJWesWQ_93_0tPS_9L6-RaGCR0Q53HpUfWJvKYf3XnWw/exec";
+  const watchRef = useRef<number | null>(null);
 
   const DRIVER_KEY = process.env.NEXT_PUBLIC_DRIVER_KEY;
 
-  // 🔐 PROTECCIÓN SIMPLE
+  // 🔐 PROTECCIÓN
   useEffect(() => {
-    const key = prompt("Ingrese clave de conductor");
+    const key = sessionStorage.getItem("driver_key");
 
-    if (key !== DRIVER_KEY) {
-      alert("Acceso denegado");
+    if (!key) {
+      const input = prompt("Driver access key:");
+      sessionStorage.setItem("driver_key", input || "");
+    }
+
+    if (sessionStorage.getItem("driver_key") !== DRIVER_KEY) {
+      alert("Access denied");
       window.location.href = "/";
     }
   }, []);
 
-  // 📥 Obtener viajes
+  // 🧠 FORMATEAR FECHA
+  const formatearFechaHora = (fecha: string) => {
+    if (!fecha) return { fecha: "", hora: "" };
+
+    const d = new Date(fecha);
+
+    return {
+      fecha: d.toLocaleDateString("en-US"),
+      hora: d.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit"
+      })
+    };
+  };
+
+  // 📥 OBTENER VIAJES
   const obtenerViajes = async () => {
     try {
       const res = await fetch("/api/viajes");
       const data = await res.json();
 
-      console.log("DATA DRIVER:", data);
+      if (!Array.isArray(data)) return;
 
-      // 🔥 PROTECCIÓN CONTRA ERROR
-      if (!Array.isArray(data)) {
-        console.error("Respuesta inválida:", data);
-        return;
-      }
+      const filas = data.slice(1);
 
-      const filas = data.slice(1); // quitar encabezado
+      const activos = filas.filter((v) =>
+        ["Pendiente", "En camino"].includes(v[11])
+      );
 
-// 🔥 FILTRAR SOLO VIAJES ACTIVOS
-const viajesActivos = filas.filter((v) =>
-  ["Pendiente", "En camino"].includes(v[11])
-);
+      activos.sort((a, b) => {
+        const fechaA = new Date(a[12]).getTime();
+        const fechaB = new Date(b[12]).getTime();
+        return fechaA - fechaB;
+      });
 
-// ordenar más recientes primero
-setViajes(viajesActivos.reverse());
+      setViajes(activos);
 
     } catch (error) {
       console.error("Error obteniendo viajes:", error);
@@ -52,23 +68,52 @@ setViajes(viajesActivos.reverse());
   useEffect(() => {
     obtenerViajes();
 
-    const interval = setInterval(() => {
-      obtenerViajes();
-    }, 5000);
+    const interval = setInterval(obtenerViajes, 5000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+
+      if (watchRef.current !== null) {
+        navigator.geolocation.clearWatch(watchRef.current);
+      }
+    };
   }, []);
 
   // 🚗 EN CAMINO
-  const enCamino = (v: any) => {
+const enCamino = async (v: any) => {
   const id = v[0];
-  const nombre = v[1];
-  const telefono = v[2];
+  const telefono = String(v[2]).replace(/\D/g, "");
   const origen = v[3];
 
-  navigator.geolocation.watchPosition(
-    (pos) => {
-      fetch("/api/reservar", {
+  const lat = parseFloat(v[5]);
+  const lng = parseFloat(v[6]);
+
+  const trackingUrl = `${window.location.origin}/tracking?id=${id}`;
+
+  // 🚀 GPS INMEDIATO (CLAVE)
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    await fetch("/api/reservar", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        action: "updateDriver",
+        id,
+        driverLat: pos.coords.latitude,
+        driverLng: pos.coords.longitude
+      })
+    });
+  });
+
+  // 🔁 GPS CONTINUO
+  if (watchRef.current !== null) {
+    navigator.geolocation.clearWatch(watchRef.current);
+  }
+
+  watchRef.current = navigator.geolocation.watchPosition(
+    async (pos) => {
+      await fetch("/api/reservar", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -80,22 +125,42 @@ setViajes(viajesActivos.reverse());
           driverLng: pos.coords.longitude
         })
       });
-    },
-    (err) => console.error(err),
-    { enableHighAccuracy: true }
+    }
   );
 
-  // 📲 MENSAJE WHATSAPP
-  const mensaje =
-    "🚗 The driver is on the way.\n\n" +
-    "👤 Cliente: " + nombre + "\n" +
-    "📍 Recogida: " + origen;
+  // 🔄 ESTADO
+  const resEstado = await fetch("/api/reservar", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      action: "enCamino",
+      id
+    })
+  });
 
-  const url =
-    "https://wa.me/1" + telefono +
-    "?text=" + encodeURIComponent(mensaje);
+  const dataEstado = await resEstado.json();
+  if (!dataEstado.success) {
+    console.error("Error estado");
+  }
 
-  window.open(url, "_blank");
+  // 🗺️ MAPA
+  if (!isNaN(lat) && !isNaN(lng)) {
+    window.open(
+      `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`,
+      "_blank"
+    );
+  }
+
+  // 📲 WHATSAPP
+  setTimeout(() => {
+    window.location.href =
+      "https://wa.me/1" + telefono +
+      "?text=" + encodeURIComponent(
+        "🚗 Driver on the way\n\nTrack:\n" + trackingUrl
+      );
+  }, 1200);
 
   alert("🚗 En camino activado");
 };
@@ -103,8 +168,11 @@ setViajes(viajesActivos.reverse());
   // ✅ FINALIZAR
   const finalizar = async (id: number) => {
     try {
-      await fetch(URL, {
+      await fetch("/api/reservar", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
         body: JSON.stringify({
           action: "finalizar",
           id
@@ -120,37 +188,39 @@ setViajes(viajesActivos.reverse());
 
   // ❌ CANCELAR
   const cancelar = async (v: any) => {
-  const id = v[0];
-  const nombre = v[1];
-  const telefono = v[2];
+    const id = v[0];
+    const nombre = v[1];
+    const telefono = String(v[2]).replace(/\D/g, "");
 
-  try {
-    await fetch(URL, {
-      method: "POST",
-      body: JSON.stringify({
-        action: "cancelar",
-        id
-      })
-    });
+    try {
+      await fetch("/api/reservar", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          action: "cancelar",
+          id
+        })
+      });
 
-    // 📲 WHATSAPP
-    const mensaje =
-      "❌ VIAJE CANCELADO\n\n" +
-      "👤 Cliente: " + nombre + "\n" +
-      "El conductor canceló el viaje.";
+      const mensaje =
+        "❌ VIAJE CANCELADO\n\n" +
+        "👤 Cliente: " + nombre + "\n" +
+        "El conductor canceló el viaje.";
 
-    const url =
-      "https://wa.me/1" + telefono +
-      "?text=" + encodeURIComponent(mensaje);
+      window.open(
+        "https://wa.me/1" + telefono +
+          "?text=" + encodeURIComponent(mensaje),
+        "_blank"
+      );
 
-    window.open(url, "_blank");
+      alert("❌ Viaje cancelado");
 
-    alert("❌ Viaje cancelado");
-
-  } catch (error) {
-    console.error("Error cancelar:", error);
-  }
-};
+    } catch (error) {
+      console.error("Error cancelar:", error);
+    }
+  };
 
   return (
     <div style={{ padding: 20 }}>
@@ -158,43 +228,41 @@ setViajes(viajesActivos.reverse());
 
       {viajes.length === 0 && <p>No hay viajes</p>}
 
-      {viajes.map((v, i) => (
-        <div
-          key={i}
-          style={{
-            border: "1px solid #ccc",
-            marginBottom: 10,
-            padding: 10,
-            borderRadius: 10
-          }}
-        >
-          <p><b>ID:</b> {v[0]}</p>
-          <p><b>Nombre:</b> {v[1]}</p>
-          <p><b>Tel:</b> {v[2]}</p>
-          <p><b>Origen:</b> {v[3]}</p>
-          <p><b>Destino:</b> {v[4]}</p>
+      {viajes.map((v, i) => {
+        const fh = formatearFechaHora(v[12]);
 
-          {/* 🔥 NUEVO */}
-          <p><b>Distancia:</b> {Number(v[9]).toFixed(2)} millas</p>
-          <p><b>Precio:</b> ${Number(v[10]).toFixed(2)}</p>
+        return (
+          <div
+            key={i}
+            style={{
+              border: "1px solid #ccc",
+              marginBottom: 10,
+              padding: 10,
+              borderRadius: 10
+            }}
+          >
+            <p><b>ID:</b> {v[0]}</p>
+            <p><b>Nombre:</b> {v[1]}</p>
+            <p><b>Tel:</b> {v[2]}</p>
+            <p><b>Origen:</b> {v[3]}</p>
+            <p><b>Destino:</b> {v[4]}</p>
 
-          <p><b>Estado:</b> {v[11]}</p>
+            <p><b>Date:</b> {fh.fecha}</p>
+            <p><b>Time:</b> {fh.hora}</p>
 
-          <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={() => enCamino(v)}>
-              🚗 En camino
-            </button>
+            <p><b>Distancia:</b> {Number(v[9]).toFixed(2)} millas</p>
+            <p><b>Precio:</b> ${Number(v[10]).toFixed(2)}</p>
 
-            <button onClick={() => finalizar(v[0])}>
-              ✅ Finalizar
-            </button>
+            <p><b>Estado:</b> {v[11]}</p>
 
-            <button onClick={() => cancelar(v)}>
-              ❌ Cancelar
-            </button>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => enCamino(v)}>🚗 En camino</button>
+              <button onClick={() => finalizar(v[0])}>✅ Finalizar</button>
+              <button onClick={() => cancelar(v)}>❌ Cancelar</button>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

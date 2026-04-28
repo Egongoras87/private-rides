@@ -12,7 +12,7 @@ import {
 export default function Home() {
   const [directions, setDirections] =
     useState<google.maps.DirectionsResult | null>(null);
-const [disponible, setDisponible] = useState(true);
+
   const [distancia, setDistancia] = useState<number>(0);
   const [precio, setPrecio] = useState<number>(0);
   const [mensaje, setMensaje] = useState<string>("");
@@ -21,6 +21,7 @@ const [lngDestino, setLngDestino] = useState(0);
   const [nombre, setNombre] = useState("");
   const [telefono, setTelefono] = useState("");
 const telefonoDriver = "17252876197"; // formato internacional sin +
+const [fechaHora, setFechaHora] = useState("");
   const [miUbicacion, setMiUbicacion] =
     useState<{ lat: number; lng: number } | null>(null);
 const [latOrigen, setLatOrigen] = useState(0);
@@ -104,22 +105,7 @@ setLngDestino(lngDestino);
       }
     );
   };
-// VERIFICAR DISPONIBILIDAD
-  const verificarDisponibilidad = async () => {
-  try {
-    const res = await fetch("/api/disponibilidad");
-    const data = await res.json();
 
-    setDisponible(data.disponible);
-
-    if (!data.disponible) {
-      setMensaje("⛔ Driver not available right now");
-    }
-
-  } catch (error) {
-    console.error("Error disponibilidad:", error);
-  }
-};
 
   // 📍 Obtener ubicación real + dirección
   const obtenerUbicacion = () => {
@@ -156,11 +142,23 @@ setLngDestino(lngDestino);
  const reservar = async () => {
   if (!origenRef.current || !destinoRef.current) return;
 
+  // ✅ AQUÍ VA LA VALIDACIÓN
+  if (!fechaHora) {
+    setMensaje("⛔ Select date and time");
+    return;
+  }
+// 🔥 CONVERTIR A ISO
+const fechaISO = new Date(fechaHora).toISOString();
+
+ 
+
+
   const origen = origenRef.current.value;
   const destino = destinoRef.current.value;
 
   try {
     const id = Date.now();
+    localStorage.setItem("viajeId", String(id));
 
     const res = await fetch("/api/reservar", {
       method: "POST",
@@ -168,18 +166,19 @@ setLngDestino(lngDestino);
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        id,
-        nombre,
-        telefono,
-        origen,
-        destino,
-        latOrigen,
-        lngOrigen,
-        latDestino,
-        lngDestino,
-        distancia,
-        precio
-      })
+  id,
+  nombre,
+  telefono,
+  origen,
+  destino,
+  latOrigen,
+  lngOrigen,
+  latDestino,
+  lngDestino,
+  distancia,
+  precio,
+  fechaHora: fechaISO // 👈 AQUÍ EL CAMBIO
+})
     });
 
     const data = await res.json();
@@ -246,8 +245,9 @@ setLngDestino(lngDestino);
 
     // 🚀 redirigir
     setTimeout(() => {
-      window.location.href = "/tracking";
-    }, 1000);
+  window.location.href = "/tracking";
+  console.log("ID GUARDADO:", id);
+}, 1000);
 
   } catch (error) {
     console.error("ERROR FETCH:", error);
@@ -258,7 +258,7 @@ setLngDestino(lngDestino);
   const obtenerDriver = async () => {
   try {
     const res = await fetch(
-      "https://script.google.com/macros/s/AKfycbyaLJPd6q1iipDqwytovCyoG0wJWesWQ_93_0tPS_9L6-RaGCR0Q53HpUfWJvKYf3XnWw/exec"
+      "https://script.google.com/macros/s/AKfycbzU7UWCBVBDcW5eqZLjHtQGoUz5pcwRCWmPGIIlcq1phLVrwUovnW16G6vXuSZqLN0OKg/exec"
     );
 
     const data = await res.json();
@@ -287,15 +287,38 @@ setLngDestino(lngDestino);
 
     return () => clearInterval(interval);
   }, []);
+
+  // 🔁 GUARDAR DATOS AUTOMATICAMENTE Y CARGAR 
   useEffect(() => {
-  verificarDisponibilidad();
+  localStorage.setItem(
+    "formData",
+    JSON.stringify({
+      nombre,
+      telefono,
+      origen: origenRef.current?.value || "",
+      destino: destinoRef.current?.value || "",
+      fechaHora
+    })
+  );
+}, [nombre, telefono, fechaHora]);
 
-  const interval = setInterval(() => {
-    verificarDisponibilidad();
-  }, 10000);
+useEffect(() => {
+  const saved = localStorage.getItem("formData");
 
-  return () => clearInterval(interval);
+  if (saved) {
+    const data = JSON.parse(saved);
+
+    setNombre(data.nombre || "");
+    setTelefono(data.telefono || "");
+    setFechaHora(data.fechaHora || "");
+
+    setTimeout(() => {
+      if (origenRef.current) origenRef.current.value = data.origen || "";
+      if (destinoRef.current) destinoRef.current.value = data.destino || "";
+    }, 300);
+  }
 }, []);
+
 
   return (
     <div
@@ -307,7 +330,7 @@ setLngDestino(lngDestino);
     background: "#f9f9f9"
   }}
 >
-      <h1>App Viajes</h1>
+      <h1>App Private Rides</h1>
 
       <LoadScript
         googleMapsApiKey={
@@ -316,33 +339,61 @@ setLngDestino(lngDestino);
         libraries={["places"]}
       >
         {/* 👤 DATOS USUARIO */}
+       <input
+  placeholder="Nombre"
+  onChange={(e) => setNombre(e.target.value)}
+  style={{
+    width: "100%",
+    padding: 14,
+    borderRadius: 10,
+    border: "1px solid #ccc",
+    fontSize: 16,
+    marginBottom: 8
+  }}
+/>
+
+<input
+  placeholder="Teléfono"
+  onChange={(e) => setTelefono(e.target.value)}
+  style={{
+    width: "100%",
+    padding: 14,
+    borderRadius: 10,
+    border: "1px solid #ccc",
+    fontSize: 16,
+    marginBottom: 8
+  }}
+/>
+       
+        
         <input
-          placeholder="Nombre"
-          onChange={(e) => setNombre(e.target.value)}
-        />
-
-        <br /><br />
-
-        <input
-          placeholder="Teléfono"
-          onChange={(e) => setTelefono(e.target.value)}
-        />
-
-        <br /><br />
+  type="datetime-local"
+  value={fechaHora}
+  onChange={(e) => setFechaHora(e.target.value)}
+  style={{
+    width: "100%",
+    padding: 14,
+    borderRadius: 10,
+    border: "1px solid #ccc",
+    fontSize: 16,
+    marginBottom: 8
+  }}
+/>
 
         {/* 📍 ORIGEN */}
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
   <Autocomplete>
     <input
-      ref={origenRef}
-      placeholder="Origen"
-      style={{
-        flex: 1,
-        padding: 12,
-        borderRadius: 10,
-        border: "1px solid #ccc"
-      }}
-    />
+  ref={origenRef}
+  placeholder="Origen"
+  style={{
+    width: "100%",
+    padding: 14,
+    borderRadius: 10,
+    border: "1px solid #ccc",
+    fontSize: 16 // 👈 AQUÍ
+  }}
+/>
   </Autocomplete>
 
   <button
@@ -377,53 +428,64 @@ setLngDestino(lngDestino);
 </button>
 </div>
 
-        <br /><br />
+        
 
         {/* 📍 DESTINO */}
         <Autocomplete>
-          <input ref={destinoRef} placeholder="Destino" />
+          <input
+  ref={destinoRef}
+  placeholder="Destino"
+  style={{
+    width: "100%",
+    padding: 14,
+    borderRadius: 10,
+    border: "1px solid #ccc",
+    fontSize: 16,
+    marginTop: 8
+  }}
+/>
         </Autocomplete>
 
-        <br /><br />
+        
 
-        <button
-  onClick={calcularRuta}
-  onMouseDown={presionarBoton}
-  onMouseUp={soltarBoton}
-  onMouseLeave={soltarBoton}
-  style={{
-    ...estiloBoton,
-    background: "#000",
-    color: "#fff"
-  }}
->
-  Calculate Fare
-</button>
+       <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+  
+  <button
+    onClick={calcularRuta}
+    onMouseDown={presionarBoton}
+    onMouseUp={soltarBoton}
+    onMouseLeave={soltarBoton}
+    style={{
+      flex: 1,
+      ...estiloBoton,
+      background: "#000",
+      color: "#fff"
+    }}
+  >
+    Calculate
+  </button>
 
-        <p>Distancia: {distancia.toFixed(2)} millas</p>
-        <p>Precio: ${precio.toFixed(2)}</p>
+  <button
+    onClick={reservar}
+    onMouseDown={presionarBoton}
+onMouseUp={soltarBoton}
+onMouseLeave={soltarBoton}
+    style={{
+      flex: 1,
+      ...estiloBoton,
+      background: "#2ecc71",
+      color: "#fff"
+    }}
+  >
+    Book
+  </button>
 
-        <button
-  onClick={reservar}
-  disabled={!disponible}
-  onMouseDown={(e) => disponible && presionarBoton(e)}
-  onMouseUp={(e) => disponible && soltarBoton(e)}
-  onMouseLeave={(e) => disponible && soltarBoton(e)}
-  style={{
-    ...estiloBoton,
-    background: disponible ? "#2ecc71" : "#999",
-    color: "#fff",
-    opacity: disponible ? 1 : 0.6,
-    cursor: disponible ? "pointer" : "not-allowed",
-    boxShadow: disponible
-      ? "0 4px 0 rgba(0,0,0,0.2)"
-      : "0 2px 0 rgba(0,0,0,0.1)"
-  }}
->
-  {disponible ? "Book Ride" : "Not Available"}
-</button>
+</div>
+<div style={{ marginTop: 8 }}>
+  <p>Distancia: {distancia.toFixed(2)} millas</p>
+  <p>Precio: ${precio.toFixed(2)}</p>
+</div>
 
-        <p>{mensaje}</p>
         {mensaje.includes("✅") && (
   <div style={{ marginTop: 20 }}>
     <h3 style={{ marginBottom: 10 }}>💳 Métodos de pago</h3>
@@ -486,7 +548,7 @@ setLngDestino(lngDestino);
 
         {/* 🗺️ MAPA */}
         <GoogleMap
-          mapContainerStyle={{ width: "100%", height: "400px" }}
+          mapContainerStyle={{ width: "100%", height: "50vh" }}
           center={miUbicacion || { lat: 36.1699, lng: -115.1398 }}
           zoom={14}
         >

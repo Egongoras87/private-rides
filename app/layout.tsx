@@ -1,8 +1,13 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "App Viajes",
+  title: "App Private Rides",
   description: "App tipo Uber",
+    icons: {
+    icon: [
+      { url: "/icon.png", sizes: "32x32", type: "image/png" },
+    ],
+  },
 };
 
 export const viewport = {
