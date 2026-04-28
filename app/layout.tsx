@@ -5,7 +5,7 @@ export const metadata = {
   description: "App tipo Uber",
     icons: {
     icon: [
-      { url: "/icon.png", sizes: "32x32", type: "image/png" },
+      { url: "/icon.png?v=2" },
     ],
   },
 };
