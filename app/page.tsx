@@ -345,7 +345,7 @@ useEffect(() => {
       left: 0,
       width: "100%",
       height: "100%",
-      backgroundImage: "url('/las-vegas-bg.PNG?v=2')",
+      backgroundImage: "url('/bg.png?v=2')",
       backgroundSize: "cover",
       backgroundPosition: "center",
       zIndex: -2
