@@ -747,9 +747,7 @@ onMouseLeave={soltarBoton}
     {directions && <DirectionsRenderer directions={directions} />}
     {miUbicacion && <Marker position={miUbicacion} />}
     {driverUbicacion && <Marker position={driverUbicacion} />}
-    <p style={{ color: "white" }}>
-  Version: {process.env.NEXT_PUBLIC_APP_VERSION}
-</p>
+    
   </GoogleMap>
 </div>
 </LoadScript>

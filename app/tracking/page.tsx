@@ -69,7 +69,7 @@ const soltarBoton = (e: any) => {
     const res = await fetch(`/api/viajes?id=${viajeId}`);
     const viaje = await res.json();
 
-    if (!viaje || viaje.length < 15) return;
+    if (!viaje || viaje.length < 14) return;
 
     setViajeData(viaje);
 
@@ -117,10 +117,14 @@ const soltarBoton = (e: any) => {
       }
 const posicionAnterior = ultimaPosRef.current;
 
-const seMovio =
-  !posicionAnterior ||
-  Math.abs(lat - posicionAnterior.lat) > 0.0001 ||
-  Math.abs(lng - posicionAnterior.lng) > 0.0001;
+let seMovio = true;
+
+if (posicionAnterior) {
+  const distancia = calcularDistancia(posicionAnterior, { lat, lng });
+
+  // 🔥 umbral MUY sensible (10 metros)
+  seMovio = distancia > 0.01;
+}
 
 // 🔥 SOLO SI SE MOVIÓ
 if (seMovio) {
@@ -173,22 +177,21 @@ const moverSuave = (nuevaPos: { lat: number; lng: number }) => {
     return;
   }
 
-  // 👉 si no hay cambio real, no hacer nada
-  if (
-    Math.abs(nuevaPos.lat - posicionSuave.lat) < 0.00001 &&
-    Math.abs(nuevaPos.lng - posicionSuave.lng) < 0.00001
-  ) {
-    return;
-  }
+  // 🔥 permitir movimientos pequeños
+if (
+  Math.abs(nuevaPos.lat - posicionSuave.lat) < 0.0000001 &&
+  Math.abs(nuevaPos.lng - posicionSuave.lng) < 0.0000001
+) {
+  return;
+}
 
   // 👉 solo mover mapa si hay cambio real
   const distanciaMovimiento =
     Math.abs(nuevaPos.lat - posicionSuave.lat) +
     Math.abs(nuevaPos.lng - posicionSuave.lng);
 
-  if (distanciaMovimiento > 0.0001) {
-    mapRef.current?.panTo(nuevaPos);
-  }
+  // 🔥 siempre centrar (mejor UX tipo Uber)
+mapRef.current?.panTo(nuevaPos);
 
   const pasos = 20;
 
@@ -345,7 +348,7 @@ useEffect(() => {
 
   const interval = setInterval(() => {
     obtenerDriver();
-  }, 3000);
+  }, 800);
 
   return () => clearInterval(interval);
 }, [viajeId]);

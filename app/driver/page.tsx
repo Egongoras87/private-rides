@@ -188,21 +188,46 @@ const enCamino = async (v: any) => {
   }
 
   watchRef.current = navigator.geolocation.watchPosition(
-    async (pos) => {
-      await fetch("/api/reservar", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          action: "updateDriver",
-          id,
-          driverLat: pos.coords.latitude,
-          driverLng: pos.coords.longitude
-        })
-      });
-    }
-  );
+  async (pos) => {
+    await fetch("/api/reservar", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        action: "updateDriver",
+        id,
+        driverLat: pos.coords.latitude,
+        driverLng: pos.coords.longitude
+      })
+    });
+  },
+  (err) => {
+    console.error("GPS error:", err);
+  },
+  {
+    enableHighAccuracy: true,
+    maximumAge: 0,
+    timeout: 5000,
+   
+  }
+);
+setInterval(() => {
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    await fetch("/api/reservar", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        action: "updateDriver",
+        id,
+        driverLat: pos.coords.latitude,
+        driverLng: pos.coords.longitude
+      })
+    });
+  });
+}, 2000);
 
   // 🔄 ESTADO
   const resEstado = await fetch("/api/reservar", {
