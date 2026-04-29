@@ -16,6 +16,7 @@ const [viajeId, setViajeId] = useState<string | null>(null);
   const [ruta, setRuta] =
     useState<google.maps.DirectionsResult | null>(null);
 const [viajeData, setViajeData] = useState<any>(null);
+const [cancelando, setCancelando] = useState(false);
   const [tiempo, setTiempo] = useState("");
   const [fase, setFase] = useState<"pickup" | "viaje">("pickup");
 const ultimaPosRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -81,21 +82,18 @@ const soltarBoton = (e: any) => {
       : "❌ Viaje cancelado"
   );
 
-  // 🧹 limpiar estados visuales
+  // limpiar visual
   setPosicionSuave(null);
   setRuta(null);
 
-  // 🧹 limpiar almacenamiento
+  // 🔥 borrar SOLO tracking
   localStorage.removeItem("viajeId");
   localStorage.removeItem("viajeData");
-  localStorage.removeItem("formData"); // 👈 ESTE ES CLAVE
 
-  // ⏳ pequeña pausa para evitar glitches
+  // ⏳ redirección limpia
   setTimeout(() => {
-    setTimeout(() => {
-  window.location.href = "/";
-}, 300);
-  }, 500);
+    window.location.href = "/";
+  }, 300);
 
   return;
 }
@@ -242,64 +240,75 @@ const moverSuave = (nuevaPos: { lat: number; lng: number }) => {
 
   // ❌ CANCELAR VIAJE
   const cancelarViaje = async () => {
-    try {
-      const id = localStorage.getItem("viajeId");
-      const viajeData = localStorage.getItem("viajeData");
+  if (cancelando) return; // evita doble click
 
-      if (!id || !viajeData) {
-        alert("No se encontró información del viaje");
-        return;
-      }
+  setCancelando(true);
 
-      const { nombre, telefono, origen, destino, precio, distancia } =
-        JSON.parse(viajeData);
+  try {
+    const id = localStorage.getItem("viajeId");
+    const viajeData = localStorage.getItem("viajeData");
 
-      const res = await fetch("/api/reservar", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          action: "cancelar",
-          id
-        })
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        const telefonoDriver = "17252876197";
-
-        const mensaje =
-          "❌ VIAJE CANCELADO\n\n" +
-          "👤 Cliente: " + nombre + "\n" +
-          "📞 Tel: " + telefono + "\n" +
-          "📍 Origen: " + origen + "\n" +
-          "🏁 Destino: " + destino + "\n" +
-          "💰 Precio: $" + Number(precio).toFixed(2) + "\n" +
-          "📏 Distancia: " + Number(distancia).toFixed(2) + " millas";
-
-        const url =
-          "https://wa.me/" +
-          telefonoDriver +
-          "?text=" +
-          encodeURIComponent(mensaje);
-
-        window.open(url, "_blank");
-
-        localStorage.removeItem("formData");
-        localStorage.removeItem("viajeId");
-        localStorage.removeItem("viajeData");
-
-        setTimeout(() => {
-  window.location.href = "/";
-}, 300);
-      }
-
-    } catch (error) {
-      console.error("Error cancelando:", error);
+    if (!id || !viajeData) {
+      alert("No se encontró información del viaje");
+      setCancelando(false);
+      return;
     }
-  };
+
+    const { nombre, telefono, origen, destino, precio, distancia } =
+      JSON.parse(viajeData);
+
+    // 🔥 1. CANCELAR EN SHEET
+    const res = await fetch("/api/reservar", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        action: "cancelar",
+        id
+      })
+    });
+
+    const data = await res.json();
+
+    if (!data.success) {
+      alert("Error cancelando");
+      setCancelando(false);
+      return;
+    }
+
+    // 🔥 2. WHATSAPP DRIVER
+    const telefonoDriver = "17252876197";
+
+    const mensaje =
+      "❌ VIAJE CANCELADO\n\n" +
+      "👤 Cliente: " + nombre + "\n" +
+      "📞 Tel: " + telefono + "\n" +
+      "📍 Origen: " + origen + "\n" +
+      "🏁 Destino: " + destino + "\n" +
+      "💰 Precio: $" + Number(precio).toFixed(2) + "\n" +
+      "📏 Distancia: " + Number(distancia).toFixed(2) + " millas";
+
+    window.open(
+      `https://wa.me/${telefonoDriver}?text=${encodeURIComponent(mensaje)}`,
+      "_blank"
+    );
+
+    // 🔥 3. LIMPIAR TRACKING
+    localStorage.removeItem("viajeId");
+    localStorage.removeItem("viajeData");
+
+    // 🔥 4. REDIRECCIÓN
+    setTimeout(() => {
+      window.location.href = "/";
+    }, 400);
+
+  } catch (error) {
+    console.error("Error cancelando:", error);
+  } finally {
+    setCancelando(false);
+  }
+};
 
   // 🔥 LEER ID (URL o localStorage)
 useEffect(() => {
@@ -311,11 +320,16 @@ useEffect(() => {
   const finalId = idFromUrl || idFromStorage;
 
   if (!finalId) {
-    console.warn("No hay viajeId");
-    return;
-  }
+  console.warn("No hay viajeId");
+  return;
+}
 
-  setViajeId(finalId);
+// 🔥 guardar SI viene por URL
+if (idFromUrl) {
+  localStorage.setItem("viajeId", idFromUrl);
+}
+
+setViajeId(finalId);
 }, []);
 
 // 🚀 CARGA INICIAL (cuando ya hay ID)
@@ -526,12 +540,17 @@ useEffect(() => {
   onMouseLeave={soltarBoton}
   style={{
     ...estiloBoton,
-    background: "red",
+    background: cancelando ? "#999" : "linear-gradient(145deg, #ff3b3b, #b30000)",
     color: "#fff",
-    marginTop: 20
+    marginTop: 20,
+    transform: cancelando ? "scale(0.95)" : "scale(1)",
+    boxShadow: cancelando
+      ? "0 2px 0 rgba(0,0,0,0.2)"
+      : "0 6px 0 rgba(0,0,0,0.3)",
+    transition: "all 0.15s ease"
   }}
 >
-  Cancel Ride
+  {cancelando ? "Canceling..." : "Cancel Ride"}
 </button>
         </div>
       </LoadScript>

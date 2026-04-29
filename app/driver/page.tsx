@@ -1,11 +1,11 @@
 "use client";
-
+import { LoadScript } from "@react-google-maps/api";
 import { useEffect, useState, useRef } from "react";
 
 export default function DriverPage() {
   const [viajes, setViajes] = useState<any[]>([]);
   const watchRef = useRef<number | null>(null);
-
+  const [etas, setEtas] = useState<any>({});
   const DRIVER_KEY = process.env.NEXT_PUBLIC_DRIVER_KEY;
 
   // 🔐 PROTECCIÓN
@@ -88,6 +88,61 @@ export default function DriverPage() {
     }, 5000);
   }
 };
+useEffect(() => {
+  const calcularTodos = async () => {
+    if (!navigator.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const driverPos = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude
+      };
+
+      const nuevosEtas: any = {};
+
+      for (const v of viajes) {
+        const id = v[0];
+
+        const origen = {
+          lat: parseFloat(v[5]),
+          lng: parseFloat(v[6])
+        };
+
+        const destino = {
+          lat: parseFloat(v[7]),
+          lng: parseFloat(v[8])
+        };
+
+        // 🚗 ETA al pickup
+        const etaPickup = await calcularETA(driverPos, origen);
+
+        // 🚗 ETA al destino (desde pickup)
+        const etaDestino = await calcularETA(origen, destino);
+
+        // ⏱️ TIEMPO PROGRAMADO
+        const fechaViaje = new Date(v[12]).getTime();
+        const ahora = Date.now();
+
+        const diferenciaMin = (fechaViaje - ahora) / 60000;
+
+        // 🔥 retraso (negativo si vas tarde)
+        const retraso = diferenciaMin - etaPickup;
+
+        nuevosEtas[id] = {
+          pickup: etaPickup,
+          destino: etaDestino,
+          retraso
+        };
+      }
+
+      setEtas(nuevosEtas);
+    });
+  };
+
+  if (viajes.length > 0) {
+    calcularTodos();
+  }
+}, [viajes]);
   useEffect(() => {
   obtenerViajes();
 
@@ -103,7 +158,7 @@ export default function DriverPage() {
   // 🚗 EN CAMINO
 const enCamino = async (v: any) => {
   const id = v[0];
-  const telefono = String(v[2]).replace(/\D/g, "");
+  const telefono = "1" + String(v[2]).replace(/\D/g, "");
   const origen = v[3];
 
   const lat = parseFloat(v[5]);
@@ -176,12 +231,14 @@ const enCamino = async (v: any) => {
 
   // 📲 WHATSAPP
   setTimeout(() => {
-    window.location.href =
-      "https://wa.me/1" + telefono +
+  window.open(
+    "https://wa.me/" + telefono +
       "?text=" + encodeURIComponent(
-        "🚗 Driver on the way\n\nTrack:\n" + trackingUrl
-      );
-  }, 1200);
+        "🚗 Driver on the way\n\n📡 Track:\n" + trackingUrl
+      ),
+    "_blank"
+  );
+}, 1200);
 
   alert("🚗 En camino activado");
 };
@@ -243,7 +300,39 @@ const enCamino = async (v: any) => {
     }
   };
 
-  return (
+  const calcularETA = (origen: any, destino: any): Promise<number> => {
+  return new Promise((resolve) => {
+    if (!window.google || !window.google.maps) return resolve(0);
+
+    const service = new window.google.maps.DirectionsService();
+
+    service.route(
+      {
+        origin: origen,
+        destination: destino,
+        travelMode: window.google.maps.TravelMode.DRIVING
+      },
+      (result, status) => {
+        if (status === "OK" && result) {
+          const leg = result.routes[0].legs[0];
+          const minutos = leg.duration?.value
+            ? leg.duration.value / 60
+            : 0;
+
+          resolve(minutos);
+        } else {
+          resolve(0);
+        }
+      }
+    );
+  });
+};
+return (
+  <LoadScript
+    googleMapsApiKey={
+      process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ""
+    }
+  >
     <div style={{ padding: 20 }}>
       <h1>Panel Driver</h1>
 
@@ -274,6 +363,23 @@ const enCamino = async (v: any) => {
             <p><b>Distancia:</b> {Number(v[9]).toFixed(2)} millas</p>
             <p><b>Precio:</b> ${Number(v[10]).toFixed(2)}</p>
 
+            {etas[v[0]] && (
+              <>
+                <p>⏱️ Pickup ETA: {etas[v[0]].pickup.toFixed(1)} min</p>
+                <p>🏁 Trip ETA: {etas[v[0]].destino.toFixed(1)} min</p>
+
+                <p
+                  style={{
+                    color: etas[v[0]].retraso < 0 ? "red" : "green"
+                  }}
+                >
+                  {etas[v[0]].retraso < 0
+                    ? `⚠️ Late by ${Math.abs(etas[v[0]].retraso).toFixed(1)} min`
+                    : `✔ On time (${etas[v[0]].retraso.toFixed(1)} min)`}
+                </p>
+              </>
+            )}
+
             <p><b>Estado:</b> {v[11]}</p>
 
             <div style={{ display: "flex", gap: 10 }}>
@@ -285,5 +391,6 @@ const enCamino = async (v: any) => {
         );
       })}
     </div>
-  );
+  </LoadScript>
+);
 }

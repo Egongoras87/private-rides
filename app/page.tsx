@@ -160,64 +160,27 @@ setPrecio(precioFinal);
  const reservar = async () => {
   if (!origenRef.current || !destinoRef.current) return;
 
-  // ✅ AQUÍ VA LA VALIDACIÓN
   if (!fechaHora) {
     setMensaje("⛔ Select date and time");
     return;
   }
-// 🔥 CONVERTIR A ISO
-const fechaISO = new Date(fechaHora).toISOString();
 
- 
-
+  const fechaISO = new Date(fechaHora).toISOString();
 
   const origen = origenRef.current.value;
   const destino = destinoRef.current.value;
 
   try {
+    // 🔥 1. GENERAR ID
     const id = Date.now();
+
+    // 🔥 2. GUARDAR LOCAL
     localStorage.setItem("viajeId", String(id));
 
-    const res = await fetch("/api/reservar", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-  id,
-  nombre,
-  telefono,
-  origen,
-  destino,
-  latOrigen,
-  lngOrigen,
-  latDestino,
-  lngDestino,
-  distancia,
-  precio,
-  fechaHora: fechaISO // 👈 AQUÍ EL CAMBIO
-})
-    });
-
-    const data = await res.json();
-    console.log("RESPUESTA BACKEND:", data);
-
-    // ❌ SI FALLA → SALIR
-    if (!data.success) {
-      setMensaje("❌ " + (data.message || "Not available"));
-      return;
-    }
-
-    // ✅ OK
-    setMensaje("✅ Ride booked");
-
-    // 🔥 guardar ID
-    localStorage.setItem("viajeId", id.toString());
-
-    // 🔥 guardar datos
     localStorage.setItem(
       "viajeData",
       JSON.stringify({
+        id,
         nombre,
         telefono,
         origen,
@@ -227,48 +190,53 @@ const fechaISO = new Date(fechaHora).toISOString();
       })
     );
 
-    // 📲 WhatsApp driver
+    // 🔥 3. CREAR TRACKING
+    const trackingUrl = `${window.location.origin}/tracking?id=${id}`;
+
+    // 🔥 4. WHATSAPP DRIVER (INMEDIATO)
     const mensajeWhatsApp =
-      "🚗 NUEVO VIAJE\n\n" +
-      "👤 Nombre: " + nombre + "\n" +
-      "📞 Tel: " + telefono + "\n" +
-      "📍 Origen: " + origen + "\n" +
-      "🏁 Destino: " + destino + "\n" +
-      "💰 Precio: $" + Number(precio).toFixed(2) + "\n" +
-      "📏 Distancia: " + Number(distancia).toFixed(2) + " millas";
+      "🚗 NEW RIDE\n\n" +
+      "👤 " + nombre + "\n" +
+      "📞 " + telefono + "\n" +
+      "📍 " + origen + "\n" +
+      "🏁 " + destino + "\n" +
+      "💰 $" + Number(precio).toFixed(2) + "\n\n" +
+      "📡 Track:\n" + trackingUrl;
 
-    const urlWhatsApp =
-      "https://wa.me/" +
-      telefonoDriver +
-      "?text=" +
-      encodeURIComponent(mensajeWhatsApp);
+    window.open(
+      `https://wa.me/${telefonoDriver}?text=${encodeURIComponent(mensajeWhatsApp)}`,
+      "_blank"
+    );
 
-    window.open(urlWhatsApp, "_blank");
+    // 🔥 5. REDIRECCIÓN INMEDIATA
+    window.location.href = `/tracking?id=${id}`;
 
-    // 💳 Mensaje pago
-    const mensajePago =
-      "💳 PAGO DEL VIAJE\n\n" +
-      "Monto: $" + Number(precio).toFixed(2) + "\n\n" +
-      "Zelle: 7252876197\n" +
-      "PayPal: ernestogongorasaco@gmail.com\n" +
-      "Venmo: https://venmo.com/code?user_id=4536118275999433880&created=1777321277";
-
-    const urlPagoWhatsApp =
-      "https://wa.me/" +
-      telefono +
-      "?text=" +
-      encodeURIComponent(mensajePago);
-
-    window.open(urlPagoWhatsApp, "_blank");
-
-    // 🚀 redirigir
-    setTimeout(() => {
-  window.location.href = "/tracking";
-  console.log("ID GUARDADO:", id);
-}, 1000);
+    // 🔥 6. BACKEND EN SEGUNDO PLANO (NO BLOQUEA)
+    fetch("/api/reservar", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        id,
+        nombre,
+        telefono,
+        origen,
+        destino,
+        latOrigen,
+        lngOrigen,
+        latDestino,
+        lngDestino,
+        distancia,
+        precio,
+        fechaHora: fechaISO
+      })
+    }).catch((err) => {
+      console.error("Error enviando a backend:", err);
+    });
 
   } catch (error) {
-    console.error("ERROR FETCH:", error);
+    console.error("ERROR:", error);
     setMensaje("❌ Error de conexión");
   }
 };
@@ -295,17 +263,18 @@ const fechaISO = new Date(fechaHora).toISOString();
   }
 };
 
-  // 🔁 actualización automática
-  useEffect(() => {
-    const interval = setInterval(() => {
-      obtenerDriver();
-    }, 5000);
+ // 🔁 actualización automática
+useEffect(() => {
+  const interval = setInterval(() => {
+    obtenerDriver();
+  }, 5000);
 
-    return () => clearInterval(interval);
-  }, []);
+  return () => clearInterval(interval);
+}, []);
 
-  // 🔁 GUARDAR DATOS AUTOMATICAMENTE Y CARGAR 
-  useEffect(() => {
+
+// 🔁 GUARDAR FORM DATA
+useEffect(() => {
   localStorage.setItem(
     "formData",
     JSON.stringify({
@@ -318,6 +287,8 @@ const fechaISO = new Date(fechaHora).toISOString();
   );
 }, [nombre, telefono, fechaHora]);
 
+
+// 🔁 CARGAR FORM DATA
 useEffect(() => {
   const saved = localStorage.getItem("formData");
 
@@ -333,6 +304,89 @@ useEffect(() => {
       if (destinoRef.current) destinoRef.current.value = data.destino || "";
     }, 300);
   }
+}, []);
+
+
+// 🔥 VALIDAR VIAJE (EL MÁS IMPORTANTE)
+useEffect(() => {
+
+  const limpiarStorage = () => {
+    localStorage.removeItem("viajeId");
+    localStorage.removeItem("viajeData");
+  };
+
+  const validarViaje = async () => {
+    const id = localStorage.getItem("viajeId");
+    if (!id) return;
+
+    try {
+      const res = await fetch(`/api/viajes?id=${id}`);
+      const viaje = await res.json();
+
+      // ❌ NO BORRAR SI FALLA RESPUESTA
+      if (!viaje || viaje.length < 12) {
+        console.warn("Viaje no encontrado, pero NO borrar aún");
+        return;
+      }
+
+      const estado = viaje[11];
+
+      // 🔥 VALIDAR EXPIRACIÓN
+      const fechaViaje = new Date(viaje[12]).getTime();
+      const ahora = Date.now();
+
+      const expirado = ahora > fechaViaje + 2 * 60 * 60 * 1000;
+
+      if (expirado) {
+        console.log("Viaje expirado");
+        limpiarStorage();
+        return;
+      }
+
+      // 🔥 SOLO ENTRA SI ACTIVO
+      if (estado === "Pendiente" || estado === "En camino") {
+        window.location.href = `/tracking?id=${id}`;
+      } else {
+        limpiarStorage();
+      }
+
+    } catch (error) {
+      console.error("Error validando viaje:", error);
+
+      // 🔥 NO BORRAR EN ERROR
+      const id = localStorage.getItem("viajeId");
+
+      if (id) {
+        window.location.href = `/tracking?id=${id}`;
+      }
+    }
+  };
+
+  validarViaje();
+
+}, []);
+
+
+// 🔁 DEBUG (opcional)
+useEffect(() => {
+  const id = localStorage.getItem("viajeId");
+
+  if (id) {
+    console.log("Viaje activo detectado:", id);
+  }
+}, []);
+
+
+// 🔁 LIMPIEZA FUTURA (placeholder)
+useEffect(() => {
+  const limpiarViejo = () => {
+    const id = localStorage.getItem("viajeId");
+    if (!id) return;
+
+    // puedes usarlo después si quieres TTL real
+  };
+
+  limpiarViejo();
 }, []);
 
 const darkMapStyle = [
@@ -595,10 +649,11 @@ onMouseLeave={soltarBoton}
 </p>
 </div>
 
-        {mensaje.includes("✅") && (
+        {false && mensaje.includes("✅") && (
   <div style={{ marginTop: 20 }}>
     <h3 style={{ marginBottom: 10 }}>💳 Métodos de pago</h3>
 
+    
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
       
       <button
@@ -692,6 +747,9 @@ onMouseLeave={soltarBoton}
     {directions && <DirectionsRenderer directions={directions} />}
     {miUbicacion && <Marker position={miUbicacion} />}
     {driverUbicacion && <Marker position={driverUbicacion} />}
+    <p style={{ color: "white" }}>
+  Version: {process.env.NEXT_PUBLIC_APP_VERSION}
+</p>
   </GoogleMap>
 </div>
 </LoadScript>
