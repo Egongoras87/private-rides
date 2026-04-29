@@ -1,98 +1,56 @@
 "use client";
-import { LoadScript } from "@react-google-maps/api";
+
 import { useEffect, useState, useRef } from "react";
+import { LoadScript } from "@react-google-maps/api";
+import { db } from "@/lib/firebase";
+import { ref, onValue, update } from "firebase/database";
+import { useJsApiLoader } from "@react-google-maps/api";
 
 export default function DriverPage() {
   const [viajes, setViajes] = useState<any[]>([]);
-  const watchRef = useRef<number | null>(null);
   const [etas, setEtas] = useState<any>({});
-  const DRIVER_KEY = process.env.NEXT_PUBLIC_DRIVER_KEY;
+  const watchRef = useRef<number | null>(null);
+  const lastPosRef = useRef<{ lat: number; lng: number } | null>(null);
+  const { isLoaded } = useJsApiLoader({
+  googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
+  libraries: ["places"]
+});
 
-  // 🔐 PROTECCIÓN
+  // 🔥 LEER VIAJES EN TIEMPO REAL
   useEffect(() => {
-    const key = sessionStorage.getItem("driver_key");
+    const viajesRef = ref(db, "viajes");
 
-    if (!key) {
-      const input = prompt("Driver access key:");
-      sessionStorage.setItem("driver_key", input || "");
-    }
+    const unsubscribe = onValue(viajesRef, (snapshot) => {
+      const data = snapshot.val();
+      if (!data) return setViajes([]);
 
-    if (sessionStorage.getItem("driver_key") !== DRIVER_KEY) {
-      alert("Access denied");
-      window.location.href = "/";
-    }
-  }, []);
+      const lista = Object.entries(data).map(([id, v]: any) => ({
+        id,
+        ...v
+      }));
 
-  // 🧠 FORMATEAR FECHA
-  const formatearFechaHora = (fecha: string) => {
-    if (!fecha) return { fecha: "", hora: "" };
+      const activos = lista.filter(
+        (v) => v.estado === "Pendiente" || v.estado === "En camino"
+      );
 
-    const d = new Date(fecha);
+      activos.sort((a, b) => b.fecha - a.fecha);
 
-    return {
-      fecha: d.toLocaleDateString("en-US"),
-      hora: d.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit"
-      })
-    };
-  };
-
-  // 📥 OBTENER VIAJES
-  const obtenerViajes = async () => {
-  try {
-    if (!navigator.onLine) {
-      console.warn("Sin conexión...");
-      return;
-    }
-
-    const res = await fetch("/api/viajes", {
-      cache: "no-store"
+      setViajes(activos);
     });
 
-    if (!res.ok) throw new Error("HTTP error");
+    return () => unsubscribe();
+  }, []);
 
-    const text = await res.text();
-
-    if (text.startsWith("<!DOCTYPE")) {
-      console.warn("HTML recibido, ignorando...");
-      return;
-    }
-
-    const data = JSON.parse(text);
-
-    if (!Array.isArray(data)) return;
-
-    const filas = data.slice(1);
-
-    const viajesActivos = filas.filter((v: any) =>
-      Array.isArray(v) &&
-      v.length > 11 &&
-      ["Pendiente", "En camino"].includes(v[11])
-    );
-
-    const viajesOrdenados = [...viajesActivos].sort(
-      (a, b) =>
-        new Date(b[12]).getTime() -
-        new Date(a[12]).getTime()
-    );
-
-    setViajes(viajesOrdenados);
-
-  } catch (error) {
-    console.error("⚠️ Error obteniendo viajes:", error);
-
-    // 🔁 reintento automático
-    setTimeout(() => {
-      obtenerViajes();
-    }, 5000);
-  }
-};
+  // 🔥 CALCULAR ETA
+  // 🔥 CALCULAR ETA COMPLETO
 useEffect(() => {
-  const calcularTodos = async () => {
-    if (!navigator.geolocation) return;
+  if (!isLoaded) return;
+  if (!navigator.geolocation) return;
+  if (!viajes || viajes.length === 0) return;
 
+  const calcularTodos = async () => {
     navigator.geolocation.getCurrentPosition(async (pos) => {
+
       const driverPos = {
         lat: pos.coords.latitude,
         lng: pos.coords.longitude
@@ -101,34 +59,39 @@ useEffect(() => {
       const nuevosEtas: any = {};
 
       for (const v of viajes) {
-        const id = v[0];
+
+        // 🔥 VALIDAR DATOS
+        if (
+          !v.origenLat ||
+          !v.origenLng ||
+          !v.destinoLat ||
+          !v.destinoLng
+        ) {
+          continue;
+        }
 
         const origen = {
-          lat: parseFloat(v[5]),
-          lng: parseFloat(v[6])
+          lat: Number(v.origenLat),
+          lng: Number(v.origenLng)
         };
 
         const destino = {
-          lat: parseFloat(v[7]),
-          lng: parseFloat(v[8])
+          lat: Number(v.destinoLat),
+          lng: Number(v.destinoLng)
         };
 
-        // 🚗 ETA al pickup
+        // 🔥 CALCULAR ETAs
         const etaPickup = await calcularETA(driverPos, origen);
-
-        // 🚗 ETA al destino (desde pickup)
         const etaDestino = await calcularETA(origen, destino);
 
-        // ⏱️ TIEMPO PROGRAMADO
-        const fechaViaje = new Date(v[12]).getTime();
+        // 🔥 CALCULAR DELAY
+        const fechaViaje = Number(v.fecha || Date.now());
         const ahora = Date.now();
 
         const diferenciaMin = (fechaViaje - ahora) / 60000;
-
-        // 🔥 retraso (negativo si vas tarde)
         const retraso = diferenciaMin - etaPickup;
 
-        nuevosEtas[id] = {
+        nuevosEtas[v.id] = {
           pickup: etaPickup,
           destino: etaDestino,
           retraso
@@ -139,207 +102,39 @@ useEffect(() => {
     });
   };
 
-  if (viajes.length > 0) {
-    calcularTodos();
-  }
-}, [viajes]);
-  useEffect(() => {
-  obtenerViajes();
+  calcularTodos();
 
-  const interval = setInterval(() => {
-    if (document.visibilityState === "visible") {
-      obtenerViajes();
+}, [viajes, isLoaded]);
+
+  const calcularETA = (o: any, d: any) =>
+  new Promise<number>((resolve) => {
+
+      if (
+      typeof window === "undefined" ||
+      !window.google ||
+      !window.google.maps
+    ) {
+      resolve(0);
+      return;
     }
-  }, 7000);
-
-  return () => clearInterval(interval);
-}, []);
-
-  // 🚗 EN CAMINO
-const enCamino = async (v: any) => {
-  const id = v[0];
-  const telefono = "1" + String(v[2]).replace(/\D/g, "");
-  const origen = v[3];
-
-  const lat = parseFloat(v[5]);
-  const lng = parseFloat(v[6]);
-
-  const trackingUrl = `${window.location.origin}/tracking?id=${id}`;
-
-  // 🚀 GPS INMEDIATO (CLAVE)
-  navigator.geolocation.getCurrentPosition(async (pos) => {
-    await fetch("/api/reservar", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        action: "updateDriver",
-        id,
-        driverLat: pos.coords.latitude,
-        driverLng: pos.coords.longitude
-      })
-    });
-  });
-
-  // 🔁 GPS CONTINUO
-  if (watchRef.current !== null) {
-    navigator.geolocation.clearWatch(watchRef.current);
-  }
-
-  watchRef.current = navigator.geolocation.watchPosition(
-  async (pos) => {
-    await fetch("/api/reservar", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        action: "updateDriver",
-        id,
-        driverLat: pos.coords.latitude,
-        driverLng: pos.coords.longitude
-      })
-    });
-  },
-  (err) => {
-    console.error("GPS error:", err);
-  },
-  {
-    enableHighAccuracy: true,
-    maximumAge: 0,
-    timeout: 5000,
-   
-  }
-);
-setInterval(() => {
-  navigator.geolocation.getCurrentPosition(async (pos) => {
-    await fetch("/api/reservar", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        action: "updateDriver",
-        id,
-        driverLat: pos.coords.latitude,
-        driverLng: pos.coords.longitude
-      })
-    });
-  });
-}, 2000);
-
-  // 🔄 ESTADO
-  const resEstado = await fetch("/api/reservar", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      action: "enCamino",
-      id
-    })
-  });
-
-  const dataEstado = await resEstado.json();
-  if (!dataEstado.success) {
-    console.error("Error estado");
-  }
-
-  // 🗺️ MAPA
-  if (!isNaN(lat) && !isNaN(lng)) {
-    window.open(
-      `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`,
-      "_blank"
-    );
-  }
-
-  // 📲 WHATSAPP
-  setTimeout(() => {
-  window.open(
-    "https://wa.me/" + telefono +
-      "?text=" + encodeURIComponent(
-        "🚗 Driver on the way\n\n📡 Track:\n" + trackingUrl
-      ),
-    "_blank"
-  );
-}, 1200);
-
-  alert("🚗 En camino activado");
-};
-
-  // ✅ FINALIZAR
-  const finalizar = async (id: number) => {
-    try {
-      await fetch("/api/reservar", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          action: "finalizar",
-          id
-        })
-      });
-
-      alert("✅ Viaje finalizado");
-
-    } catch (error) {
-      console.error("Error finalizar:", error);
-    }
-  };
-
-  // ❌ CANCELAR
-  const cancelar = async (v: any) => {
-    const id = v[0];
-    const nombre = v[1];
-    const telefono = String(v[2]).replace(/\D/g, "");
-
-    try {
-      await fetch("/api/reservar", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          action: "cancelar",
-          id
-        })
-      });
-
-      const mensaje =
-        "❌ VIAJE CANCELADO\n\n" +
-        "👤 Cliente: " + nombre + "\n" +
-        "El conductor canceló el viaje.";
-
-      window.open(
-        "https://wa.me/1" + telefono +
-          "?text=" + encodeURIComponent(mensaje),
-        "_blank"
-      );
-
-      alert("❌ Viaje cancelado");
-
-    } catch (error) {
-      console.error("Error cancelar:", error);
-    }
-  };
-
-  const calcularETA = (origen: any, destino: any): Promise<number> => {
-  return new Promise((resolve) => {
-    if (!window.google || !window.google.maps) return resolve(0);
 
     const service = new window.google.maps.DirectionsService();
 
     service.route(
       {
-        origin: origen,
-        destination: destino,
+        origin: o,
+        destination: d,
         travelMode: window.google.maps.TravelMode.DRIVING
       },
-      (result, status) => {
-        if (status === "OK" && result) {
-          const leg = result.routes[0].legs[0];
+      (res, status) => {
+        if (
+          status === "OK" &&
+          res &&
+          res.routes.length > 0 &&
+          res.routes[0].legs.length > 0
+        ) {
+          const leg = res.routes[0].legs[0];
+
           const minutos = leg.duration?.value
             ? leg.duration.value / 60
             : 0;
@@ -351,71 +146,141 @@ setInterval(() => {
       }
     );
   });
-};
-return (
-  <LoadScript
-    googleMapsApiKey={
-      process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ""
+
+  // 🔥 TRACKING
+  const iniciarTracking = (v: any) => {
+    navigator.geolocation.getCurrentPosition((pos) => {
+      enviarGPS(pos.coords.latitude, pos.coords.longitude, v);
+    });
+
+    if (watchRef.current) {
+      navigator.geolocation.clearWatch(watchRef.current);
     }
-  >
-    <div style={{ padding: 20 }}>
-      <h1>Panel Driver</h1>
 
-      {viajes.length === 0 && <p>No hay viajes</p>}
+    watchRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
 
-      {viajes.map((v, i) => {
-        const fh = formatearFechaHora(v[12]);
+        if (
+          lastPosRef.current &&
+          lastPosRef.current.lat === lat &&
+          lastPosRef.current.lng === lng
+        )
+          return;
 
-        return (
-          <div
-            key={i}
-            style={{
-              border: "1px solid #ccc",
-              marginBottom: 10,
-              padding: 10,
-              borderRadius: 10
-            }}
-          >
-            <p><b>ID:</b> {v[0]}</p>
-            <p><b>Nombre:</b> {v[1]}</p>
-            <p><b>Tel:</b> {v[2]}</p>
-            <p><b>Origen:</b> {v[3]}</p>
-            <p><b>Destino:</b> {v[4]}</p>
+        lastPosRef.current = { lat, lng };
 
-            <p><b>Date:</b> {fh.fecha}</p>
-            <p><b>Time:</b> {fh.hora}</p>
+        enviarGPS(lat, lng, v);
+      }
+    );
+  };
 
-            <p><b>Distancia:</b> {Number(v[9]).toFixed(2)} millas</p>
-            <p><b>Precio:</b> ${Number(v[10]).toFixed(2)}</p>
+  const enviarGPS = (lat: number, lng: number, v: any) => {
+    update(ref(db, "viajes/" + v.id), {
+      driverLat: lat,
+      driverLng: lng,
+      timestamp: Date.now()
+    });
+  };
 
-            {etas[v[0]] && (
+  // 🚗 EN CAMINO
+  const enCamino = async (v: any) => {
+    await update(ref(db, "viajes/" + v.id), {
+      estado: "En camino"
+    });
+
+    iniciarTracking(v);
+
+    const telefono = "1" + v.telefono;
+    const url = `${window.location.origin}/tracking?id=${v.id}`;
+
+    window.open(
+      `https://wa.me/${telefono}?text=${encodeURIComponent(
+        "🚗 Voy en camino\n\n📡 Tracking:\n" + url
+      )}`
+    );
+  };
+
+  // ✅ FINALIZAR
+  const finalizar = async (id: string) => {
+    await update(ref(db, "viajes/" + id), {
+      estado: "Finalizado"
+    });
+
+    if (watchRef.current) {
+      navigator.geolocation.clearWatch(watchRef.current);
+    }
+  };
+
+  // ❌ CANCELAR
+  const cancelar = async (v: any) => {
+    await update(ref(db, "viajes/" + v.id), {
+      estado: "Cancelado"
+    });
+
+    const telefono = "1" + v.telefono;
+
+    window.open(
+      `https://wa.me/${telefono}?text=${encodeURIComponent(
+        "❌ Tu viaje ha sido cancelado"
+      )}`
+    );
+  };
+
+  const btn = (bg: string) => ({
+    padding: "10px 15px",
+    borderRadius: 10,
+    border: "none",
+    cursor: "pointer",
+    background: bg,
+    color: "#fff",
+    boxShadow: "0 4px 0 rgba(0,0,0,0.2)",
+    transition: "all 0.15s"
+  });
+
+  return (
+    <LoadScript googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!}>
+      <div style={{ padding: 20 }}>
+        <h2>🚗 Driver Panel</h2>
+
+        {viajes.map((v) => (
+          <div key={v.id} style={{
+            border: "1px solid #ddd",
+            padding: 15,
+            marginBottom: 10,
+            borderRadius: 12
+          }}>
+            <p><b>ID:</b> {v.id}</p>
+            <p><b>Cliente:</b> {v.nombre}</p>
+            <p><b>Tel:</b> {v.telefono}</p>
+            <p><b>Origen:</b> {v.origen}</p>
+            <p><b>Destino:</b> {v.destino}</p>
+            <p><b>Precio:</b> ${v.precio}</p>
+            <p><b>Distancia:</b> {v.distancia} mi</p>
+
+            {etas[v.id] && (
               <>
-                <p>⏱️ Pickup ETA: {etas[v[0]].pickup.toFixed(1)} min</p>
-                <p>🏁 Trip ETA: {etas[v[0]].destino.toFixed(1)} min</p>
-
-                <p
-                  style={{
-                    color: etas[v[0]].retraso < 0 ? "red" : "green"
-                  }}
-                >
-                  {etas[v[0]].retraso < 0
-                    ? `⚠️ Late by ${Math.abs(etas[v[0]].retraso).toFixed(1)} min`
-                    : `✔ On time (${etas[v[0]].retraso.toFixed(1)} min)`}
+                <p>⏱ Pickup: {etas[v.id].pickup.toFixed(1)} min</p>
+                <p>🏁 Viaje: {etas[v.id].destino.toFixed(1)} min</p>
+                <p>
+                  {etas[v.id].retraso < 0
+                    ? "⚠️ Retrasado"
+                    : "✔ A tiempo"}
                 </p>
               </>
             )}
 
-            <p><b>Estado:</b> {v[11]}</p>
+            <p><b>Estado:</b> {v.estado}</p>
 
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => enCamino(v)}>🚗 En camino</button>
-              <button onClick={() => finalizar(v[0])}>✅ Finalizar</button>
-              <button onClick={() => cancelar(v)}>❌ Cancelar</button>
+              <button style={btn("#28a745")} onClick={() => enCamino(v)}>🚗 En camino</button>
+              <button style={btn("#007bff")} onClick={() => finalizar(v.id)}>✅ Finalizar</button>
+              <button style={btn("#dc3545")} onClick={() => cancelar(v)}>❌ Cancelar</button>
             </div>
           </div>
-        );
-      })}
-    </div>
-  </LoadScript>
-);
+        ))}
+      </div>
+    </LoadScript>
+  );
 }

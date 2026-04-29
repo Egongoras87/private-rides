@@ -1,19 +1,28 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { db } from "@/lib/firebase";
+import { ref, set, onValue } from "firebase/database";
+import { update } from "firebase/database";
 import {
   GoogleMap,
-  LoadScript,
   DirectionsRenderer,
   Autocomplete,
-  Marker
+  Marker,
+  useJsApiLoader
 } from "@react-google-maps/api";
+const LIBRARIES: ("places")[] = ["places"];
 
 export default function Home() {
   const [directions, setDirections] =
     useState<google.maps.DirectionsResult | null>(null);
-
+const { isLoaded } = useJsApiLoader({
+  googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
+  libraries: LIBRARIES
+});
   const [distancia, setDistancia] = useState<number>(0);
+  const origenAutoRef = useRef<any>(null);
+  const destinoAutoRef = useRef<any>(null);
   const [precio, setPrecio] = useState<number>(0);
   const [mensaje, setMensaje] = useState<string>("");
 const [latDestino, setLatDestino] = useState(0);
@@ -59,71 +68,71 @@ const soltarBoton = (e: any) => {
 
   // 📍 Calcular ruta
   const calcularRuta = () => {
-    if (!origenRef.current || !destinoRef.current) return;
+  if (!origenRef.current || !destinoRef.current) return;
 
-    const origen = origenRef.current.value;
-    const destino = destinoRef.current.value;
+  const origen = origenRef.current.value;
+  const destino = destinoRef.current.value;
 
-    if (!origen || !destino) {
-      alert("Completa origen y destino");
-      return;
-    }
+  if (!origen || !destino) {
+    alert("Completa origen y destino");
+    return;
+  }
 
-    if (!window.google) {
-      alert("Google Maps no cargó");
-      return;
-    }
+  if (!window.google?.maps) {
+    console.warn("Google aún no está listo");
+    return;
+  }
 
-    const service = new window.google.maps.DirectionsService();
+  const service = new window.google.maps.DirectionsService();
 
-    service.route(
-      {
-        origin: origen,
-        destination: destino,
-        travelMode: window.google.maps.TravelMode.DRIVING
-      },
-      (result, status) => {
-        if (status === "OK" && result) {
-          setDirections(result);
-          const leg = result.routes[0].legs[0];
-          const latOrigen = leg.start_location.lat();
-const lngOrigen = leg.start_location.lng();
-
-setLatOrigen(latOrigen);
-setLngOrigen(lngOrigen);
-
-const latDestino = leg.end_location.lat();
-const lngDestino = leg.end_location.lng();
-
-setLatDestino(latDestino);
-setLngDestino(lngDestino);
-
-          // 🔥 MILLAS
-          const distanciaMillas =
-            result.routes[0].legs[0].distance?.value
-              ? result.routes[0].legs[0].distance.value / 1609
-              : 0;
-
-          setDistancia(distanciaMillas);
-          const duracionMin =
-  result.routes[0].legs[0].duration?.value
-    ? result.routes[0].legs[0].duration.value / 60
-    : 0;
-
-const precioCalculado =
-  BASE_FARE +
-  distanciaMillas * PRICE_PER_MILE +
-  duracionMin * PRICE_PER_MIN;
-
-// 🔥 aplicar mínimo
-const precioFinal = Math.max(precioCalculado, MIN_FARE);
-
-setPrecio(precioFinal);
-        }
+  service.route(
+    {
+      origin: origen,
+      destination: destino,
+      travelMode: window.google.maps.TravelMode.DRIVING
+    },
+    (result, status) => {
+      if (status !== "OK" || !result) {
+        console.error("❌ Directions error:", status);
+        alert("Error calculando ruta: " + status);
+        return;
       }
-    );
-  };
 
+      setDirections(result);
+
+      const leg = result.routes[0].legs[0];
+
+      const latOrigen = leg.start_location.lat();
+      const lngOrigen = leg.start_location.lng();
+
+      const latDestino = leg.end_location.lat();
+      const lngDestino = leg.end_location.lng();
+
+      setLatOrigen(latOrigen);
+      setLngOrigen(lngOrigen);
+      setLatDestino(latDestino);
+      setLngDestino(lngDestino);
+
+      const distanciaMillas = leg.distance?.value
+        ? leg.distance.value / 1609
+        : 0;
+
+      const duracionMin = leg.duration?.value
+        ? leg.duration.value / 60
+        : 0;
+
+      const precioCalculado =
+        BASE_FARE +
+        distanciaMillas * PRICE_PER_MILE +
+        duracionMin * PRICE_PER_MIN;
+
+      const precioFinal = Math.max(precioCalculado, MIN_FARE);
+
+      setDistancia(distanciaMillas);
+      setPrecio(precioFinal);
+    }
+  );
+};
 
   // 📍 Obtener ubicación real + dirección
   const obtenerUbicacion = () => {
@@ -138,7 +147,7 @@ setPrecio(precioFinal);
 
       setMiUbicacion({ lat, lng });
 
-      if (!window.google) return;
+      if (!window.google?.maps) return;
 
       const geocoder = new window.google.maps.Geocoder();
 
@@ -165,17 +174,40 @@ setPrecio(precioFinal);
     return;
   }
 
-  const fechaISO = new Date(fechaHora).toISOString();
+  const fechaISO = new Date(fechaHora).getTime();
 
   const origen = origenRef.current.value;
   const destino = destinoRef.current.value;
 
   try {
-    // 🔥 1. GENERAR ID
-    const id = Date.now();
+    const id = Date.now().toString();
 
-    // 🔥 2. GUARDAR LOCAL
-    localStorage.setItem("viajeId", String(id));
+    // 🔥 GUARDAR EN FIREBASE
+    await set(ref(db, "viajes/" + id), {
+      id,
+      nombre,
+      telefono,
+      origen,
+      destino,
+      origenLat: latOrigen,
+      origenLng: lngOrigen,
+      destinoLat: latDestino,
+      destinoLng: lngDestino,
+      distancia,
+      precio,
+      fecha: fechaISO,
+      estado: "Pendiente",
+      driverLat: null,
+      driverLng: null,
+      timestamp: Date.now()
+    });
+    if (!latOrigen || !latDestino) {
+  alert("Primero calcula la ruta");
+  return;
+}
+
+    // 🔥 LOCAL STORAGE (NO TOCAR)
+    localStorage.setItem("viajeId", id);
 
     localStorage.setItem(
       "viajeData",
@@ -185,22 +217,20 @@ setPrecio(precioFinal);
         telefono,
         origen,
         destino,
-        precio: Number(precio),
-        distancia: Number(distancia)
+        precio,
+        distancia
       })
     );
 
-    // 🔥 3. CREAR TRACKING
     const trackingUrl = `${window.location.origin}/tracking?id=${id}`;
 
-    // 🔥 4. WHATSAPP DRIVER (INMEDIATO)
     const mensajeWhatsApp =
       "🚗 NEW RIDE\n\n" +
       "👤 " + nombre + "\n" +
       "📞 " + telefono + "\n" +
       "📍 " + origen + "\n" +
       "🏁 " + destino + "\n" +
-      "💰 $" + Number(precio).toFixed(2) + "\n\n" +
+      "💰 $" + precio.toFixed(2) + "\n\n" +
       "📡 Track:\n" + trackingUrl;
 
     window.open(
@@ -208,32 +238,7 @@ setPrecio(precioFinal);
       "_blank"
     );
 
-    // 🔥 5. REDIRECCIÓN INMEDIATA
     window.location.href = `/tracking?id=${id}`;
-
-    // 🔥 6. BACKEND EN SEGUNDO PLANO (NO BLOQUEA)
-    fetch("/api/reservar", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        id,
-        nombre,
-        telefono,
-        origen,
-        destino,
-        latOrigen,
-        lngOrigen,
-        latDestino,
-        lngDestino,
-        distancia,
-        precio,
-        fechaHora: fechaISO
-      })
-    }).catch((err) => {
-      console.error("Error enviando a backend:", err);
-    });
 
   } catch (error) {
     console.error("ERROR:", error);
@@ -241,36 +246,34 @@ setPrecio(precioFinal);
   }
 };
   // 📡 Leer ubicación del driver (simulación)
-  const obtenerDriver = async () => {
-  try {
-    const res = await fetch("/api/viajes");
+  useEffect(() => {
+  const id = localStorage.getItem("viajeId");
+  if (!id) return;
 
-    const data = await res.json();
+  const viajeRef = ref(db, "viajes/" + id);
 
-    if (!Array.isArray(data) || data.length < 2) return;
+  const unsubscribe = onValue(viajeRef, (snapshot) => {
+  const data = snapshot.val();
 
-    const viaje = data[data.length - 1];
+  if (!data) return;
 
-    const lat = parseFloat(viaje[13]);
-    const lng = parseFloat(viaje[14]);
+  const lat = Number(data.driverLat);
+  const lng = Number(data.driverLng);
 
-    if (!isNaN(lat) && !isNaN(lng)) {
-      setDriverUbicacion({ lat, lng });
-    }
-
-  } catch (error) {
-    console.error("ERROR OBTENER DRIVER:", error);
+  // 🔥 AQUÍ VA LA VALIDACIÓN
+  if (!data.driverLat || !data.driverLng) {
+    setDriverUbicacion(null);
+    return;
   }
-};
 
- // 🔁 actualización automática
-useEffect(() => {
-  const interval = setInterval(() => {
-    obtenerDriver();
-  }, 5000);
+  if (!isNaN(lat) && !isNaN(lng)) {
+    setDriverUbicacion({ lat, lng });
+  }
+});
 
-  return () => clearInterval(interval);
+  return () => unsubscribe();
 }, []);
+
 
 
 // 🔁 GUARDAR FORM DATA
@@ -305,68 +308,33 @@ useEffect(() => {
     }, 300);
   }
 }, []);
-
-
-// 🔥 VALIDAR VIAJE (EL MÁS IMPORTANTE)
 useEffect(() => {
+  const id = localStorage.getItem("viajeId");
+  if (!id) return;
 
-  const limpiarStorage = () => {
-    localStorage.removeItem("viajeId");
-    localStorage.removeItem("viajeData");
-  };
+  const viajeRef = ref(db, "viajes/" + id);
 
-  const validarViaje = async () => {
-    const id = localStorage.getItem("viajeId");
-    if (!id) return;
+  const unsubscribe = onValue(viajeRef, (snapshot) => {
+    const data = snapshot.val();
 
-    try {
-      const res = await fetch(`/api/viajes?id=${id}`);
-      const viaje = await res.json();
-
-      // ❌ NO BORRAR SI FALLA RESPUESTA
-      if (!viaje || viaje.length < 12) {
-        console.warn("Viaje no encontrado, pero NO borrar aún");
-        return;
-      }
-
-      const estado = viaje[11];
-
-      // 🔥 VALIDAR EXPIRACIÓN
-      const fechaViaje = new Date(viaje[12]).getTime();
-      const ahora = Date.now();
-
-      const expirado = ahora > fechaViaje + 2 * 60 * 60 * 1000;
-
-      if (expirado) {
-        console.log("Viaje expirado");
-        limpiarStorage();
-        return;
-      }
-
-      // 🔥 SOLO ENTRA SI ACTIVO
-      if (estado === "Pendiente" || estado === "En camino") {
-        window.location.href = `/tracking?id=${id}`;
-      } else {
-        limpiarStorage();
-      }
-
-    } catch (error) {
-      console.error("Error validando viaje:", error);
-
-      // 🔥 NO BORRAR EN ERROR
-      const id = localStorage.getItem("viajeId");
-
-      if (id) {
-        window.location.href = `/tracking?id=${id}`;
-      }
+    if (!data) {
+      localStorage.removeItem("viajeId");
+      return;
     }
-  };
 
-  validarViaje();
+    const estado = data.estado;
 
+    if (estado === "Pendiente" || estado === "En camino") {
+      window.location.href = `/tracking?id=${id}`;
+    } else {
+      localStorage.removeItem("viajeId");
+      localStorage.removeItem("viajeData");
+    }
+  });
+
+  return () => unsubscribe();
 }, []);
-
-
+      
 // 🔁 DEBUG (opcional)
 useEffect(() => {
   const id = localStorage.getItem("viajeId");
@@ -447,6 +415,9 @@ const darkMapStyle = [
 ];
 
 const lightMapStyle = [];
+if (!isLoaded) {
+  return <div style={{ padding: 20 }}>Cargando mapa...</div>;
+}
 ////////////////////////////////RETURN////////////////////////////////
   return (
   <>
@@ -481,12 +452,7 @@ const lightMapStyle = [];
   
       <h1 style={{ color: "#b19e36" }}>App Private Rides</h1>
 
-      <LoadScript
-        googleMapsApiKey={
-          process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ""
-        }
-        libraries={["places"]}
-      >
+     
         {/* 👤 DATOS USUARIO */}
        <input
   placeholder="Name"
@@ -536,21 +502,30 @@ const lightMapStyle = [];
 
         {/* 📍 ORIGEN */}
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-  <Autocomplete>
-    <input
-  ref={origenRef}
-  placeholder="Pickup location"
-  style={{
-    width: "100%",
-    padding: 14,
-    background: "transparent",
-    borderRadius: 10,
-    border: "1px solid #ccc",
-    fontSize: 16,
-    color: "#fff" // 👈 AQUÍ
+  <Autocomplete
+  onLoad={(ref) => (origenAutoRef.current = ref)}
+  onPlaceChanged={() => {
+    const place = origenAutoRef.current.getPlace();
+    if (!place.geometry) return;
+
+    setLatOrigen(place.geometry.location.lat());
+    setLngOrigen(place.geometry.location.lng());
   }}
-/>
-  </Autocomplete>
+>
+  <input
+    ref={origenRef}
+    placeholder="Pickup location"
+    style={{
+      width: "100%",
+      padding: 14,
+      borderRadius: 10,
+      border: "1px solid #ccc",
+      background: "transparent",
+      color: "#fff"
+    }}
+  />
+</Autocomplete>
+
 
   <button
   onClick={obtenerUbicacion}
@@ -587,22 +562,30 @@ const lightMapStyle = [];
         
 
         {/* 📍 DESTINO */}
-        <Autocomplete>
-         <input
-  ref={destinoRef}
-  placeholder="Drop-off location"
-  style={{
-    width: "100%",
-    padding: 14,
-    background: "transparent",
-    borderRadius: 10,
-    border: "1px solid #ccc",
-    fontSize: 16,
-    marginTop: 8,
-    color: "#fff" // 👈 AQUÍ
+       <Autocomplete
+  onLoad={(ref) => (destinoAutoRef.current = ref)}
+  onPlaceChanged={() => {
+    const place = destinoAutoRef.current.getPlace();
+    if (!place.geometry) return;
+
+    setLatDestino(place.geometry.location.lat());
+    setLngDestino(place.geometry.location.lng());
   }}
-/>
-        </Autocomplete>
+>
+  <input
+    ref={destinoRef}
+    placeholder="Drop-off location"
+    style={{
+      width: "100%",
+      padding: 14,
+      borderRadius: 10,
+      border: "1px solid #ccc",
+      background: "transparent",
+      marginTop: 8,
+      color: "#fff"
+    }}
+  />
+</Autocomplete>
 
         
 
@@ -733,24 +716,26 @@ onMouseLeave={soltarBoton}
     boxShadow: "0 10px 30px rgba(0,0,0,0.5)"
   }}
 >
+  {isLoaded && (
   <GoogleMap
-  mapContainerStyle={{
-    width: "100%",
-    height: "50vh"
-  }}
-  center={miUbicacion || { lat: 36.1699, lng: -115.1398 }}
-  zoom={14}
-   options={{
-    styles: modoOscuroMapa ? darkMapStyle : []
-  }}
->
+    mapContainerStyle={{
+      width: "100%",
+      height: "50vh"
+    }}
+    center={miUbicacion || { lat: 36.1699, lng: -115.1398 }}
+    zoom={14}
+    options={{
+      styles: modoOscuroMapa ? darkMapStyle : []
+    }}
+  >
     {directions && <DirectionsRenderer directions={directions} />}
-    {miUbicacion && <Marker position={miUbicacion} />}
-    {driverUbicacion && <Marker position={driverUbicacion} />}
-    
-  </GoogleMap>
+{isLoaded && miUbicacion && <Marker position={miUbicacion} />}
+{isLoaded && driverUbicacion && <Marker position={driverUbicacion} />}
+   
+    </GoogleMap>
+)}
 </div>
-</LoadScript>
+
 </div>
     </>
   );
