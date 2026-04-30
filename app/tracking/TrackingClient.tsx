@@ -1,5 +1,6 @@
 "use client";
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 import { useEffect, useRef, useState } from "react";
 import { GoogleMap, Marker, DirectionsRenderer } from "@react-google-maps/api";
@@ -9,7 +10,7 @@ import { useJsApiLoader } from "@react-google-maps/api";
 import { googleMapsConfig } from "@/lib/googleMaps";
 
 export default function TrackingPage() {
-
+  
   // 🔹 TODOS LOS STATES PRIMERO
   const [pos, setPos] = useState<any>(null);
   const [ruta, setRuta] = useState<any>(null);
@@ -24,6 +25,10 @@ const [destino, setDestino] = useState<any>(null);
 const [viajeFinalizado, setViajeFinalizado] = useState(false);
 const destinoRef = useRef<any>(null);
 const pickupRef = useRef<any>(null);
+  const lastGpsRef = useRef<any>(null);   // 📡 GPS
+const lastMapRef = useRef<any>(null);   // 🗺️ cámara
+  const animRef = useRef<any>(null);
+const lastPanRef = useRef(0);
 
   // 🔹 REFS
   const mapRef = useRef<any>(null);
@@ -110,7 +115,7 @@ if (mapRef.current) {
       nueva.lng - lastPos.current.lng
     );
 
-    if (distMove > 0.001) {
+    if (distMove > 0.00005) {
       mapRef.current.panTo(nueva);
     }
   }
@@ -127,8 +132,8 @@ setPos((prev: any) => {
   setHeading(angulo);
 
   return {
-    lat: prev.lat + (nueva.lat - prev.lat) * 0.7,
-    lng: prev.lng + (nueva.lng - prev.lng) * 0.7
+    lat: prev.lat + (nueva.lat - prev.lat) * 0.15,
+    lng: prev.lng + (nueva.lng - prev.lng) * 0.15
   };
 });
 
@@ -136,32 +141,40 @@ setPos((prev: any) => {
 // 🔥 3. GUARDAR ÚLTIMA POSICIÓN
 lastPos.current = nueva;
 
-      // 🧠 CONTROL DE RUTA
-      const now = Date.now();
+// 🧠 CONTROL DE RUTA
+const now = Date.now();
 
-      if (now - lastRoute.current > 10000) {
+if (!lastRoute.current || now - lastRoute.current > 3000) {
 
-       const origen = {
-  lat: Number(d.origenLat),
-  lng: Number(d.origenLng)
-};
+  if (!d.origenLat || !d.origenLng || !d.destinoLat || !d.destinoLng) {
+    console.log("❌ Datos incompletos", d);
+    return;
+  }
 
-const destino = {
-  lat: Number(d.destinoLat),
-  lng: Number(d.destinoLng)
-};
+  if (!isLoaded || !window.google?.maps?.DirectionsService) return;
 
-        if (window?.google?.maps?.DirectionsService) {
   const service = new window.google.maps.DirectionsService();
 
-  // 🔥 DISTANCIA DRIVER → ORIGEN
+  const origen = {
+    lat: Number(d.origenLat),
+    lng: Number(d.origenLng)
+  };
+
+  const destino = {
+    lat: Number(d.destinoLat),
+    lng: Number(d.destinoLng)
+  };
+
   const distPickup = Math.hypot(
     nueva.lat - origen.lat,
     nueva.lng - origen.lng
   );
 
-  // 🚗 FASE 1: IR A RECOGER
-  if (distPickup > 0.02) {
+  console.log("DIST:", distPickup);
+
+  // 🚗 PICKUP
+  if (distPickup > 0.002) {
+
     setFase("pickup");
 
     service.route(
@@ -171,14 +184,21 @@ const destino = {
         travelMode: window.google.maps.TravelMode.DRIVING
       },
       (res: any, status: any) => {
+
+        console.log("PICKUP STATUS:", status);
+
         if (status === "OK") {
           setRuta(res);
+
+          const segundos = res.routes[0].legs[0].duration.value;
+          setEta(segundos);
         }
       }
     );
 
   } else {
-    // 🚀 FASE 2: VIAJE REAL
+
+    // 🚀 VIAJE
     setFase("viaje");
 
     service.route(
@@ -188,22 +208,23 @@ const destino = {
         travelMode: window.google.maps.TravelMode.DRIVING
       },
       (res: any, status: any) => {
+
+        console.log("VIAJE STATUS:", status);
+
         if (status === "OK") {
           setRuta(res);
 
           const segundos = res.routes[0].legs[0].duration.value;
           setEta(segundos);
-          setTiempo(Math.round(segundos / 60) + " min");
         }
       }
     );
   }
-}
 
-        lastRoute.current = now;
-      }
-    });
-  }, []);
+  lastRoute.current = now;
+}
+});
+}, []);
 
   // ❌ CANCELAR
   const cancelar = async () => {
@@ -306,14 +327,26 @@ if (viajeFinalizado) {
       zoom={16}
     >
 
-      {ruta && <DirectionsRenderer directions={ruta} />}
+      {ruta && (
+  <DirectionsRenderer
+  directions={ruta}
+ options={{
+  preserveViewport: true,
+  suppressMarkers: false
+}}
+/>
+)}
 
       {destino && (
         <Marker
           position={destino}
           icon={{
-            url: "https://maps.google.com/mapfiles/ms/icons/red-dot.png"
-          }}
+  url: "https://maps.google.com/mapfiles/ms/icons/red-dot.png",
+  scaledSize:
+    isLoaded && window.google
+      ? new window.google.maps.Size(35, 35)
+      : undefined
+}}
         />
       )}
 
@@ -321,9 +354,12 @@ if (viajeFinalizado) {
        <Marker
   position={pos}
   icon={{
-    url: "https://maps.google.com/mapfiles/kml/shapes/cabs.png",
-    scaledSize: new window.google.maps.Size(50, 50)
-  }}
+  url: "https://cdn-icons-png.flaticon.com/512/744/744465.png",
+  scaledSize:
+    isLoaded && window.google
+      ? new window.google.maps.Size(35, 35)
+      : undefined
+}}
 />
       )}
 
