@@ -13,6 +13,7 @@ export default function DriverPage() {
   const watchRef = useRef<number | null>(null);
   const lastPosRef = useRef<{ lat: number; lng: number } | null>(null);
  const { isLoaded } = useJsApiLoader(googleMapsConfig);
+ const llegoPickupRef = useRef(false);
 
 
 
@@ -151,23 +152,43 @@ useEffect(() => {
     }
 
     watchRef.current = navigator.geolocation.watchPosition(
-      (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
+  (pos) => {
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
 
-        if (
-          lastPosRef.current &&
-          lastPosRef.current.lat === lat &&
-          lastPosRef.current.lng === lng
-        )
-          return;
+    if (
+      lastPosRef.current &&
+      lastPosRef.current.lat === lat &&
+      lastPosRef.current.lng === lng
+    )
+      return;
 
-        lastPosRef.current = { lat, lng };
+    lastPosRef.current = { lat, lng };
 
-        enviarGPS(lat, lng, v);
+    enviarGPS(lat, lng, v);
+
+    // 🚀 DETECTAR LLEGADA AL PICKUP
+    if (v.origenLat && v.origenLng && v.destinoLat && v.destinoLng) {
+      const dist = Math.hypot(
+        lat - Number(v.origenLat),
+        lng - Number(v.origenLng)
+      );
+
+      // 🔥 RADIO DE LLEGADA (~50-80 metros)
+      if (dist < 0.0007 && v.estado === "En camino" && !llegoPickupRef.current) {
+  llegoPickupRef.current = true;
+
+        const destino = `${v.destinoLat},${v.destinoLng}`;
+
+        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${destino}&travelmode=driving&dir_action=navigate`;
+
+        // 🚗 CAMBIAR AUTOMÁTICAMENTE A DESTINO
+        window.location.href = mapsUrl;
       }
-    );
-  };
+    }
+   }
+);
+};
 
   const enviarGPS = (lat: number, lng: number, v: any) => {
     update(ref(db, "viajes/" + v.id), {
@@ -179,21 +200,32 @@ useEffect(() => {
 
   // 🚗 EN CAMINO
   const enCamino = async (v: any) => {
-    await update(ref(db, "viajes/" + v.id), {
-      estado: "En camino"
-    });
+  await update(ref(db, "viajes/" + v.id), {
+    estado: "En camino"
+  });
 
-    iniciarTracking(v);
+  iniciarTracking(v);
 
-    const telefono = "1" + v.telefono;
-    const url = `${window.location.origin}/tracking?id=${v.id}`;
+  const telefono = "1" + v.telefono;
+  const urlTracking = `${window.location.origin}/tracking?id=${v.id}`;
 
-    window.open(
-      `https://wa.me/${telefono}?text=${encodeURIComponent(
-        "🚗 Voy en camino\n\n📡 Tracking:\n" + url
-      )}`
-    );
-  };
+  // 📲 WHATSAPP
+  window.open(
+    `https://wa.me/${telefono}?text=${encodeURIComponent(
+      "🚗 Voy en camino\n\n📡 Tracking:\n" + urlTracking
+    )}`
+  );
+
+  // VALIDAR
+  if (!v.origenLat || !v.origenLng) return;
+
+  const origen = `${v.origenLat},${v.origenLng}`;
+
+  const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${origen}&travelmode=driving&dir_action=navigate`;
+
+  // 🔥 CLAVE: usar location, no window.open
+  window.location.href = mapsUrl;
+};
 
   // ✅ FINALIZAR
   const finalizar = async (id: string) => {
@@ -220,6 +252,20 @@ useEffect(() => {
       )}`
     );
   };
+// 🚫 DECLINAR VIAJE
+const declinar = async (v: any) => {
+  await update(ref(db, "viajes/" + v.id), {
+    estado: "Cancelado"
+  });
+
+  const telefono = "1" + v.telefono;
+
+  window.open(
+    `https://wa.me/${telefono}?text=${encodeURIComponent(
+      "Your trip has been declined. Please try again later."
+    )}`
+  );
+};
 
   const btn = (bg: string) => ({
     padding: "10px 15px",
@@ -270,7 +316,7 @@ return (
 
         <p><b>Estado:</b> {v.estado}</p>
 
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button style={btn("#28a745")} onClick={() => enCamino(v)}>
             🚗 En camino
           </button>
@@ -282,6 +328,10 @@ return (
           <button style={btn("#dc3545")} onClick={() => cancelar(v)}>
             ❌ Cancelar
           </button>
+          
+<button style={btn("#6c757d")} onClick={() => declinar(v)}>
+  🚫 Ride Declined
+</button>
         </div>
       </div>
     ))}
