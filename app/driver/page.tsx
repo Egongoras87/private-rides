@@ -1,20 +1,20 @@
 "use client";
+export const dynamic = "force-dynamic";
 
 import { useEffect, useState, useRef } from "react";
-import { LoadScript } from "@react-google-maps/api";
 import { db } from "@/lib/firebase";
 import { ref, onValue, update } from "firebase/database";
 import { useJsApiLoader } from "@react-google-maps/api";
+import { googleMapsConfig } from "@/lib/googleMaps";
 
 export default function DriverPage() {
   const [viajes, setViajes] = useState<any[]>([]);
   const [etas, setEtas] = useState<any>({});
   const watchRef = useRef<number | null>(null);
   const lastPosRef = useRef<{ lat: number; lng: number } | null>(null);
-  const { isLoaded } = useJsApiLoader({
-  googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
-  libraries: ["places"]
-});
+ const { isLoaded } = useJsApiLoader(googleMapsConfig);
+
+
 
   // 🔥 LEER VIAJES EN TIEMPO REAL
   useEffect(() => {
@@ -106,14 +106,10 @@ useEffect(() => {
 
 }, [viajes, isLoaded]);
 
-  const calcularETA = (o: any, d: any) =>
+ const calcularETA = (o: any, d: any) =>
   new Promise<number>((resolve) => {
 
-      if (
-      typeof window === "undefined" ||
-      !window.google ||
-      !window.google.maps
-    ) {
+    if (!window?.google?.maps?.DirectionsService) {
       resolve(0);
       return;
     }
@@ -126,12 +122,10 @@ useEffect(() => {
         destination: d,
         travelMode: window.google.maps.TravelMode.DRIVING
       },
-      (res, status) => {
+      (res: any, status: any) => {
         if (
           status === "OK" &&
-          res &&
-          res.routes.length > 0 &&
-          res.routes[0].legs.length > 0
+          res?.routes?.[0]?.legs?.[0]
         ) {
           const leg = res.routes[0].legs[0];
 
@@ -146,7 +140,6 @@ useEffect(() => {
       }
     );
   });
-
   // 🔥 TRACKING
   const iniciarTracking = (v: any) => {
     navigator.geolocation.getCurrentPosition((pos) => {
@@ -239,48 +232,59 @@ useEffect(() => {
     transition: "all 0.15s"
   });
 
-  return (
-    <LoadScript googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!}>
-      <div style={{ padding: 20 }}>
-        <h2>🚗 Driver Panel</h2>
+  if (!isLoaded) return <div>Cargando mapa...</div>;
 
-        {viajes.map((v) => (
-          <div key={v.id} style={{
-            border: "1px solid #ddd",
-            padding: 15,
-            marginBottom: 10,
-            borderRadius: 12
-          }}>
-            <p><b>ID:</b> {v.id}</p>
-            <p><b>Cliente:</b> {v.nombre}</p>
-            <p><b>Tel:</b> {v.telefono}</p>
-            <p><b>Origen:</b> {v.origen}</p>
-            <p><b>Destino:</b> {v.destino}</p>
-            <p><b>Precio:</b> ${v.precio}</p>
-            <p><b>Distancia:</b> {v.distancia} mi</p>
+return (
+  <div style={{ padding: 20 }}>
+    <h2>🚗 Driver Panel</h2>
 
-            {etas[v.id] && (
-              <>
-                <p>⏱ Pickup: {etas[v.id].pickup.toFixed(1)} min</p>
-                <p>🏁 Viaje: {etas[v.id].destino.toFixed(1)} min</p>
-                <p>
-                  {etas[v.id].retraso < 0
-                    ? "⚠️ Retrasado"
-                    : "✔ A tiempo"}
-                </p>
-              </>
-            )}
+    {viajes.map((v) => (
+      <div
+        key={v.id}
+        style={{
+          border: "1px solid #ddd",
+          padding: 15,
+          marginBottom: 10,
+          borderRadius: 12
+        }}
+      >
+        <p><b>ID:</b> {v.id}</p>
+        <p><b>Cliente:</b> {v.nombre}</p>
+        <p><b>Tel:</b> {v.telefono}</p>
+        <p><b>Origen:</b> {v.origen}</p>
+        <p><b>Destino:</b> {v.destino}</p>
+        <p><b>Precio:</b> ${v.precio}</p>
+        <p><b>Distancia:</b> {v.distancia} mi</p>
 
-            <p><b>Estado:</b> {v.estado}</p>
+        {etas[v.id] && (
+          <>
+            <p>⏱ Pickup: {etas[v.id].pickup.toFixed(1)} min</p>
+            <p>🏁 Viaje: {etas[v.id].destino.toFixed(1)} min</p>
+            <p>
+              {etas[v.id].retraso < 0
+                ? "⚠️ Retrasado"
+                : "✔ A tiempo"}
+            </p>
+          </>
+        )}
 
-            <div style={{ display: "flex", gap: 10 }}>
-              <button style={btn("#28a745")} onClick={() => enCamino(v)}>🚗 En camino</button>
-              <button style={btn("#007bff")} onClick={() => finalizar(v.id)}>✅ Finalizar</button>
-              <button style={btn("#dc3545")} onClick={() => cancelar(v)}>❌ Cancelar</button>
-            </div>
-          </div>
-        ))}
+        <p><b>Estado:</b> {v.estado}</p>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button style={btn("#28a745")} onClick={() => enCamino(v)}>
+            🚗 En camino
+          </button>
+
+          <button style={btn("#007bff")} onClick={() => finalizar(v.id)}>
+            ✅ Finalizar
+          </button>
+
+          <button style={btn("#dc3545")} onClick={() => cancelar(v)}>
+            ❌ Cancelar
+          </button>
+        </div>
       </div>
-    </LoadScript>
-  );
+    ))}
+  </div>
+);
 }

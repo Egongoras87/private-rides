@@ -1,9 +1,8 @@
 "use client";
-
 import { useState, useRef, useEffect } from "react";
 import { db } from "@/lib/firebase";
-import { ref, set, onValue } from "firebase/database";
-import { update } from "firebase/database";
+import { ref, set, onValue, update } from "firebase/database";
+
 import {
   GoogleMap,
   DirectionsRenderer,
@@ -11,15 +10,20 @@ import {
   Marker,
   useJsApiLoader
 } from "@react-google-maps/api";
-const LIBRARIES: ("places")[] = ["places"];
+
+import { googleMapsConfig } from "@/lib/googleMaps";
+
+// ✅ SOLUCIÓN TYPE
+declare global {
+  interface Window {
+    google: any;
+  }
+}
 
 export default function Home() {
-  const [directions, setDirections] =
-    useState<google.maps.DirectionsResult | null>(null);
-const { isLoaded } = useJsApiLoader({
-  googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
-  libraries: LIBRARIES
-});
+
+  const [directions, setDirections] = useState<any>(null);
+  const { isLoaded } = useJsApiLoader(googleMapsConfig);
   const [distancia, setDistancia] = useState<number>(0);
   const origenAutoRef = useRef<any>(null);
   const destinoAutoRef = useRef<any>(null);
@@ -82,7 +86,7 @@ const soltarBoton = (e: any) => {
     console.warn("Google aún no está listo");
     return;
   }
-
+if (!window.google?.maps?.DirectionsService) return;
   const service = new window.google.maps.DirectionsService();
 
   service.route(
@@ -91,12 +95,11 @@ const soltarBoton = (e: any) => {
       destination: destino,
       travelMode: window.google.maps.TravelMode.DRIVING
     },
-    (result, status) => {
-      if (status !== "OK" || !result) {
-        console.error("❌ Directions error:", status);
-        alert("Error calculando ruta: " + status);
-        return;
-      }
+    (result: any, status: any) => {
+  if (status !== "OK" || !result || !result.routes?.length) {
+    console.error("❌ Directions error:", status);
+    return;
+  }
 
       setDirections(result);
 
@@ -136,34 +139,40 @@ const soltarBoton = (e: any) => {
 
   // 📍 Obtener ubicación real + dirección
   const obtenerUbicacion = () => {
-    if (!navigator.geolocation) {
-      alert("Geolocalización no soportada");
-      return;
-    }
+  if (!navigator.geolocation) {
+    alert("Geolocalización no soportada");
+    return;
+  }
 
-    navigator.geolocation.getCurrentPosition((pos) => {
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
+  navigator.geolocation.getCurrentPosition((pos) => {
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
 
-      setMiUbicacion({ lat, lng });
+    setMiUbicacion({ lat, lng });
 
-      if (!window.google?.maps) return;
+    if (
+      typeof window === "undefined" ||
+      !window.google ||
+      !window.google.maps ||
+      !window.google.maps.Geocoder
+    ) return;
 
-      const geocoder = new window.google.maps.Geocoder();
+    const geocoder = new window.google.maps.Geocoder();
 
-      geocoder.geocode(
-        { location: { lat, lng } },
-        (results, status) => {
-          if (status === "OK" && results && results[0]) {
-            if (origenRef.current) {
-              origenRef.current.value =
-                results[0].formatted_address;
-            }
+    geocoder.geocode(
+      { location: { lat, lng } },
+      (results: any, status: any) => {
+        if (status === "OK" && results && results[0]) {
+          if (origenRef.current) {
+            origenRef.current.value = results[0].formatted_address;
           }
+        } else {
+          console.warn("Geocoder error:", status);
         }
-      );
-    });
-  };
+      }
+    );
+  });
+};
 
   // 📤 Reservar viaje
  const reservar = async () => {
@@ -171,6 +180,11 @@ const soltarBoton = (e: any) => {
 
   if (!fechaHora) {
     setMensaje("⛔ Select date and time");
+    return;
+  }
+
+  if (!latOrigen || !latDestino) {
+    alert("Primero calcula la ruta");
     return;
   }
 
@@ -201,11 +215,7 @@ const soltarBoton = (e: any) => {
       driverLng: null,
       timestamp: Date.now()
     });
-    if (!latOrigen || !latDestino) {
-  alert("Primero calcula la ruta");
-  return;
-}
-
+   
     // 🔥 LOCAL STORAGE (NO TOCAR)
     localStorage.setItem("viajeId", id);
 
@@ -255,16 +265,17 @@ const soltarBoton = (e: any) => {
   const unsubscribe = onValue(viajeRef, (snapshot) => {
   const data = snapshot.val();
 
-  if (!data) return;
 
-  const lat = Number(data.driverLat);
-  const lng = Number(data.driverLng);
+if (!data.driverLat || !data.driverLng) {
+  setDriverUbicacion(null);
+  return;
+}
+
+const lat = Number(data.driverLat);
+const lng = Number(data.driverLng);
 
   // 🔥 AQUÍ VA LA VALIDACIÓN
-  if (!data.driverLat || !data.driverLng) {
-    setDriverUbicacion(null);
-    return;
-  }
+  
 
   if (!isNaN(lat) && !isNaN(lng)) {
     setDriverUbicacion({ lat, lng });
@@ -415,8 +426,9 @@ const darkMapStyle = [
 ];
 
 const lightMapStyle = [];
+
 if (!isLoaded) {
-  return <div style={{ padding: 20 }}>Cargando mapa...</div>;
+  return <div>Loading map...</div>;
 }
 ////////////////////////////////RETURN////////////////////////////////
   return (
@@ -716,7 +728,6 @@ onMouseLeave={soltarBoton}
     boxShadow: "0 10px 30px rgba(0,0,0,0.5)"
   }}
 >
-  {isLoaded && (
   <GoogleMap
     mapContainerStyle={{
       width: "100%",
@@ -729,11 +740,9 @@ onMouseLeave={soltarBoton}
     }}
   >
     {directions && <DirectionsRenderer directions={directions} />}
-{isLoaded && miUbicacion && <Marker position={miUbicacion} />}
-{isLoaded && driverUbicacion && <Marker position={driverUbicacion} />}
-   
-    </GoogleMap>
-)}
+    {miUbicacion && <Marker position={miUbicacion} />}
+    {driverUbicacion && <Marker position={driverUbicacion} />}
+  </GoogleMap>
 </div>
 
 </div>
