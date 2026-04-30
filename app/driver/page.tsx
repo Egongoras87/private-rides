@@ -141,72 +141,6 @@ useEffect(() => {
       }
     );
   });
-  // 🔥 TRACKING
-  const iniciarTracking = (v: any) => {
-    navigator.geolocation.getCurrentPosition((pos) => {
-      enviarGPS(pos.coords.latitude, pos.coords.longitude, v);
-    });
-
-    if (watchRef.current) {
-      navigator.geolocation.clearWatch(watchRef.current);
-    }
-
-    watchRef.current = navigator.geolocation.watchPosition(
-  (pos) => {
-    
-    const lat = pos.coords.latitude;
-    const lng = pos.coords.longitude;
-
-    // ✅ FILTRO MEJORADO (NO BLOQUEA MOVIMIENTO REAL)
-    if (lastPosRef.current) {
-      const dist = Math.hypot(
-        lat - lastPosRef.current.lat,
-        lng - lastPosRef.current.lng
-      );
-
-      if (dist < 0.00001) return;
-    }
-
-    lastPosRef.current = { lat, lng };
-console.log("GPS:", lat, lng);
-    enviarGPS(lat, lng, v);
-
-    // 🚀 DETECTAR LLEGADA AL PICKUP
-    if (v.origenLat && v.origenLng && v.destinoLat && v.destinoLng) {
-      const dist = Math.hypot(
-        lat - Number(v.origenLat),
-        lng - Number(v.origenLng)
-      );
-
-      if (dist < 0.0007 && v.estado === "En camino" && !llegoPickupRef.current) {
-        llegoPickupRef.current = true;
-
-        const destino = `${v.destinoLat},${v.destinoLng}`;
-
-        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${destino}&travelmode=driving&dir_action=navigate`;
-
-        window.open(mapsUrl, "_blank");
-      }
-    }
-  },
-  (err) => {
-    console.log("GPS ERROR:", err);
-  },
-  {
-    enableHighAccuracy: true,
-    maximumAge: 0,
-    timeout: 5000
-  }
-);
-};
-
-  const enviarGPS = (lat: number, lng: number, v: any) => {
-    update(ref(db, "viajes/" + v.id), {
-      driverLat: lat,
-      driverLng: lng,
-      timestamp: Date.now()
-    });
-  };
 
  // 🚗 EN CAMINO
 const enCamino = async (v: any) => {
@@ -215,9 +149,7 @@ const enCamino = async (v: any) => {
     estado: "En camino"
   });
 
-  // 2. Iniciar tracking
-  iniciarTracking(v);
-
+  
   const telefono = "1" + v.telefono;
   const urlTracking = `${window.location.origin}/tracking?id=${v.id}`;
 
@@ -229,7 +161,7 @@ const enCamino = async (v: any) => {
   );
 
   // 4. 🔥 IR A TU MAPA (NO Google Maps)
-  window.location.href = `/tracking?id=${v.id}`;
+  window.location.href = `/driver-tracking?id=${v.id}`;
 };
 
   // ✅ FINALIZAR
@@ -296,7 +228,7 @@ return (
   <div
     key={v.id}
     onClick={() => {
-      window.location.href = `/tracking?id=${v.id}`;
+      window.location.href = `/driver-tracking?id=${v.id}`;
     }}
     style={{
       border: "1px solid #ddd",

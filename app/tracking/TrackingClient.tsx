@@ -168,7 +168,7 @@ const destino = {
       {
         origin: nueva,
         destination: origen,
-        travelMode: "DRIVING"
+        travelMode: window.google.maps.TravelMode.DRIVING
       },
       (res: any, status: any) => {
         if (status === "OK") {
@@ -185,7 +185,7 @@ const destino = {
       {
         origin: origen,
         destination: destino,
-        travelMode: "DRIVING"
+        travelMode: window.google.maps.TravelMode.DRIVING
       },
       (res: any, status: any) => {
         if (status === "OK") {
@@ -318,14 +318,13 @@ if (viajeFinalizado) {
       )}
 
       {pos && (
-        <Marker
-          position={pos}
-          key={pos.lat + "-" + pos.lng}
-          icon={{
-            url: "https://maps.google.com/mapfiles/kml/shapes/cabs.png",
-            scaledSize: new window.google.maps.Size(50, 50)
-          }}
-        />
+       <Marker
+  position={pos}
+  icon={{
+    url: "https://maps.google.com/mapfiles/kml/shapes/cabs.png",
+    scaledSize: new window.google.maps.Size(50, 50)
+  }}
+/>
       )}
 
     </GoogleMap>
