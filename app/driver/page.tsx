@@ -153,18 +153,22 @@ useEffect(() => {
 
     watchRef.current = navigator.geolocation.watchPosition(
   (pos) => {
+    
     const lat = pos.coords.latitude;
     const lng = pos.coords.longitude;
 
-    if (
-      lastPosRef.current &&
-      lastPosRef.current.lat === lat &&
-      lastPosRef.current.lng === lng
-    )
-      return;
+    // ✅ FILTRO MEJORADO (NO BLOQUEA MOVIMIENTO REAL)
+    if (lastPosRef.current) {
+      const dist = Math.hypot(
+        lat - lastPosRef.current.lat,
+        lng - lastPosRef.current.lng
+      );
+
+      if (dist < 0.00001) return;
+    }
 
     lastPosRef.current = { lat, lng };
-
+console.log("GPS:", lat, lng);
     enviarGPS(lat, lng, v);
 
     // 🚀 DETECTAR LLEGADA AL PICKUP
@@ -174,19 +178,25 @@ useEffect(() => {
         lng - Number(v.origenLng)
       );
 
-      // 🔥 RADIO DE LLEGADA (~50-80 metros)
       if (dist < 0.0007 && v.estado === "En camino" && !llegoPickupRef.current) {
-  llegoPickupRef.current = true;
+        llegoPickupRef.current = true;
 
         const destino = `${v.destinoLat},${v.destinoLng}`;
 
         const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${destino}&travelmode=driving&dir_action=navigate`;
 
-        // 🚗 CAMBIAR AUTOMÁTICAMENTE A DESTINO
-        window.location.href = mapsUrl;
+        window.open(mapsUrl, "_blank");
       }
     }
-   }
+  },
+  (err) => {
+    console.log("GPS ERROR:", err);
+  },
+  {
+    enableHighAccuracy: true,
+    maximumAge: 0,
+    timeout: 5000
+  }
 );
 };
 
@@ -224,7 +234,7 @@ useEffect(() => {
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${origen}&travelmode=driving&dir_action=navigate`;
 
   // 🔥 CLAVE: usar location, no window.open
-  window.location.href = mapsUrl;
+  window.open(mapsUrl, "_blank");
 };
 
   // ✅ FINALIZAR
@@ -283,6 +293,9 @@ const declinar = async (v: any) => {
 return (
   <div style={{ padding: 20 }}>
     <h2>🚗 Driver Panel</h2>
+    <div style={{ color: "lime", background: "black", padding: 10 }}>
+  GPS: {lastPosRef.current?.lat} - {lastPosRef.current?.lng}
+</div>
 
     {viajes.map((v) => (
       <div
