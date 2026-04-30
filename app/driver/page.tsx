@@ -208,33 +208,28 @@ console.log("GPS:", lat, lng);
     });
   };
 
-  // 🚗 EN CAMINO
-  const enCamino = async (v: any) => {
+ // 🚗 EN CAMINO
+const enCamino = async (v: any) => {
+  // 1. Actualizar estado
   await update(ref(db, "viajes/" + v.id), {
     estado: "En camino"
   });
 
+  // 2. Iniciar tracking
   iniciarTracking(v);
 
   const telefono = "1" + v.telefono;
   const urlTracking = `${window.location.origin}/tracking?id=${v.id}`;
 
-  // 📲 WHATSAPP
+  // 3. Enviar WhatsApp (opcional)
   window.open(
     `https://wa.me/${telefono}?text=${encodeURIComponent(
       "🚗 Voy en camino\n\n📡 Tracking:\n" + urlTracking
     )}`
   );
 
-  // VALIDAR
-  if (!v.origenLat || !v.origenLng) return;
-
-  const origen = `${v.origenLat},${v.origenLng}`;
-
-  const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${origen}&travelmode=driving&dir_action=navigate`;
-
-  // 🔥 CLAVE: usar location, no window.open
-  window.open(mapsUrl, "_blank");
+  // 4. 🔥 IR A TU MAPA (NO Google Maps)
+  window.location.href = `/tracking?id=${v.id}`;
 };
 
   // ✅ FINALIZAR
@@ -297,57 +292,88 @@ return (
   GPS: {lastPosRef.current?.lat} - {lastPosRef.current?.lng}
 </div>
 
-    {viajes.map((v) => (
-      <div
-        key={v.id}
-        style={{
-          border: "1px solid #ddd",
-          padding: 15,
-          marginBottom: 10,
-          borderRadius: 12
+   {viajes.map((v) => (
+  <div
+    key={v.id}
+    onClick={() => {
+      window.location.href = `/tracking?id=${v.id}`;
+    }}
+    style={{
+      border: "1px solid #ddd",
+      padding: 15,
+      marginBottom: 10,
+      borderRadius: 12,
+      cursor: "pointer"
+    }}
+  >
+    <p><b>ID:</b> {v.id}</p>
+    <p><b>Cliente:</b> {v.nombre}</p>
+    <p><b>Tel:</b> {v.telefono}</p>
+    <p><b>Origen:</b> {v.origen}</p>
+    <p><b>Destino:</b> {v.destino}</p>
+    <p><b>Precio:</b> ${v.precio}</p>
+    <p><b>Distancia:</b> {v.distancia} mi</p>
+
+    {etas[v.id] && (
+      <>
+        <p>⏱ Pickup: {etas[v.id].pickup.toFixed(1)} min</p>
+        <p>🏁 Viaje: {etas[v.id].destino.toFixed(1)} min</p>
+        <p>
+          {etas[v.id].retraso < 0
+            ? "⚠️ Retrasado"
+            : "✔ A tiempo"}
+        </p>
+      </>
+    )}
+
+    <p><b>Estado:</b> {v.estado}</p>
+
+    {/* BOTONES */}
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+
+      <button
+        style={btn("#28a745")}
+        onClick={(e) => {
+          e.stopPropagation();
+          enCamino(v);
         }}
       >
-        <p><b>ID:</b> {v.id}</p>
-        <p><b>Cliente:</b> {v.nombre}</p>
-        <p><b>Tel:</b> {v.telefono}</p>
-        <p><b>Origen:</b> {v.origen}</p>
-        <p><b>Destino:</b> {v.destino}</p>
-        <p><b>Precio:</b> ${v.precio}</p>
-        <p><b>Distancia:</b> {v.distancia} mi</p>
+        🚗 En camino
+      </button>
 
-        {etas[v.id] && (
-          <>
-            <p>⏱ Pickup: {etas[v.id].pickup.toFixed(1)} min</p>
-            <p>🏁 Viaje: {etas[v.id].destino.toFixed(1)} min</p>
-            <p>
-              {etas[v.id].retraso < 0
-                ? "⚠️ Retrasado"
-                : "✔ A tiempo"}
-            </p>
-          </>
-        )}
+      <button
+        style={btn("#007bff")}
+        onClick={(e) => {
+          e.stopPropagation();
+          finalizar(v.id);
+        }}
+      >
+        ✅ Finalizar
+      </button>
 
-        <p><b>Estado:</b> {v.estado}</p>
+      <button
+        style={btn("#dc3545")}
+        onClick={(e) => {
+          e.stopPropagation();
+          cancelar(v);
+        }}
+      >
+        ❌ Cancelar
+      </button>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button style={btn("#28a745")} onClick={() => enCamino(v)}>
-            🚗 En camino
-          </button>
+      <button
+        style={btn("#6c757d")}
+        onClick={(e) => {
+          e.stopPropagation();
+          declinar(v);
+        }}
+      >
+        🚫 Ride Declined
+      </button>
 
-          <button style={btn("#007bff")} onClick={() => finalizar(v.id)}>
-            ✅ Finalizar
-          </button>
-
-          <button style={btn("#dc3545")} onClick={() => cancelar(v)}>
-            ❌ Cancelar
-          </button>
-          
-<button style={btn("#6c757d")} onClick={() => declinar(v)}>
-  🚫 Ride Declined
-</button>
-        </div>
-      </div>
-    ))}
+    </div>
+  </div>
+))}
   </div>
 );
 }
