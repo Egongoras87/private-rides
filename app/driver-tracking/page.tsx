@@ -404,6 +404,48 @@ if (!isLoaded) return <div>Loading map...</div>;
 >
   💬 WhatsApp
 </button>
+<button
+  style={btn("#4285F4")}
+  onMouseDown={press}
+  onMouseUp={release}
+  onMouseLeave={release}
+  onClick={() => {
+    const id = new URLSearchParams(window.location.search).get("id");
+    if (!id) return;
+
+    const viajeRef = ref(db, "viajes/" + id);
+
+    onValue(viajeRef, (snap) => {
+      const d = snap.val();
+      if (!d) return;
+
+      let url = "";
+
+      if (fase === "pickup" && d.origenLat && d.origenLng) {
+        const destino = `${d.origenLat},${d.origenLng}`;
+
+        url = `https://www.google.com/maps/dir/?api=1&destination=${destino}&travelmode=driving&dir_action=navigate`;
+
+      } else if (
+        fase === "viaje" &&
+        d.origenLat && d.origenLng &&
+        d.destinoLat && d.destinoLng
+      ) {
+        const origen = `${d.origenLat},${d.origenLng}`;
+        const destino = `${d.destinoLat},${d.destinoLng}`;
+
+        url = `https://www.google.com/maps/dir/?api=1&origin=${origen}&destination=${destino}&travelmode=driving&dir_action=navigate`;
+      }
+
+      if (url) {
+        window.open(url, "_blank");
+      }
+
+    }, { onlyOnce: true });
+  }}
+>
+  🧭 Google Maps
+</button>
 
         </div>
 
