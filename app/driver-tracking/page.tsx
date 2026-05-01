@@ -82,19 +82,51 @@ useEffect(() => {
 
     // 🔴 2. FINALIZADO (PRIMERO SIEMPRE)
     if (d.estado === "Finalizado") {
-      console.log("✅ VIAJE FINALIZADO (DRIVER)");
+  console.log("✅ VIAJE FINALIZADO (DRIVER)");
 
-      if (watchRef.current) {
-        navigator.geolocation.clearWatch(watchRef.current);
-        watchRef.current = null;
-      }
+  const uid = auth.currentUser?.uid;
+  if (uid) {
+    update(ref(db, "drivers/" + uid), {
+      viajeActivo: null
+    });
+  }
 
-      setRuta(null);
-      setPos(null);
-      setViajeFinalizado(true);
+  if (watchRef.current) {
+    navigator.geolocation.clearWatch(watchRef.current);
+    watchRef.current = null;
+  }
 
-      return;
-    }
+  setRuta(null);
+  setPos(null);
+  setViajeFinalizado(true);
+
+  return;
+}
+// ❌ CANCELADO
+if (d.estado === "Cancelado") {
+  console.log("❌ VIAJE CANCELADO");
+
+  const uid = auth.currentUser?.uid;
+  if (uid) {
+    update(ref(db, "drivers/" + uid), {
+      viajeActivo: null
+    });
+  }
+
+  if (watchRef.current) {
+    navigator.geolocation.clearWatch(watchRef.current);
+    watchRef.current = null;
+  }
+
+  setRuta(null);
+  setPos(null);
+
+  alert("Viaje cancelado");
+
+  window.location.replace("/driver");
+
+  return;
+}
 // 🟢 👇 AQUÍ EXACTAMENTE VA
 if (d.estado === "En viaje") {
   setFase("viaje");
@@ -104,10 +136,9 @@ if (d.estado === "En camino") {
 }
 
     // 🔴 3. VALIDAR DRIVER
-    if (!d.driverLat || !d.driverLng) {
-      console.log("⛔ Esperando driver...");
-      return;
-    }
+    if (!d.driverLat || !d.driverLng || d.estado === "Cancelado") {
+  return;
+}
 
     const nueva = {
       lat: Number(d.driverLat),
@@ -183,7 +214,7 @@ if (!lastRouteRef.current || nowRoute - lastRouteRef.current > 5000) {
   const service = new window.google.maps.DirectionsService();
 
   // 🚗 CONTROL MANUAL POR FASE
-  if (fase === "pickup") {
+  if (d.estado === "En camino") {
 
     // 👉 ruta driver → origen
     service.route(
@@ -200,7 +231,7 @@ if (!lastRouteRef.current || nowRoute - lastRouteRef.current > 5000) {
       }
     );
 
-  } else if (fase === "viaje") {
+  } else if (d.estado === "En viaje") {
 
     // 👉 ruta origen → destino + VOZ
     service.route(
@@ -377,7 +408,15 @@ if (!uid) return;
       mensaje: "❌ The driver has canceled the ride.",
       driverLat: null,
       driverLng: null
+      
     });
+    // 🔴 2.1 LIMPIAR VIAJE ACTIVO DEL DRIVER
+const uid = auth.currentUser?.uid;
+if (uid) {
+  await update(ref(db, "drivers/" + uid), {
+    viajeActivo: null
+  });
+}
 
     // 🔴 3. DETENER TRACKING GPS
     if (watchRef.current) {

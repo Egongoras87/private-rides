@@ -35,8 +35,24 @@ useEffect(() => {
       const data = snap.val();
 
       if (data?.viajeActivo) {
-        window.location.href = `/driver-tracking?id=${data.viajeActivo}`;
-      }
+
+  const viajeRef = ref(db, "viajes/" + data.viajeActivo);
+
+  onValue(viajeRef, (snap) => {
+    const v = snap.val();
+
+    // 🚫 SOLO SI ESTÁ ACTIVO
+    if (v?.estado === "En camino" || v?.estado === "En viaje") {
+      window.location.href = `/driver-tracking?id=${data.viajeActivo}`;
+    } else {
+      // 🔥 LIMPIAR AUTOMÁTICO
+      update(ref(db, "drivers/" + user.uid), {
+        viajeActivo: null
+      });
+    }
+
+  }, { onlyOnce: true });
+}
     });
 
     return () => unsubscribe();

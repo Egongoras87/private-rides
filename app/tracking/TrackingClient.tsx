@@ -67,6 +67,14 @@ useEffect(() => {
   const unsubscribe = onValue(viajeRef, (snap) => {
     const d = snap.val();
     console.log("🔥 SNAP:", d);
+    // 🔥 CONTROL DE ESTADO REAL
+if (d.estado === "En camino") {
+  setFase("pickup");
+} else if (d.estado === "En viaje") {
+  setFase("viaje");
+} else {
+  setFase("espera"); // 👈 NUEVO
+}
 
     if (!d) return;
 
@@ -94,10 +102,10 @@ if (d.estado === "Finalizado") {
 }
 
     // 🔥 DRIVER POSITION
-    if (!d.driverLat || !d.driverLng) {
-      console.log("⛔ Esperando driver...");
-      return;
-    }
+   if (!d.driverLat || !d.driverLng || d.estado !== "En camino" && d.estado !== "En viaje") {
+  console.log("⛔ Esperando driver...");
+  return;
+}
 
     const nueva = {
       lat: Number(d.driverLat),
@@ -395,11 +403,11 @@ if (viajeCancelado) {
     }}>
 
       <h3>
-  {fase === "pickup"
-    ? "🚗 Driver on the way"
-    : fase === "viaje"
-    ? "🚗 Route"
-    : "⏳ Expecting"}
+ {fase === "espera"
+  ? "⏳ Waiting for driver"
+  : fase === "pickup"
+  ? "🚗 Driver on the way"
+  : "🚗 Trip in progress"}
 </h3>
 
       <p>
