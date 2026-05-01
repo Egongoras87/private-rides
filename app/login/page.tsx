@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { auth } from "../../lib/firebase";
 import {
   signInWithEmailAndPassword,
@@ -10,41 +11,63 @@ import {
 export default function Login() {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
+  const router = useRouter();
 
   const login = async () => {
+    if (!email || !pass) {
+      alert("Completa todos los campos");
+      return;
+    }
+
     try {
       await signInWithEmailAndPassword(auth, email, pass);
-      window.location.href = "/";
-    } catch (e) {
-      alert("Error login");
-      console.log(e);
+
+      const redirect = new URLSearchParams(window.location.search).get("redirect");
+
+      router.push(redirect || "/driver");
+
+    } catch (e: unknown) {
+      const err = e as Error;
+      alert(err.message);
+      console.log(err);
     }
   };
 
   const register = async () => {
+    if (!email || !pass) {
+      alert("Completa todos los campos");
+      return;
+    }
+
     try {
       await createUserWithEmailAndPassword(auth, email, pass);
+
       alert("Usuario creado");
-    } catch (e) {
-      alert("Error registro");
-      console.log(e);
+      router.push("/driver");
+
+    } catch (e: unknown) {
+      const err = e as Error;
+      alert(err.message);
+      console.log(err);
     }
   };
 
   return (
     <div style={{ padding: 30 }}>
-      <h2>Login</h2>
+      <h2>Login Driver</h2>
 
       <input
         placeholder="Email"
+        value={email}
         onChange={(e) => setEmail(e.target.value)}
       />
 
       <br /><br />
 
       <input
-        placeholder="Password"
         type="password"
+        placeholder="Password"
+        value={pass}
         onChange={(e) => setPass(e.target.value)}
       />
 

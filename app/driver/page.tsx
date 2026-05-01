@@ -21,29 +21,28 @@ export default function DriverPage() {
 
 useEffect(() => {
   const unsub = onAuthStateChanged(auth, (user) => {
+
+    // 🔴 NO LOGUEADO → login
     if (!user) {
-      window.location.href = "/login";
+      window.location.href = "/login?redirect=/driver";
+      return;
     }
+
+    // 🟢 LOGUEADO → revisar viaje activo
+    const driverRef = ref(db, "drivers/" + user.uid);
+
+    const unsubscribe = onValue(driverRef, (snap) => {
+      const data = snap.val();
+
+      if (data?.viajeActivo) {
+        window.location.href = `/driver-tracking?id=${data.viajeActivo}`;
+      }
+    });
+
+    return () => unsubscribe();
   });
 
   return () => unsub();
-}, []);
-
-useEffect(() => {
-  const uid = auth.currentUser?.uid;
-  if (!uid) return;
-
-  const driverRef = ref(db, "drivers/" + uid);
-
-  const unsubscribe = onValue(driverRef, (snap) => {
-    const data = snap.val();
-
-    if (data?.viajeActivo) {
-      window.location.href = `/driver-tracking?id=${data.viajeActivo}`;
-    }
-  });
-
-  return () => unsubscribe();
 }, []);
 
   // 🔥 LEER VIAJES EN TIEMPO REAL
