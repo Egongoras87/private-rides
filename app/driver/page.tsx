@@ -191,17 +191,44 @@ const enCamino = async (v: any) => {
   };
 // 🚫 DECLINAR VIAJE
 const declinar = async (v: any) => {
-  await update(ref(db, "viajes/" + v.id), {
-    estado: "Cancelado"
-  });
+  if (!v?.id) return;
 
-  const telefono = "1" + v.telefono;
+  try {
+    const viajeRef = ref(db, "viajes/" + v.id);
 
-  window.open(
-    `https://wa.me/${telefono}?text=${encodeURIComponent(
-      "Your trip has been declined. Please try again later."
-    )}`
-  );
+    // 🔴 1. ACTUALIZAR ESTADO COMPLETO
+    await update(viajeRef, {
+      estado: "Cancelado",
+      mensaje: "❌ Your trip has been declined. Please try again later.",
+      driverLat: null,
+      driverLng: null,
+      timestampCancelado: Date.now()
+    });
+
+    // 🔴 2. DETENER GPS (POR SI ESTABA ACTIVO)
+    if (watchRef.current) {
+      navigator.geolocation.clearWatch(watchRef.current);
+      watchRef.current = null;
+    }
+
+    // 🔴 3. ENVIAR WHATSAPP
+    if (v.telefono) {
+      const telefono = "1" + v.telefono;
+
+      window.open(
+        `https://wa.me/${telefono}?text=${encodeURIComponent(
+          "❌ Your trip has been declined. Please try again later."
+        )}`,
+        "_blank"
+      );
+    }
+
+    // 🔴 4. FEEDBACK VISUAL
+    alert("Ride declined correctamente");
+
+  } catch (error) {
+    console.log("❌ Error declinando:", error);
+  }
 };
 
   const btn = (bg: string) => ({

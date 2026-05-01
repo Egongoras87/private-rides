@@ -29,6 +29,7 @@ const pickupRef = useRef<any>(null);
 const lastMapRef = useRef<any>(null);   // 🗺️ cámara
   const animRef = useRef<any>(null);
 const lastPanRef = useRef(0);
+const [viajeCancelado, setViajeCancelado] = useState(false);
 
   // 🔹 REFS
   const mapRef = useRef<any>(null);
@@ -57,18 +58,40 @@ useEffect(() => {
 }, [eta]);
 
   // 📡 FIREBASE TRACKING
-  useEffect(() => {
+useEffect(() => {
   const id = new URLSearchParams(window.location.search).get("id");
   if (!id) return;
 
   const viajeRef = ref(db, "viajes/" + id);
 
-  return onValue(viajeRef, (snap) => {
-
-    console.log("🔥 SNAP:", snap.val());
-
+  const unsubscribe = onValue(viajeRef, (snap) => {
     const d = snap.val();
+    console.log("🔥 SNAP:", d);
+
     if (!d) return;
+
+    // 🔴 CANCELACIÓN (CORRECTO)
+    if (d.estado === "Cancelado") {
+      console.log("🚫 VIAJE CANCELADO");
+
+      // 🔴 en usuario NO hay GPS que detener
+console.log("Tracking detenido (usuario)");
+      setRuta(null);
+      setPos(null);
+      setViajeCancelado(true);
+
+      return;
+    }
+    // 🟢 FINALIZADO
+if (d.estado === "Finalizado") {
+  console.log("✅ VIAJE FINALIZADO");
+
+  setRuta(null);
+  setPos(null);
+  setViajeFinalizado(true);
+
+  return;
+}
 
     // 🔥 DRIVER POSITION
     if (!d.driverLat || !d.driverLng) {
@@ -81,24 +104,34 @@ useEffect(() => {
       lng: Number(d.driverLng)
     };
 
+    // 🚀 ANIMACIÓN SUAVE
     setPos((prev: any) => {
-  if (!prev) return nueva;
+      if (!prev) return nueva;
 
-  return {
-    lat: prev.lat + (nueva.lat - prev.lat) * 0.15,
-    lng: prev.lng + (nueva.lng - prev.lng) * 0.15
-  };
-});
-if (mapRef.current && lastPos.current) {
-  const dist = Math.hypot(
-    nueva.lat - lastPos.current.lat,
-    nueva.lng - lastPos.current.lng
-  );
+      return {
+        lat: prev.lat + (nueva.lat - prev.lat) * 0.15,
+        lng: prev.lng + (nueva.lng - prev.lng) * 0.15
+      };
+    });
 
-  if (dist > 0.0001) {
-    mapRef.current.panTo(nueva);
-  }
-}
+    // 🧠 MOVER MAPA
+    if (mapRef.current) {
+      if (!lastPos.current) {
+        mapRef.current.panTo(nueva);
+      } else {
+        const dist = Math.hypot(
+          nueva.lat - lastPos.current.lat,
+          nueva.lng - lastPos.current.lng
+        );
+
+        if (dist > 0.0001) {
+          mapRef.current.panTo(nueva);
+        }
+      }
+    }
+
+    // 🔥 GUARDAR POSICIÓN
+    lastPos.current = nueva;
 
     // 🔥 CONTROL DE RUTA
     const now = Date.now();
@@ -125,11 +158,6 @@ if (mapRef.current && lastPos.current) {
             }
           : null;
 
-      console.log("DEBUG:");
-      console.log("DRIVER:", nueva);
-      console.log("ORIGEN:", origen);
-      console.log("DESTINO:", destino);
-
       const service = new window.google.maps.DirectionsService();
 
       const distPickup = Math.hypot(
@@ -137,12 +165,10 @@ if (mapRef.current && lastPos.current) {
         nueva.lng - origen.lng
       );
 
-      console.log("DIST:", distPickup);
-
       // 🚗 PICKUP
       if (distPickup > 0.0015) {
 
-        console.log("🔥 EJECUTANDO ROUTE PICKUP");
+        console.log("🔥 ROUTE PICKUP");
 
         service.route(
           {
@@ -151,21 +177,16 @@ if (mapRef.current && lastPos.current) {
             travelMode: window.google.maps.TravelMode.DRIVING
           },
           (res: any, status: any) => {
-
-            console.log("PICKUP STATUS:", status);
-
             if (status === "OK") {
               setRuta(res);
-
-              const segundos = res.routes[0].legs[0].duration.value;
-              setEta(segundos);
+              setEta(res.routes[0].legs[0].duration.value);
             }
           }
         );
 
       } else if (destino) {
 
-        console.log("🔥 EJECUTANDO ROUTE VIAJE");
+        console.log("🔥 ROUTE VIAJE");
 
         service.route(
           {
@@ -174,14 +195,9 @@ if (mapRef.current && lastPos.current) {
             travelMode: window.google.maps.TravelMode.DRIVING
           },
           (res: any, status: any) => {
-
-            console.log("VIAJE STATUS:", status);
-
             if (status === "OK") {
               setRuta(res);
-
-              const segundos = res.routes[0].legs[0].duration.value;
-              setEta(segundos);
+              setEta(res.routes[0].legs[0].duration.value);
             }
           }
         );
@@ -189,11 +205,11 @@ if (mapRef.current && lastPos.current) {
 
       lastRoute.current = now;
     }
-
   });
 
-}, [isLoaded]);
+  return () => unsubscribe();
 
+}, [isLoaded]);
 
   // ❌ CANCELAR
   const cancelar = async () => {
@@ -284,8 +300,41 @@ if (viajeFinalizado) {
   if (!mounted) return null;
 
   if (!isLoaded) return <div>Loading map...</div>;
+if (viajeCancelado) {
+  return (
+    <div style={{
+      height: "100vh",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      background: "#111",
+      color: "#fff",
+      flexDirection: "column"
+    }}>
+      <h2>❌ Ride declined</h2>
+      <p>Please try again later</p>
 
- return (
+      <button
+        style={{
+          marginTop: 20,
+          padding: "10px 20px",
+          borderRadius: 8,
+          border: "none",
+          background: "#28a745",
+          color: "#fff",
+          cursor: "pointer"
+        }}
+        onClick={() => {
+          window.location.href = "/";
+        }}
+      >
+        Volver al inicio
+      </button>
+    </div>
+  );
+}
+  
+  return (
   <div style={{ height: "100vh", position: "relative" }}>
     <GoogleMap
       onLoad={(map) => {
