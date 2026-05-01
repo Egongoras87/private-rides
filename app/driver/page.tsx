@@ -1,6 +1,10 @@
 "use client";
 export const dynamic = "force-dynamic";
 
+
+
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 import { useEffect, useState, useRef } from "react";
 import { db } from "@/lib/firebase";
 import { ref, onValue, update } from "firebase/database";
@@ -15,7 +19,15 @@ export default function DriverPage() {
  const { isLoaded } = useJsApiLoader(googleMapsConfig);
  const llegoPickupRef = useRef(false);
 
+useEffect(() => {
+  const unsub = onAuthStateChanged(auth, (user) => {
+    if (!user) {
+      window.location.href = "/login";
+    }
+  });
 
+  return () => unsub();
+}, []);
 
   // 🔥 LEER VIAJES EN TIEMPO REAL
   useEffect(() => {
@@ -289,6 +301,9 @@ return (
 
     {/* BOTONES */}
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      <button onClick={() => window.location.href = "/login"}>
+  Login Driver
+</button>
 
       <button
         style={btn("#28a745")}

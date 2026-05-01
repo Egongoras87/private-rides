@@ -1,4 +1,5 @@
 import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
 import { getDatabase } from "firebase/database";
 
 // 🔥 CONFIG
@@ -17,3 +18,4 @@ const app = initializeApp(firebaseConfig);
 
 // 🔥 LO IMPORTANTE (TRACKING)
 export const db = getDatabase(app);
+export const auth = getAuth(app);

@@ -2,6 +2,9 @@
 export const dynamic = "force-dynamic";
 export const runtime = "edge";
 
+
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 import { useEffect, useRef, useState } from "react";
 import { GoogleMap, Marker, DirectionsRenderer } from "@react-google-maps/api";
 import { db } from "@/lib/firebase";
@@ -37,6 +40,16 @@ const lastInstructionRef = useRef("");
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(msg);
 };
+useEffect(() => {
+  const unsub = onAuthStateChanged(auth, (user) => {
+    if (!user) {
+      window.location.href = "/login";
+    }
+  });
+
+  return () => unsub();
+}, []);
+
  
 // 🔥 TRACKING + RUTA
 useEffect(() => {
@@ -47,6 +60,9 @@ useEffect(() => {
 
   const unsubscribe = onValue(viajeRef, (snap) => {
     const d = snap.val();
+    const uid = auth.currentUser?.uid;
+
+if (!uid) return;
 
     // 🔴 1. VALIDACIÓN BASE
     if (!d) {
@@ -69,6 +85,11 @@ useEffect(() => {
 
       return;
     }
+// 🟢 👇 AQUÍ EXACTAMENTE VA
+if (d.estado === "En viaje") {
+  setFase("viaje");
+}
+
 
     // 🔴 3. VALIDAR DRIVER
     if (!d.driverLat || !d.driverLng) {
@@ -122,95 +143,92 @@ useEffect(() => {
 
     lastMapRef.current = nueva;
 
-    // 🔥 CONTROL DE RUTA
-    const nowRoute = Date.now();
+ // 🔥 CONTROL DE RUTA
+const nowRoute = Date.now();
 
-    if (!lastRouteRef.current || nowRoute - lastRouteRef.current > 5000) {
+if (!lastRouteRef.current || nowRoute - lastRouteRef.current > 5000) {
 
-      if (!isLoaded || !window.google?.maps?.DirectionsService) return;
+  if (!isLoaded || !window.google?.maps?.DirectionsService) return;
 
-      if (!d.origenLat || !d.origenLng || !d.destinoLat || !d.destinoLng) {
-        console.log("❌ Coordenadas incompletas");
-        return;
+  if (!d.origenLat || !d.origenLng || !d.destinoLat || !d.destinoLng) {
+    console.log("❌ Coordenadas incompletas");
+    return;
+  }
+
+  const origen = {
+    lat: Number(d.origenLat),
+    lng: Number(d.origenLng)
+  };
+
+  const destino = {
+    lat: Number(d.destinoLat),
+    lng: Number(d.destinoLng)
+  };
+
+  const service = new window.google.maps.DirectionsService();
+
+  // 🚗 CONTROL MANUAL POR FASE
+  if (fase === "pickup") {
+
+    // 👉 ruta driver → origen
+    service.route(
+      {
+        origin: nueva,
+        destination: origen,
+        travelMode: window.google.maps.TravelMode.DRIVING
+      },
+      (res: any, status: any) => {
+        if (status === "OK") {
+          setRuta(res);
+          setEta(res.routes[0].legs[0].duration.value);
+        }
       }
+    );
 
-      const origen = {
-        lat: Number(d.origenLat),
-        lng: Number(d.origenLng)
-      };
+  } else if (fase === "viaje") {
 
-      const destino = {
-        lat: Number(d.destinoLat),
-        lng: Number(d.destinoLng)
-      };
+    // 👉 ruta origen → destino + VOZ
+    service.route(
+      {
+        origin: origen,
+        destination: destino,
+        travelMode: window.google.maps.TravelMode.DRIVING
+      },
+      (res: any, status: any) => {
+        if (status === "OK") {
+          setRuta(res);
+          setEta(res.routes[0].legs[0].duration.value);
 
-      const service = new window.google.maps.DirectionsService();
+          // 🔊 NAVEGACIÓN POR VOZ (SOLO EN VIAJE)
+          const step = res.routes[0].legs[0].steps[0];
 
-      const distPickup = Math.hypot(
-        nueva.lat - origen.lat,
-        nueva.lng - origen.lng
-      );
+          if (step?.instructions && step?.distance) {
+            const instruction = step.instructions
+              .replace(/<[^>]+>/g, "")
+              .trim();
 
-      // 🚗 PICKUP
-      if (distPickup > 0.002) {
-        setFase("pickup");
+            const distancia = step.distance.value;
 
-        service.route(
-          {
-            origin: nueva,
-            destination: origen,
-            travelMode: window.google.maps.TravelMode.DRIVING
-          },
-          (res: any, status: any) => {
-            if (status === "OK") {
-              setRuta(res);
-              setEta(res.routes[0].legs[0].duration.value);
+            if (
+              instruction &&
+              instruction !== lastInstructionRef.current &&
+              distancia < 300
+            ) {
+              lastInstructionRef.current = instruction;
+
+              speak(
+                `In ${Math.round(distancia)} meters, ${instruction}`
+              );
             }
           }
-        );
-
-      } else {
-        // 🚀 VIAJE
-        setFase("viaje");
-
-        service.route(
-          {
-            origin: origen,
-            destination: destino,
-            travelMode: window.google.maps.TravelMode.DRIVING
-          },
-          (res: any, status: any) => {
-            if (status === "OK") {
-              setRuta(res);
-              setEta(res.routes[0].legs[0].duration.value);
-
-              const step = res.routes[0].legs[0].steps[0];
-
-              if (step?.instructions && step?.distance) {
-                const instruction = step.instructions
-                  .replace(/<[^>]+>/g, "")
-                  .trim();
-
-                const distancia = step.distance.value;
-
-                if (
-                  instruction &&
-                  instruction !== lastInstructionRef.current &&
-                  distancia < 300
-                ) {
-                  lastInstructionRef.current = instruction;
-
-                  speak(
-                    `In ${Math.round(distancia)} meters, ${instruction}`
-                  );
-                }
-              }
-            }
-          }
-        );
+        }
       }
+    );
+  }
 
-      lastRouteRef.current = nowRoute;
+  lastRouteRef.current = nowRoute;
+
+
     }
   });
 
@@ -314,6 +332,9 @@ useEffect(() => {
         viajeRef,
         (snap) => {
           const d = snap.val();
+          const uid = auth.currentUser?.uid;
+
+if (!uid) return;
           telefono = d?.telefono || "";
           resolve(true);
         },
@@ -495,6 +516,27 @@ if (viajeFinalizado) {
           >
             ❌ Cancelar
           </button>
+          
+          {fase === "pickup" && (
+  <button
+    style={btn("#ffc107")}
+    onMouseDown={press}
+    onMouseUp={release}
+    onMouseLeave={release}
+    onClick={async () => {
+      const id = new URLSearchParams(window.location.search).get("id");
+      if (!id) return;
+
+      setFase("viaje");
+
+      await update(ref(db, "viajes/" + id), {
+        estado: "En viaje"
+      });
+    }}
+  >
+    📍 Recoger
+  </button>
+)}
           <button
   style={btn("#25D366")}
   onMouseDown={press}
@@ -508,6 +550,9 @@ if (viajeFinalizado) {
 
     onValue(viajeRef, (snap) => {
       const d = snap.val();
+      const uid = auth.currentUser?.uid;
+
+if (!uid) return;
       if (!d?.telefono) return;
 
       const telefono = "1" + d.telefono;
@@ -534,6 +579,9 @@ if (viajeFinalizado) {
 
     onValue(viajeRef, (snap) => {
       const d = snap.val();
+      const uid = auth.currentUser?.uid;
+
+if (!uid) return;
       if (!d) return;
 
       let url = "";
