@@ -59,16 +59,26 @@ useEffect(() => {
   const viajeRef = ref(db, "viajes/" + id);
 
   const unsubscribe = onValue(viajeRef, (snap) => {
-    const d = snap.val();
-    const uid = auth.currentUser?.uid;
+  const d = snap.val();
+  const uid = auth.currentUser?.uid;
 
-if (!uid) return;
+  if (!uid) return;
 
-    // 🔴 1. VALIDACIÓN BASE
-    if (!d) {
-      console.log("⛔ snapshot vacío");
-      return;
-    }
+  // 🔒 PROTECCIÓN DRIVER (AQUÍ EXACTAMENTE)
+  if (d?.driverId && d.driverId !== uid) {
+    console.log("🚫 No eres el driver de este viaje");
+
+    // 🔥 OPCIONAL: sacar al driver de la pantalla
+    window.location.replace("/driver");
+
+    return;
+  }
+
+  // 🔴 1. VALIDACIÓN BASE
+  if (!d) {
+    console.log("⛔ snapshot vacío");
+    return;
+  }
 
     // 🔴 2. FINALIZADO (PRIMERO SIEMPRE)
     if (d.estado === "Finalizado") {
@@ -89,7 +99,9 @@ if (!uid) return;
 if (d.estado === "En viaje") {
   setFase("viaje");
 }
-
+if (d.estado === "En camino") {
+  setFase("pickup");
+}
 
     // 🔴 3. VALIDAR DRIVER
     if (!d.driverLat || !d.driverLng) {
@@ -113,13 +125,19 @@ if (d.estado === "En viaje") {
     });
 
     // 🚗 NAVEGACIÓN TIPO UBER
-    const dx = nueva.lng - (lastMapRef.current?.lng || nueva.lng);
-    const dy = nueva.lat - (lastMapRef.current?.lat || nueva.lat);
+   const dx = nueva.lng - (lastMapRef.current?.lng || nueva.lng);
+const dy = nueva.lat - (lastMapRef.current?.lat || nueva.lat);
 
-    const heading = Math.atan2(dx, dy) * (180 / Math.PI);
+// 🔥 ORDEN CORRECTO
+const heading = Math.atan2(dy, dx) * (180 / Math.PI);
+
+let headingDeg = heading * (180 / Math.PI);
+
+// 🔥 evitar valores negativos
+if (headingDeg < 0) headingDeg += 360;
 
     lastHeadingRef.current =
-      lastHeadingRef.current * 0.7 + heading * 0.3;
+  lastHeadingRef.current + (headingDeg - lastHeadingRef.current) * 0.2;
 
     if (mapRef.current) {
       const dist = lastMapRef.current
@@ -130,10 +148,7 @@ if (d.estado === "En viaje") {
         : 1;
 
       if (dist > 0.00001) {
-        mapRef.current.panTo({
-          lat: nueva.lat + 0.00005,
-          lng: nueva.lng
-        });
+        mapRef.current.panTo(nueva);
 
         mapRef.current.setHeading(lastHeadingRef.current);
         mapRef.current.setTilt(60);
@@ -200,7 +215,27 @@ if (!lastRouteRef.current || nowRoute - lastRouteRef.current > 5000) {
           setEta(res.routes[0].legs[0].duration.value);
 
           // 🔊 NAVEGACIÓN POR VOZ (SOLO EN VIAJE)
-          const step = res.routes[0].legs[0].steps[0];
+          const steps = res.routes[0].legs[0].steps;
+
+// 🔥 elegir el step más cercano al driver
+let step = null;
+
+for (let i = 0; i < steps.length; i++) {
+  const s = steps[i];
+
+  const dist = Math.hypot(
+    nueva.lat - s.start_location.lat(),
+    nueva.lng - s.start_location.lng()
+  );
+
+  if (dist < 0.001) {
+    step = s;
+    break;
+  }
+}
+
+// fallback
+if (!step) step = steps[0];
 
           if (step?.instructions && step?.distance) {
             const instruction = step.instructions
@@ -209,17 +244,11 @@ if (!lastRouteRef.current || nowRoute - lastRouteRef.current > 5000) {
 
             const distancia = step.distance.value;
 
-            if (
-              instruction &&
-              instruction !== lastInstructionRef.current &&
-              distancia < 300
-            ) {
-              lastInstructionRef.current = instruction;
+            if (instruction && instruction !== lastInstructionRef.current) {
+  lastInstructionRef.current = instruction;
 
-              speak(
-                `In ${Math.round(distancia)} meters, ${instruction}`
-              );
-            }
+  speak(`In ${Math.round(distancia)} meters, ${instruction}`);
+}
           }
         }
       }
@@ -449,25 +478,45 @@ if (viajeFinalizado) {
 
         {ruta && (
   <DirectionsRenderer
-    directions={ruta}
-    options={{
-      preserveViewport: true,
-      suppressMarkers: false
-    }}
-  />
+  directions={ruta}
+  options={{
+    preserveViewport: true,
+    suppressMarkers: true // 👈 CLAVE
+  }}
+/>
 )}
 
-        {pos && (
-          <Marker
-            position={pos}
-            icon={{
-              url: "https://cdn-icons-png.flaticon.com/512/744/744465.png",
-              scaledSize: isLoaded && window.google
-  ? new window.google.maps.Size(35, 35)
-  : undefined
-            }}
-          />
-        )}
+  {pos && (
+  <>
+    {/* 🔵 CÍRCULO BASE */}
+    <Marker
+      position={pos}
+      icon={{
+        path: window.google.maps.SymbolPath.CIRCLE,
+        scale: 8,
+        fillColor: "#000",
+        fillOpacity: 1,
+        strokeColor: "#fff",
+        strokeWeight: 2
+      }}
+      zIndex={1}
+    />
+
+    {/* 🔺 FLECHA DIRECCIÓN */}
+    <Marker
+      position={pos}
+      icon={{
+        path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+        scale: 5,
+        fillColor: "#fff",
+        fillOpacity: 1,
+        strokeWeight: 0,
+        rotation: lastHeadingRef.current // 🔥 dirección real
+      }}
+      zIndex={2}
+    />
+  </>
+)}
 
       </GoogleMap>
 
@@ -526,6 +575,9 @@ if (viajeFinalizado) {
     onClick={async () => {
       const id = new URLSearchParams(window.location.search).get("id");
       if (!id) return;
+
+      // 🔥 ACTIVAR AUDIO (CLAVE EN MÓVIL)
+      window.speechSynthesis.resume();
 
       setFase("viaje");
 

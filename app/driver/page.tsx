@@ -29,6 +29,23 @@ useEffect(() => {
   return () => unsub();
 }, []);
 
+useEffect(() => {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+
+  const driverRef = ref(db, "drivers/" + uid);
+
+  const unsubscribe = onValue(driverRef, (snap) => {
+    const data = snap.val();
+
+    if (data?.viajeActivo) {
+      window.location.href = `/driver-tracking?id=${data.viajeActivo}`;
+    }
+  });
+
+  return () => unsubscribe();
+}, []);
+
   // 🔥 LEER VIAJES EN TIEMPO REAL
   useEffect(() => {
     const viajesRef = ref(db, "viajes");
@@ -54,7 +71,6 @@ useEffect(() => {
     return () => unsubscribe();
   }, []);
 
-  // 🔥 CALCULAR ETA
   // 🔥 CALCULAR ETA COMPLETO
 useEffect(() => {
   if (!isLoaded) return;
@@ -156,51 +172,101 @@ useEffect(() => {
 
  // 🚗 EN CAMINO
 const enCamino = async (v: any) => {
-  // 1. Actualizar estado
-  await update(ref(db, "viajes/" + v.id), {
-    estado: "En camino"
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+
+  const viajeRef = ref(db, "viajes/" + v.id);
+
+  // 🔒 1. LEER VIAJE ACTUAL
+  let ocupado = false;
+
+  await new Promise((resolve) => {
+    onValue(
+      viajeRef,
+      (snap) => {
+        const data = snap.val();
+
+        // 🚫 SI YA TIENE DRIVER → BLOQUEAR
+        if (data?.driverId && data.driverId !== uid) {
+          ocupado = true;
+        }
+
+        resolve(true);
+      },
+      { onlyOnce: true }
+    );
   });
 
-  
+  if (ocupado) {
+    alert("❌ Este viaje ya fue tomado por otro driver");
+    return;
+  }
+
+  // 🔴 2. GUARDAR VIAJE EN DRIVER
+  await update(ref(db, "drivers/" + uid), {
+    viajeActivo: v.id
+  });
+
+  // 🔴 3. ACTUALIZAR VIAJE
+  await update(viajeRef, {
+    estado: "En camino",
+    driverId: uid
+  });
+
   const telefono = "1" + v.telefono;
   const urlTracking = `${window.location.origin}/tracking?id=${v.id}`;
 
-  // 3. Enviar WhatsApp (opcional)
   window.open(
     `https://wa.me/${telefono}?text=${encodeURIComponent(
       "🚗 Voy en camino\n\n📡 Tracking:\n" + urlTracking
     )}`
   );
-
-  // 4. 🔥 IR A TU MAPA (NO Google Maps)
+// 🔴 IR AL TRACKING (ESTO YA ESTÁ BIEN AQUÍ)
   window.location.href = `/driver-tracking?id=${v.id}`;
 };
 
+
   // ✅ FINALIZAR
   const finalizar = async (id: string) => {
-    await update(ref(db, "viajes/" + id), {
-      estado: "Finalizado"
-    });
+  const uid = auth.currentUser?.uid;
 
-    if (watchRef.current) {
-      navigator.geolocation.clearWatch(watchRef.current);
-    }
-  };
+  await update(ref(db, "viajes/" + id), {
+    estado: "Finalizado"
+  });
+
+  if (uid) {
+    await update(ref(db, "drivers/" + uid), {
+      viajeActivo: null
+    });
+  }
+
+  if (watchRef.current) {
+    navigator.geolocation.clearWatch(watchRef.current);
+  }
+};
 
   // ❌ CANCELAR
   const cancelar = async (v: any) => {
-    await update(ref(db, "viajes/" + v.id), {
-      estado: "Cancelado"
+  const uid = auth.currentUser?.uid;
+
+  await update(ref(db, "viajes/" + v.id), {
+    estado: "Cancelado"
+  });
+
+  if (uid) {
+    await update(ref(db, "drivers/" + uid), {
+      viajeActivo: null
     });
+  }
 
-    const telefono = "1" + v.telefono;
+  const telefono = "1" + v.telefono;
 
-    window.open(
-      `https://wa.me/${telefono}?text=${encodeURIComponent(
-        "❌ Tu viaje ha sido cancelado"
-      )}`
-    );
-  };
+  window.open(
+    `https://wa.me/${telefono}?text=${encodeURIComponent(
+      "❌ Tu viaje ha sido cancelado"
+    )}`
+  );
+};
 // 🚫 DECLINAR VIAJE
 const declinar = async (v: any) => {
   if (!v?.id) return;
