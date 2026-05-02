@@ -28,6 +28,8 @@ const lastRouteRef = useRef(0);
 const [path, setPath] = useState<any[]>([]);
 const [viajeFinalizado, setViajeFinalizado] = useState(false);
 const lastInstructionRef = useRef("");
+const [pulse, setPulse] = useState(0);
+const [destinoMarker, setDestinoMarker] = useState<any>(null);
   const { isLoaded } = useJsApiLoader(googleMapsConfig);
   const speak = (text: string) => {
   if (!window.speechSynthesis) return;
@@ -49,6 +51,13 @@ useEffect(() => {
   return () => unsub();
 }, []);
 
+useEffect(() => {
+  const interval = setInterval(() => {
+    setPulse((p) => (p > 10 ? 0 : p + 0.5));
+  }, 60);
+
+  return () => clearInterval(interval);
+}, []);
  
 // 🔥 TRACKING + RUTA
 useEffect(() => {
@@ -151,8 +160,8 @@ if (d.estado === "En camino") {
   if (!prev) return nueva;
 
   return {
-    lat: prev.lat + (nueva.lat - prev.lat) * 0.25,
-    lng: prev.lng + (nueva.lng - prev.lng) * 0.25
+    lat: prev.lat + (nueva.lat - prev.lat) * 0.35,
+    lng: prev.lng + (nueva.lng - prev.lng) * 0.35
   };
 });
 
@@ -169,32 +178,36 @@ setPath((prev) =>
    const dx = nueva.lng - (lastMapRef.current?.lng || nueva.lng);
 const dy = nueva.lat - (lastMapRef.current?.lat || nueva.lat);
 
-if (Math.abs(dx) < 0.000001 && Math.abs(dy) < 0.000001) {
-  // no rotar, pero continuar flujo
-} else {
-  let headingDeg = Math.atan2(dy, dx) * (180 / Math.PI);
+let headingDeg = Math.atan2(dy, dx) * (180 / Math.PI);
 
-  if (headingDeg < 0) headingDeg += 360;
+if (headingDeg < 0) headingDeg += 360;
 
-  lastHeadingRef.current =
-    lastHeadingRef.current + (headingDeg - lastHeadingRef.current) * 0.15;
+const diff = headingDeg - lastHeadingRef.current;
+const adjustedDiff = ((diff + 540) % 360) - 180;
+
+lastHeadingRef.current =
+  lastHeadingRef.current + adjustedDiff * 0.35;
+
+if (!isFinite(lastHeadingRef.current)) {
+  lastHeadingRef.current = headingDeg;
 }
     if (mapRef.current) {
-      const dist = lastMapRef.current
-        ? Math.hypot(
-            nueva.lat - lastMapRef.current.lat,
-            nueva.lng - lastMapRef.current.lng
-          )
-        : 1;
+  const map = mapRef.current;
 
-      if (dist > 0.00001) {
-        mapRef.current.panTo(nueva);
+  // calcular velocidad
+  const speed = Math.hypot(dx, dy);
 
-        mapRef.current.setHeading(lastHeadingRef.current);
-        mapRef.current.setTilt(60);
-        mapRef.current.setZoom(17);
-      }
-    }
+  // zoom dinámico
+  const zoom = speed > 0.0005 ? 15 : 17;
+
+  // 🔥 movimiento estilo Uber REAL
+  map.moveCamera({
+    center: nueva,
+    heading: lastHeadingRef.current || 0,
+    tilt: 60,
+    zoom: zoom
+  });
+}
 
     lastMapRef.current = nueva;
 
@@ -263,6 +276,7 @@ if (!lastRouteRef.current || nowRoute - lastRouteRef.current > 3000) {
           }));
 
           setPath(points);
+          setDestinoMarker(points[points.length - 1]);
 
           // 🔊 VOZ
           const steps = res.routes[0].legs[0].steps;
@@ -507,7 +521,7 @@ if (viajeFinalizado) {
 }
   return (
     <div style={{ height: "100vh", position: "relative" }}>
-     <GoogleMap
+    <GoogleMap
   onLoad={handleLoad}
   mapContainerStyle={{ width: "100%", height: "100%" }}
   center={pos || { lat: 36.1699, lng: -115.1398 }}
@@ -515,7 +529,8 @@ if (viajeFinalizado) {
   options={{
     disableDefaultUI: true,
     zoomControl: true,
-    gestureHandling: "greedy"
+    gestureHandling: "greedy",
+    mapId: "DEMO_MAP_ID"
   }}
 >
 
@@ -532,31 +547,65 @@ if (viajeFinalizado) {
 
 {pos && (
   <>
-    <Marker
-      position={pos}
-      icon={{
-        path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
-        scale: 8,
-        fillColor: "#000",
-        fillOpacity: 1,
-        strokeColor: "#fff",
-        strokeWeight: 2
-      }}
-      zIndex={1}
-    />
+    {/* 🔵 CÍRCULO */}
+<Marker
+  position={pos}
+  icon={{
+    path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
+    scale: 18 + pulse, // 🔥 animación
+    fillColor: "#1494df",
+    fillOpacity: 0.15, // 🔥 efecto glow
+    strokeColor: "#1e87a1",
+    strokeWeight: 1
+  }}
+  zIndex={0}
+/>
 
-    <Marker
-      position={pos}
-      icon={{
-        path: window.google?.maps?.SymbolPath?.FORWARD_CLOSED_ARROW || 0,
-        scale: 5,
-        fillColor: "#fff",
-        fillOpacity: 1,
-        strokeWeight: 0,
-        rotation: lastHeadingRef.current || 0
-      }}
-      zIndex={2}
-    />
+{/* núcleo sólido */}
+<Marker
+  position={pos}
+  icon={{
+    path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
+    scale: 17,
+    fillColor: "#0c0c0c",
+    fillOpacity: 1,
+    strokeColor: "#fff",
+    strokeWeight: 2
+  }}
+  zIndex={1}
+/>
+<Marker
+  position={pos}
+  icon={{
+    path: window.google?.maps?.SymbolPath?.FORWARD_CLOSED_ARROW || 0,
+    scale: 5,
+    fillColor: "#fff",
+    fillOpacity: 1,
+    strokeColor: "#000",
+    strokeWeight: 1,
+    rotation: lastHeadingRef.current || 0,
+    anchor: new window.google.maps.Point(0, 2)
+  }}
+  zIndex={2}
+/>
+{destinoMarker && (
+  <Marker
+    position={destinoMarker}
+   icon={{
+  path: `
+    M 0,0 m -4,0 a 4,4 0 1,0 8,0 a 4,4 0 1,0 -8,0
+    M 0,-20 L 0,0
+    M 0,-20 L 10,-16 L 0,-12 Z
+  `,
+  fillColor: "#ff0000",
+  fillOpacity: 1,
+  strokeColor: "#000",
+  strokeWeight: 2,
+  scale: 1.8
+}}
+    zIndex={3}
+  />
+)}
   </>
 )}
 

@@ -1,49 +1,38 @@
 "use client";
 export const dynamic = "force-dynamic";
-export const runtime = "edge";
 
 import { useEffect, useRef, useState } from "react";
-import { GoogleMap, Marker, DirectionsRenderer } from "@react-google-maps/api";
 import { db } from "@/lib/firebase";
 import { ref, onValue, update } from "firebase/database";
 import { useJsApiLoader } from "@react-google-maps/api";
 import { googleMapsConfig } from "@/lib/googleMaps";
+import { GoogleMap, Marker, Polyline } from "@react-google-maps/api";
 
-export default function TrackingPage() {
-  
-  // 🔹 TODOS LOS STATES PRIMERO
-  const [pos, setPos] = useState<any>(null);
-  const [ruta, setRuta] = useState<any>(null);
-  const [tiempo, setTiempo] = useState("");
-  const [fase, setFase] = useState("pickup");
-  const [mostrarZelle, setMostrarZelle] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const [heading, setHeading] = useState(0);
-  const [eta, setEta] = useState<number>(0);
-  const [pickup, setPickup] = useState<any>(null);
-const [destino, setDestino] = useState<any>(null);
-const [viajeFinalizado, setViajeFinalizado] = useState(false);
-const destinoRef = useRef<any>(null);
-const pickupRef = useRef<any>(null);
-  const lastGpsRef = useRef<any>(null);   // 📡 GPS
-const lastMapRef = useRef<any>(null);   // 🗺️ cámara
-  const animRef = useRef<any>(null);
-const lastPanRef = useRef(0);
-const [viajeCancelado, setViajeCancelado] = useState(false);
-
-  // 🔹 REFS
-  const mapRef = useRef<any>(null);
-  const lastPos = useRef<any>(null);
-  const lastRoute = useRef<number>(0);
-
-  // 🔹 GOOGLE MAPS LOADER
+export default function UserTrackingPage() {
   const { isLoaded } = useJsApiLoader(googleMapsConfig);
 
-  // 🔹 MOUNTED FIX (HYDRATION)
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // 🔥 MAPA
+  const [pos, setPos] = useState<any>(null);
+  const [path, setPath] = useState<any[]>([]);
+  const [destinoMarker, setDestinoMarker] = useState<any>(null);
 
+  const lastMapRef = useRef<any>(null);
+  const lastHeadingRef = useRef(0);
+  const mapRef = useRef<any>(null);
+  const [pulse, setPulse] = useState(0);
+
+  // 🔥 UI
+  const [eta, setEta] = useState(0);
+  const [fase, setFase] = useState("espera");
+  const [mostrarZelle, setMostrarZelle] = useState(false);
+  const [viajeCancelado, setViajeCancelado] = useState(false);
+  const [viajeFinalizado, setViajeFinalizado] = useState(false);
+  const lastEtaUpdateRef = useRef(0);
+const handleLoad = (map: any) => {
+  if (!map) return;
+
+  mapRef.current = map;
+};
 useEffect(() => {
   if (!eta) return;
 
@@ -56,208 +45,138 @@ useEffect(() => {
 
   return () => clearInterval(interval);
 }, [eta]);
+  // 🔥 TRACKING
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("id");
+    if (!id) return;
 
-  // 📡 FIREBASE TRACKING
-useEffect(() => {
-  const id = new URLSearchParams(window.location.search).get("id");
-  if (!id) return;
+    const viajeRef = ref(db, "viajes/" + id);
 
-  const viajeRef = ref(db, "viajes/" + id);
+    const unsubscribe = onValue(viajeRef, (snap) => {
+      const d = snap.val();
+      if (!d) return;
 
-  const unsubscribe = onValue(viajeRef, (snap) => {
-    const d = snap.val();
-    console.log("🔥 SNAP:", d);
-    // 🔥 CONTROL DE ESTADO REAL
-if (d.estado === "En camino") {
-  setFase("pickup");
-} else if (d.estado === "En viaje") {
-  setFase("viaje");
-} else {
-  setFase("espera"); // 👈 NUEVO
-}
-
-    if (!d) return;
-
-    // 🔴 CANCELACIÓN (CORRECTO)
-    if (d.estado === "Cancelado") {
-      console.log("🚫 VIAJE CANCELADO");
-
-      // 🔴 en usuario NO hay GPS que detener
-console.log("Tracking detenido (usuario)");
-      setRuta(null);
-      setPos(null);
-      setViajeCancelado(true);
-
-      return;
-    }
-    // 🟢 FINALIZADO
-if (d.estado === "Finalizado") {
-  console.log("✅ VIAJE FINALIZADO");
-
-  setRuta(null);
-  setPos(null);
-  setViajeFinalizado(true);
-
-  return;
-}
-
-    // 🔥 DRIVER POSITION
-   if (!d.driverLat || !d.driverLng || d.estado !== "En camino" && d.estado !== "En viaje") {
-  console.log("⛔ Esperando driver...");
-  return;
-}
-
-    const nueva = {
-      lat: Number(d.driverLat),
-      lng: Number(d.driverLng)
-    };
-
-    // 🚀 ANIMACIÓN SUAVE
-    setPos((prev: any) => {
-      if (!prev) return nueva;
-
-      return {
-        lat: prev.lat + (nueva.lat - prev.lat) * 0.15,
-        lng: prev.lng + (nueva.lng - prev.lng) * 0.15
-      };
-    });
-
-    // 🧠 MOVER MAPA
-    if (mapRef.current) {
-      if (!lastPos.current) {
-        mapRef.current.panTo(nueva);
-      } else {
-        const dist = Math.hypot(
-          nueva.lat - lastPos.current.lat,
-          nueva.lng - lastPos.current.lng
-        );
-
-        if (dist > 0.0001) {
-          mapRef.current.panTo(nueva);
-        }
-      }
-    }
-
-    // 🔥 GUARDAR POSICIÓN
-    lastPos.current = nueva;
-
-    // 🔥 CONTROL DE RUTA
-    const now = Date.now();
-
-    if (!lastRoute.current || now - lastRoute.current > 3000) {
-
-      if (!isLoaded || !window.google?.maps?.DirectionsService) return;
-
-      if (!d.origenLat || !d.origenLng) {
-        console.log("⛔ Esperando origen...");
+      // 🔴 estados
+      if (d.estado === "Cancelado") {
+        setViajeCancelado(true);
+        setPos(null);
+        setPath([]);
         return;
       }
 
-      const origen = {
-        lat: Number(d.origenLat),
-        lng: Number(d.origenLng)
-      };
-
-      const destino =
-        d.destinoLat && d.destinoLng
-          ? {
-              lat: Number(d.destinoLat),
-              lng: Number(d.destinoLng)
-            }
-          : null;
-
-      const service = new window.google.maps.DirectionsService();
-
-      const distPickup = Math.hypot(
-        nueva.lat - origen.lat,
-        nueva.lng - origen.lng
-      );
-
-      // 🚗 PICKUP
-      if (distPickup > 0.0015) {
-
-        console.log("🔥 ROUTE PICKUP");
-
-        service.route(
-          {
-            origin: nueva,
-            destination: origen,
-            travelMode: window.google.maps.TravelMode.DRIVING
-          },
-          (res: any, status: any) => {
-            if (status === "OK") {
-              setRuta(res);
-              setEta(res.routes[0].legs[0].duration.value);
-            }
-          }
-        );
-
-      } else if (destino) {
-
-        console.log("🔥 ROUTE VIAJE");
-
-        service.route(
-          {
-            origin: origen,
-            destination: destino,
-            travelMode: window.google.maps.TravelMode.DRIVING
-          },
-          (res: any, status: any) => {
-            if (status === "OK") {
-              setRuta(res);
-              setEta(res.routes[0].legs[0].duration.value);
-            }
-          }
-        );
+      if (d.estado === "Finalizado") {
+        setViajeFinalizado(true);
+        setPos(null);
+        setPath([]);
+        return;
       }
 
-      lastRoute.current = now;
+      if (d.estado === "En camino") setFase("pickup");
+      if (d.estado === "En viaje") setFase("viaje");
+
+      if (!d.driverLat || !d.driverLng) return;
+
+      const nueva = {
+        lat: Number(d.driverLat),
+        lng: Number(d.driverLng)
+      };
+
+      // 🔥 suavizado
+      setPos((prev: any) => {
+        if (!prev) return nueva;
+        return {
+          lat: prev.lat + (nueva.lat - prev.lat) * 0.35,
+          lng: prev.lng + (nueva.lng - prev.lng) * 0.35
+        };
+      });
+
+      // 🔥 ROTACIÓN
+      const dx = nueva.lng - (lastMapRef.current?.lng || nueva.lng);
+      const dy = nueva.lat - (lastMapRef.current?.lat || nueva.lat);
+
+      let headingDeg = Math.atan2(dy, dx) * (180 / Math.PI);
+      if (headingDeg < 0) headingDeg += 360;
+
+      const diff = headingDeg - lastHeadingRef.current;
+      const adjustedDiff = ((diff + 540) % 360) - 180;
+
+      lastHeadingRef.current += adjustedDiff * 0.35;
+
+      if (!isFinite(lastHeadingRef.current)) {
+        lastHeadingRef.current = headingDeg;
+      }
+
+      // 🔥 CÁMARA
+      if (mapRef.current) {
+        const speed = Math.hypot(dx, dy);
+        const zoom = speed > 0.0005 ? 15 : 17;
+
+        mapRef.current.moveCamera({
+          center: nueva,
+          heading: lastHeadingRef.current || 0,
+          tilt: 60,
+          zoom
+        });
+      }
+
+      lastMapRef.current = nueva;
+
+     // 🔥 RUTA
+if (d.destinoLat && d.destinoLng) {
+  const service = new window.google.maps.DirectionsService();
+
+  service.route(
+    {
+      origin: nueva,
+      destination: {
+        lat: Number(d.destinoLat),
+        lng: Number(d.destinoLng)
+      },
+      travelMode: window.google.maps.TravelMode.DRIVING
+    },
+    (res: any, status: any) => {
+      if (status === "OK") {
+        const points = res.routes[0].overview_path.map((p: any) => ({
+          lat: p.lat(),
+          lng: p.lng()
+        }));
+
+        setPath(points);
+        setDestinoMarker(points[points.length - 1]);
+
+        // 🔥 CONTROL INTELIGENTE DE ETA (cada 5 segundos)
+        const now = Date.now();
+
+        if (
+          !lastEtaUpdateRef.current ||
+          now - lastEtaUpdateRef.current > 5000
+        ) {
+          lastEtaUpdateRef.current = now;
+
+          setEta(res.routes[0].legs[0].duration.value);
+        }
+      }
     }
-  });
+  );
+}
+    });
 
-  return () => unsubscribe();
-
-}, [isLoaded]);
+    return () => unsubscribe();
+  }, [isLoaded]);
 
   // ❌ CANCELAR
   const cancelar = async () => {
-  const id = localStorage.getItem("viajeId");
-  if (!id) return;
+    const id = new URLSearchParams(window.location.search).get("id");
+    if (!id) return;
 
-  const viajeRef = ref(db, "viajes/" + id);
+    await update(ref(db, "viajes/" + id), {
+      estado: "Cancelado"
+    });
 
-  const snap = await new Promise<any>((resolve) => {
-    onValue(viajeRef, (s) => resolve(s.val()), { onlyOnce: true });
-  });
+    window.location.href = "/";
+  };
 
-  if (!snap) return;
-
-  // 🔥 ACTUALIZAR ESTADO
-  await update(viajeRef, { estado: "Cancelado" });
-
-  // 🔥 MENSAJE WHATSAPP COMPLETO
-  const mensaje = `
-❌ VIAJE CANCELADO
-
-ID: ${id}
-Nombre: ${snap.nombre || ""}
-Tel: ${snap.telefono || ""}
-Origen: ${snap.origen || ""}
-Destino: ${snap.destino || ""}
-Importe: $${snap.precio || ""}
-Distancia: ${snap.distancia || ""} mi
-`;
-
-  window.open(
-    "https://wa.me/17252876197?text=" +
-    encodeURIComponent(mensaje)
-  );
-
-  localStorage.clear();
-  window.location.href = "/";
-};
-
-  // 🎯 BOTONES 3D
+  // 🎯 BOTONES
   const btn = (bg: string) => ({
     padding: 12,
     borderRadius: 10,
@@ -278,120 +197,105 @@ Distancia: ${snap.distancia || ""} mi
     e.target.style.transform = "scale(1)";
     e.target.style.boxShadow = "0 4px 0 rgba(0,0,0,0.2)";
   };
-if (viajeFinalizado) {
+
+  if (!isLoaded) return <div>Loading...</div>;
+
+  if (viajeCancelado) return <div>❌ Ride canceled</div>;
+  if (viajeFinalizado) return <div>✅ Trip completed</div>;
+
   return (
-    <div style={{
-      height: "100vh",
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      flexDirection: "column",
-      background: "#111",
-      color: "#fff"
-    }}>
-      <h1>✅ Viaje finalizado</h1>
+    <div style={{ height: "100vh", position: "relative" }}>
+      <GoogleMap
+  onLoad={handleLoad}
+  mapContainerStyle={{ width: "100%", height: "100%" }}
+  center={pos || { lat: 36.1699, lng: -115.1398 }}
+  zoom={17}
+  options={{
+    disableDefaultUI: true,
+    zoomControl: true,
+    gestureHandling: "greedy",
+    mapId: "DEMO_MAP_ID"
+  }}
+>
 
-      <button
-        onClick={() => {
-          localStorage.clear();
-          window.location.href = "/";
-        }}
-      >
-        Volver
-      </button>
-    </div>
-  );
-}
-
-
-  // 🔴 RETURNS (AL FINAL SIEMPRE)
-  if (!mounted) return null;
-
-  if (!isLoaded) return <div>Loading map...</div>;
-if (viajeCancelado) {
-  return (
-    <div style={{
-      height: "100vh",
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      background: "#111",
-      color: "#fff",
-      flexDirection: "column"
-    }}>
-      <h2>❌ Ride declined</h2>
-      <p>Please try again later</p>
-
-      <button
-        style={{
-          marginTop: 20,
-          padding: "10px 20px",
-          borderRadius: 8,
-          border: "none",
-          background: "#28a745",
-          color: "#fff",
-          cursor: "pointer"
-        }}
-        onClick={() => {
-          window.location.href = "/";
-        }}
-      >
-        Volver al inicio
-      </button>
-    </div>
-  );
-}
-  
-  return (
-  <div style={{ height: "100vh", position: "relative" }}>
-    <GoogleMap
-      onLoad={(map) => {
-        mapRef.current = map;
-      }}
-      mapContainerStyle={{ width: "100%", height: "100%" }}
-      center={pos || { lat: 36.1699, lng: -115.1398 }}
-      zoom={16}
-    >
-
-      {ruta && (
-  <DirectionsRenderer
-  directions={ruta}
- options={{
-  preserveViewport: true,
-  suppressMarkers: false
-}}
-/>
+{path.length > 0 && (
+  <Polyline
+    path={path}
+    options={{
+      strokeColor: "#000",
+      strokeOpacity: 1,
+      strokeWeight: 5
+    }}
+  />
 )}
 
-      {destino && (
-        <Marker
-          position={destino}
-          icon={{
-  url: "https://maps.google.com/mapfiles/ms/icons/red-dot.png",
-  scaledSize:
-    isLoaded && window.google
-      ? new window.google.maps.Size(35, 35)
-      : undefined
-}}
-        />
-      )}
-
-      {pos && (
-       <Marker
+{pos && (
+  <>
+    {/* 🔵 CÍRCULO */}
+<Marker
   position={pos}
   icon={{
-  url: "https://cdn-icons-png.flaticon.com/512/744/744465.png",
-  scaledSize:
-    isLoaded && window.google
-      ? new window.google.maps.Size(35, 35)
-      : undefined
-}}
+    path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
+    scale: 18 + pulse, // 🔥 animación
+    fillColor: "#1494df",
+    fillOpacity: 0.15, // 🔥 efecto glow
+    strokeColor: "#1e87a1",
+    strokeWeight: 1
+  }}
+  zIndex={0}
 />
-      )}
 
-    </GoogleMap>
+{/* núcleo sólido */}
+<Marker
+  position={pos}
+  icon={{
+    path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
+    scale: 17,
+    fillColor: "#0c0c0c",
+    fillOpacity: 1,
+    strokeColor: "#fff",
+    strokeWeight: 2
+  }}
+  zIndex={1}
+/>
+<Marker
+  position={pos}
+  icon={{
+    path: window.google?.maps?.SymbolPath?.FORWARD_CLOSED_ARROW || 0,
+    scale: 5,
+    fillColor: "#fff",
+    fillOpacity: 1,
+    strokeColor: "#000",
+    strokeWeight: 1,
+    rotation: lastHeadingRef.current || 0,
+    anchor: new window.google.maps.Point(0, 2)
+  }}
+  zIndex={2}
+/>
+{destinoMarker && (
+  <Marker
+    position={destinoMarker}
+   icon={{
+  path: `
+    M 0,0 m -4,0 a 4,4 0 1,0 8,0 a 4,4 0 1,0 -8,0
+    M 0,-20 L 0,0
+    M 0,-20 L 10,-16 L 0,-12 Z
+  `,
+  fillColor: "#ff0000",
+  fillOpacity: 1,
+  strokeColor: "#000",
+  strokeWeight: 2,
+  scale: 1.8
+}}
+    zIndex={3}
+  />
+)}
+  </>
+)}
 
-    {/* PANEL */}
+</GoogleMap>
+
+       {/* PANEL */}
     <div style={{
       position: "absolute",
       bottom: 0,
@@ -407,7 +311,7 @@ if (viajeCancelado) {
   ? "⏳ Waiting for driver"
   : fase === "pickup"
   ? "🚗 Driver on the way"
-  : "🚗 Trip in progress"}
+  : "🚗 Ride in progress"}
 </h3>
 
       <p>
