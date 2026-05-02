@@ -1,16 +1,15 @@
 "use client";
 export const dynamic = "force-dynamic";
-export const runtime = "edge";
 
 
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useEffect, useRef, useState } from "react";
-import { GoogleMap, Marker, DirectionsRenderer } from "@react-google-maps/api";
 import { db } from "@/lib/firebase";
 import { ref, onValue, update } from "firebase/database";
 import { useJsApiLoader } from "@react-google-maps/api";
 import { googleMapsConfig } from "@/lib/googleMaps";
+import { GoogleMap, Marker, Polyline } from "@react-google-maps/api";
 
 
 export default function DriverTrackingPage() {
@@ -20,13 +19,13 @@ export default function DriverTrackingPage() {
   const lastGpsRef = useRef<any>(null);   // 📡 GPS
 const lastMapRef = useRef<any>(null);   // 🗺️ cámara
   const [pos, setPos] = useState<any>(null);
-  const [ruta, setRuta] = useState<any>(null);
   const [fase, setFase] = useState("pickup");
 const [eta, setEta] = useState(0);
   const mapRef = useRef<any>(null);
   const animRef = useRef<any>(null);
 const lastPanRef = useRef(0);
 const lastRouteRef = useRef(0);
+const [path, setPath] = useState<any[]>([]);
 const [viajeFinalizado, setViajeFinalizado] = useState(false);
 const lastInstructionRef = useRef("");
   const { isLoaded } = useJsApiLoader(googleMapsConfig);
@@ -34,7 +33,7 @@ const lastInstructionRef = useRef("");
   if (!window.speechSynthesis) return;
 
   const msg = new SpeechSynthesisUtterance(text);
-  msg.lang = "en-US";
+  msg.lang = "es-ES";
   msg.rate = 1;
 
   window.speechSynthesis.cancel();
@@ -53,6 +52,7 @@ useEffect(() => {
  
 // 🔥 TRACKING + RUTA
 useEffect(() => {
+  if (typeof window === "undefined") return;
   const id = new URLSearchParams(window.location.search).get("id");
   if (!id) return;
 
@@ -96,8 +96,9 @@ useEffect(() => {
     watchRef.current = null;
   }
 
-  setRuta(null);
+ 
   setPos(null);
+  setPath([]);
   setViajeFinalizado(true);
 
   return;
@@ -118,9 +119,9 @@ if (d.estado === "Cancelado") {
     watchRef.current = null;
   }
 
-  setRuta(null);
+  
   setPos(null);
-
+setPath([]);
   alert("Viaje cancelado");
 
   window.location.replace("/driver");
@@ -147,29 +148,37 @@ if (d.estado === "En camino") {
 
     // 🚀 ANIMACIÓN SUAVE
     setPos((prev: any) => {
-      if (!prev) return nueva;
+  if (!prev) return nueva;
 
-      return {
-        lat: prev.lat + (nueva.lat - prev.lat) * 0.08,
-        lng: prev.lng + (nueva.lng - prev.lng) * 0.08
-      };
-    });
+  return {
+    lat: prev.lat + (nueva.lat - prev.lat) * 0.25,
+    lng: prev.lng + (nueva.lng - prev.lng) * 0.25
+  };
+});
+
+// ✅ AQUÍ FUERA
+setPath((prev) =>
+  prev.filter((p) => {
+    const dist = Math.hypot(p.lat - nueva.lat, p.lng - nueva.lng);
+    return dist > 0.0003;
+  })
+);
+  
 
     // 🚗 NAVEGACIÓN TIPO UBER
    const dx = nueva.lng - (lastMapRef.current?.lng || nueva.lng);
 const dy = nueva.lat - (lastMapRef.current?.lat || nueva.lat);
 
-// 🔥 ORDEN CORRECTO
-const heading = Math.atan2(dy, dx) * (180 / Math.PI);
+if (Math.abs(dx) < 0.000001 && Math.abs(dy) < 0.000001) {
+  // no rotar, pero continuar flujo
+} else {
+  let headingDeg = Math.atan2(dy, dx) * (180 / Math.PI);
 
-let headingDeg = heading * (180 / Math.PI);
+  if (headingDeg < 0) headingDeg += 360;
 
-// 🔥 evitar valores negativos
-if (headingDeg < 0) headingDeg += 360;
-
-    lastHeadingRef.current =
-  lastHeadingRef.current + (headingDeg - lastHeadingRef.current) * 0.2;
-
+  lastHeadingRef.current =
+    lastHeadingRef.current + (headingDeg - lastHeadingRef.current) * 0.15;
+}
     if (mapRef.current) {
       const dist = lastMapRef.current
         ? Math.hypot(
@@ -192,7 +201,7 @@ if (headingDeg < 0) headingDeg += 360;
  // 🔥 CONTROL DE RUTA
 const nowRoute = Date.now();
 
-if (!lastRouteRef.current || nowRoute - lastRouteRef.current > 5000) {
+if (!lastRouteRef.current || nowRoute - lastRouteRef.current > 3000) {
 
   if (!isLoaded || !window.google?.maps?.DirectionsService) return;
 
@@ -213,10 +222,8 @@ if (!lastRouteRef.current || nowRoute - lastRouteRef.current > 5000) {
 
   const service = new window.google.maps.DirectionsService();
 
-  // 🚗 CONTROL MANUAL POR FASE
   if (d.estado === "En camino") {
 
-    // 👉 ruta driver → origen
     service.route(
       {
         origin: nueva,
@@ -225,61 +232,62 @@ if (!lastRouteRef.current || nowRoute - lastRouteRef.current > 5000) {
       },
       (res: any, status: any) => {
         if (status === "OK") {
-          setRuta(res);
           setEta(res.routes[0].legs[0].duration.value);
+
+          const points = res.routes[0].overview_path.map((p: any) => ({
+            lat: p.lat(),
+            lng: p.lng()
+          }));
+
+          setPath(points);
         }
       }
     );
 
   } else if (d.estado === "En viaje") {
 
-    // 👉 ruta origen → destino + VOZ
     service.route(
       {
-        origin: origen,
+        origin: nueva,
         destination: destino,
         travelMode: window.google.maps.TravelMode.DRIVING
       },
       (res: any, status: any) => {
         if (status === "OK") {
-          setRuta(res);
+
           setEta(res.routes[0].legs[0].duration.value);
 
-          // 🔊 NAVEGACIÓN POR VOZ (SOLO EN VIAJE)
+          const points = res.routes[0].overview_path.map((p: any) => ({
+            lat: p.lat(),
+            lng: p.lng()
+          }));
+
+          setPath(points);
+
+          // 🔊 VOZ
           const steps = res.routes[0].legs[0].steps;
 
-// 🔥 elegir el step más cercano al driver
-let step = null;
+          const step = steps.find((s: any) => {
+            const dist = Math.hypot(
+              nueva.lat - s.start_location.lat(),
+              nueva.lng - s.start_location.lng()
+            );
+            return dist < 0.0002;
+          });
 
-for (let i = 0; i < steps.length; i++) {
-  const s = steps[i];
+          if (!step) return;
 
-  const dist = Math.hypot(
-    nueva.lat - s.start_location.lat(),
-    nueva.lng - s.start_location.lng()
-  );
+          const instruction = step.instructions
+            .replace(/<[^>]+>/g, "")
+            .trim();
 
-  if (dist < 0.001) {
-    step = s;
-    break;
-  }
-}
+          const distancia = step.distance.value;
 
-// fallback
-if (!step) step = steps[0];
+          if (distancia < 30) return;
 
-          if (step?.instructions && step?.distance) {
-            const instruction = step.instructions
-              .replace(/<[^>]+>/g, "")
-              .trim();
-
-            const distancia = step.distance.value;
-
-            if (instruction && instruction !== lastInstructionRef.current) {
-  lastInstructionRef.current = instruction;
-
-  speak(`In ${Math.round(distancia)} meters, ${instruction}`);
-}
+          if (instruction !== lastInstructionRef.current) {
+            lastInstructionRef.current = instruction;
+            speak(`En ${Math.round(distancia)} metros, ${instruction}`);
           }
         }
       }
@@ -287,9 +295,8 @@ if (!step) step = steps[0];
   }
 
   lastRouteRef.current = nowRoute;
+}
 
-
-    }
   });
 
   return () => unsubscribe();
@@ -297,6 +304,7 @@ if (!step) step = steps[0];
 }, [isLoaded]);
  // 📡 GPS DRIVER → FIREBASE
 useEffect(() => {
+  if (typeof window === "undefined") return;
   const id = new URLSearchParams(window.location.search).get("id");
   if (!id) return;
 
@@ -311,14 +319,8 @@ useEffect(() => {
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
 
-      if (lastGpsRef.current) {
-        const dist = Math.hypot(
-          lat - lastGpsRef.current.lat,
-          lng - lastGpsRef.current.lng
-        );
-
-        if (dist < 0.00002 && Date.now() - lastSendTime < 2000) return;
-      }
+      if (Date.now() - lastSendTime < 1000) return;
+      
 
       lastSendTime = Date.now();
       lastGpsRef.current = { lat, lng };
@@ -328,12 +330,13 @@ useEffect(() => {
         driverLng: lng,
         timestamp: Date.now()
       });
+      
     },
     (err) => console.log("GPS ERROR:", err),
     {
       enableHighAccuracy: true,
       maximumAge: 0,
-      timeout: 5000
+      timeout: 3000
     }
   );
 
@@ -364,8 +367,9 @@ useEffect(() => {
     }
 
     // 🔴 3. LIMPIAR MAPA
-    setRuta(null);
+   
     setPos(null);
+    setPath([]);
 
     // 🔴 4. FEEDBACK
     alert("Viaje finalizado");
@@ -425,8 +429,8 @@ if (uid) {
     }
 
     // 🔴 4. LIMPIAR MAPA
-    setRuta(null);
-    setPos(null);
+        setPos(null);
+    setPath([]);
 
     // 🔴 5. AVISAR AL USUARIO (WHATSAPP)
     if (telefono) {
@@ -508,30 +512,30 @@ if (viajeFinalizado) {
   mapContainerStyle={{ width: "100%", height: "100%" }}
   center={pos || { lat: 36.1699, lng: -115.1398 }}
   zoom={17}
- options={{
-  disableDefaultUI: true,
-  zoomControl: true,
-  gestureHandling: "greedy"
-}}
+  options={{
+    disableDefaultUI: true,
+    zoomControl: true,
+    gestureHandling: "greedy"
+  }}
 >
 
-        {ruta && (
-  <DirectionsRenderer
-  directions={ruta}
-  options={{
-    preserveViewport: true,
-    suppressMarkers: true // 👈 CLAVE
-  }}
-/>
+{path.length > 0 && (
+  <Polyline
+    path={path}
+    options={{
+      strokeColor: "#000",
+      strokeOpacity: 1,
+      strokeWeight: 5
+    }}
+  />
 )}
 
-  {pos && (
+{pos && (
   <>
-    {/* 🔵 CÍRCULO BASE */}
     <Marker
       position={pos}
       icon={{
-        path: window.google.maps.SymbolPath.CIRCLE,
+        path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
         scale: 8,
         fillColor: "#000",
         fillOpacity: 1,
@@ -541,23 +545,22 @@ if (viajeFinalizado) {
       zIndex={1}
     />
 
-    {/* 🔺 FLECHA DIRECCIÓN */}
     <Marker
       position={pos}
       icon={{
-        path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+        path: window.google?.maps?.SymbolPath?.FORWARD_CLOSED_ARROW || 0,
         scale: 5,
         fillColor: "#fff",
         fillOpacity: 1,
         strokeWeight: 0,
-        rotation: lastHeadingRef.current // 🔥 dirección real
+        rotation: lastHeadingRef.current || 0
       }}
       zIndex={2}
     />
   </>
 )}
 
-      </GoogleMap>
+</GoogleMap>
 
       {/* PANEL DRIVER */}
       <div style={{

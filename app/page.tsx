@@ -259,6 +259,7 @@ if (!window.google?.maps?.DirectionsService) return;
   useEffect(() => {
   const id = localStorage.getItem("viajeId");
   if (!id) return;
+  
 
   const viajeRef = ref(db, "viajes/" + id);
 
