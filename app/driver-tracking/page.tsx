@@ -444,24 +444,51 @@ useEffect(() => {
     console.log("❌ Error finalizando:", err);
   }
 };
-
+/////////////////////////////////////////  CANCELAR  /////////////////////////////////////////////
   const cancelar = async () => {
   const id = new URLSearchParams(window.location.search).get("id");
   if (!id) return;
 
   try {
+    const user = auth.currentUser;
+    if (!user) {
+      alert("No autenticado");
+      return;
+    }
+
+    const token = await user.getIdToken();
+
+    // 🔥 1. LLAMAR BACKEND (REFUND REAL)
+    const res = await fetch("/api/refund-driver", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        viajeId: id,
+        driverId: user.uid
+      })
+    });
+
+    const data = await res.json();
+console.log("🔥 STRIPE KEY:", process.env.STRIPE_SECRET_KEY ? "OK" : "MISSING");
+
+    if (!res.ok) {
+      console.error(data);
+      alert("❌ Error cancelando viaje");
+      return;
+    }
+
+    // 🔥 2. WHATSAPP
     const viajeRef = ref(db, "viajes/" + id);
 
-    // 🔴 1. OBTENER DATOS PARA WHATSAPP
     let telefono = "";
     await new Promise((resolve) => {
       onValue(
         viajeRef,
         (snap) => {
           const d = snap.val();
-          const uid = auth.currentUser?.uid;
-
-if (!uid) return;
           telefono = d?.telefono || "";
           resolve(true);
         },
@@ -469,51 +496,28 @@ if (!uid) return;
       );
     });
 
-    // 🔴 2. ACTUALIZAR ESTADO EN FIREBASE
-    await update(viajeRef, {
-      estado: "Cancelado",
-      mensaje: "❌ The driver has canceled the ride.",
-      driverLat: null,
-      driverLng: null
-      
-    });
-    // 🔴 2.1 LIMPIAR VIAJE ACTIVO DEL DRIVER
-const uid = auth.currentUser?.uid;
-if (uid) {
-  await update(ref(db, "drivers/" + uid), {
-    viajeActivo: null
-  });
-}
-
-    // 🔴 3. DETENER TRACKING GPS
-    if (watchRef.current) {
-      navigator.geolocation.clearWatch(watchRef.current);
-      watchRef.current = null;
-    }
-
-    // 🔴 4. LIMPIAR MAPA
-        setPos(null);
-    setPath([]);
-
-    // 🔴 5. AVISAR AL USUARIO (WHATSAPP)
     if (telefono) {
       const tel = "1" + telefono;
+      const mensaje =
+        "❌ Driver canceled your ride\n\n" +
+        (data.refunded
+          ? "💳 Your payment will be refunded."
+          : "Please try again.");
+
       window.open(
-        `https://wa.me/${tel}?text=${encodeURIComponent(
-          "❌ Your ride has been canceld. We apologize for the inconvenience caused"
-        )}`,
+        `https://wa.me/${tel}?text=${encodeURIComponent(mensaje)}`,
         "_blank"
       );
     }
 
-    // 🔴 6. ALERTA
-    alert("Viaje cancelado correctamente");
+    alert("Viaje cancelado");
 
-    // 🔴 7. REDIRECCIÓN LIMPIA
+    // 🔥 3. REDIRIGIR
     window.location.replace("/driver");
 
   } catch (error) {
-    console.log("❌ Error cancelando:", error);
+    console.error(error);
+    alert("❌ Error cancelando");
   }
 };
 

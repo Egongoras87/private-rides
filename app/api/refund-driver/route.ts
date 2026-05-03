@@ -1,54 +1,88 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { getDatabase, ref, get, update } from "firebase/database";
-import { getAuth } from "firebase-admin/auth";
-import { initializeApp, cert, getApps } from "firebase-admin/app";
+console.log("🔥 FIREBASE:", !!process.env.FIREBASE_PRIVATE_KEY);
+console.log("🔥 STRIPE:", !!process.env.STRIPE_SECRET_KEY);
 
-// 🔥 INICIALIZAR FIREBASE ADMIN (solo una vez)
-if (!getApps().length) {
- let serviceAccount;
+
+import { initializeApp, cert, getApps, getApp, App } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
+import { getDatabase } from "firebase-admin/database";
+
+// 🔥 INIT FIREBASE
+let adminApp: App | null = null;
 
 try {
-  serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_KEY || "{}");
-} catch (e) {
-  console.error("Error parsing FIREBASE_ADMIN_KEY", e);
+  if (
+    !process.env.FIREBASE_PROJECT_ID ||
+    !process.env.FIREBASE_CLIENT_EMAIL ||
+    !process.env.FIREBASE_PRIVATE_KEY
+  ) {
+    throw new Error("Faltan variables de Firebase");
+  }
+
+  adminApp =
+    getApps().length > 0
+      ? getApp()
+      : initializeApp({
+          credential: cert({
+            projectId: process.env.FIREBASE_PROJECT_ID,
+            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+            privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+          }),
+          databaseURL:
+            "https://private-rides-52e08-default-rtdb.firebaseio.com",
+        });
+
+  console.log("✅ Firebase Admin inicializado");
+} catch (err) {
+  console.error("🔥 ERROR FIREBASE:", err);
 }
 
-if (!getApps().length && serviceAccount?.project_id) {
-  initializeApp({
-    credential: cert(serviceAccount)
-  });
-}
+// 🔥 INIT STRIPE
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error("❌ Missing STRIPE_SECRET_KEY");
 }
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2026-04-22.dahlia",
 });
 
+// 🚀 API
 export async function POST(req: Request) {
   try {
-    // 🔒 PASO 1 — LEER TOKEN
-    const authHeader = req.headers.get("authorization");
-
-    if (!authHeader) {
+    if (!adminApp) {
       return NextResponse.json(
-        { error: "No token" },
-        { status: 401 }
+        { error: "Firebase no inicializado" },
+        { status: 500 }
       );
     }
 
-    const token = authHeader.split("Bearer ")[1];
+    const authAdmin = getAuth(adminApp);
+    const db = getDatabase(adminApp);
 
-    // 🔒 PASO 2 — VALIDAR TOKEN
-    const decoded = await getAuth().verifyIdToken(token);
+    // 🔒 AUTH
+    const authHeader = req.headers.get("authorization");
+
+    if (!authHeader) {
+      return NextResponse.json({ error: "No token" }, { status: 401 });
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    const decoded = await authAdmin.verifyIdToken(token);
     const uid = decoded.uid;
 
-    // 🔒 PASO 3 — OBTENER VIAJE
+    // 🔒 BODY
     const { viajeId } = await req.json();
 
-    const db = getDatabase();
-    const viajeRef = ref(db, "viajes/" + viajeId);
-    const snap = await get(viajeRef);
+    if (!viajeId) {
+      return NextResponse.json(
+        { error: "viajeId requerido" },
+        { status: 400 }
+      );
+    }
+
+    const viajeRef = db.ref("viajes/" + viajeId);
+    const snap = await viajeRef.once("value");
 
     if (!snap.exists()) {
       return NextResponse.json(
@@ -59,7 +93,7 @@ export async function POST(req: Request) {
 
     const v = snap.val();
 
-    // 🔒 PASO 4 — VALIDAR DRIVER REAL
+    // 🔒 VALIDAR DRIVER
     if (v.driverId !== uid) {
       return NextResponse.json(
         { error: "No autorizado" },
@@ -67,67 +101,72 @@ export async function POST(req: Request) {
       );
     }
 
-    // 🔒 PASO 5 — EVITAR DOBLE REFUND
+    // 🔒 YA REEMBOLSADO
     if (v.refundId) {
       return NextResponse.json({
         success: true,
-        alreadyRefunded: true
+        alreadyRefunded: true,
       });
-    }
-
-    // 🔒 PASO 6 — VALIDAR ESTADO
-    if (
-      v.estado === "Cancelado" ||
-      v.estado === "Finalizado" ||
-      v.estado === "En viaje"
-    ) {
-      return NextResponse.json(
-        { error: "Estado no válido para refund" },
-        { status: 400 }
-      );
-    }
-
-    // 🔒 PASO 7 — VALIDAR MONTO CONTRA STRIPE
-    if (v.metodoPago === "stripe" && v.paymentIntentId) {
-      const paymentIntent = await stripe.paymentIntents.retrieve(v.paymentIntentId);
-
-      if (!paymentIntent || paymentIntent.amount !== Math.round(v.precio * 100)) {
-        return NextResponse.json(
-          { error: "Monto inconsistente" },
-          { status: 400 }
-        );
-      }
     }
 
     let refund = null;
 
-    // 💳 REFUND REAL
+    // 💳 STRIPE REFUND
     if (v.metodoPago === "stripe" && v.paymentIntentId) {
-      refund = await stripe.refunds.create({
-        payment_intent: v.paymentIntentId,
-      });
+      try {
+        const paymentIntent = await stripe.paymentIntents.retrieve(
+          v.paymentIntentId
+        );
+
+        if (paymentIntent.status !== "succeeded") {
+          await viajeRef.update({
+            estado: "Cancelado",
+            canceladoPor: "driver",
+            refundPercent: 0,
+            refundReason: "not_paid",
+          });
+
+          return NextResponse.json({
+            success: true,
+            refunded: false,
+          });
+        }
+
+        refund = await stripe.refunds.create({
+          payment_intent: v.paymentIntentId,
+        });
+
+      } catch (err: any) {
+        console.error("🔥 STRIPE ERROR:", err);
+
+        return NextResponse.json(
+          { error: err.message || "Stripe error" },
+          { status: 500 }
+        );
+      }
     }
 
-    // 🔴 GUARDAR LOG FINANCIERO
-    await update(viajeRef, {
+    // 🔴 UPDATE FINAL
+    await viajeRef.update({
       estado: "Cancelado",
       canceladoPor: "driver",
       refundId: refund?.id || null,
       refundAt: Date.now(),
-      refundAmount: v.precio,
+      refundAmount: refund ? v.precio : 0,
       refundPercent: refund ? 1 : 0,
-      refundReason: "driver_cancel"
+      refundReason: refund ? "driver_cancel" : "not_paid",
     });
 
     return NextResponse.json({
       success: true,
-      refunded: !!refund
+      refunded: !!refund,
     });
 
-  } catch (error) {
-    console.error("REFUND DRIVER ERROR:", error);
+  } catch (error: any) {
+    console.error("🔥 BACKEND ERROR:", error);
+
     return NextResponse.json(
-      { error: "Error refund" },
+      { error: error.message || "Error refund" },
       { status: 500 }
     );
   }

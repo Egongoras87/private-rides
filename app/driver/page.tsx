@@ -358,17 +358,23 @@ await fetch("/api/refund-driver", {
     alert("Error al rechazar viaje");
   }
 };
-// ❌ CANCELAR VIAJE (YA TOMADO)
-const cancelar = async (v: any) => {
-  if (!v?.id) return;
-
+// ❌ CANCELAR VIAJE (YA TOMADO)////////////////////////////////////////////////////////////////////////////
+const cancelar = async () => {
   try {
-    const token = await auth.currentUser?.getIdToken();
+    const id = new URLSearchParams(window.location.search).get("id");
 
-    if (!token) {
+    if (!id) {
+      alert("No hay viajeId");
+      return;
+    }
+
+    const user = auth.currentUser;
+    if (!user) {
       alert("No autenticado");
       return;
     }
+
+    const token = await user.getIdToken();
 
     const res = await fetch("/api/refund-driver", {
       method: "POST",
@@ -377,34 +383,35 @@ const cancelar = async (v: any) => {
         Authorization: `Bearer ${token}`
       },
       body: JSON.stringify({
-        viajeId: v.id
+        viajeId: id
       })
     });
 
-    if (!res.ok) {
-      alert("Error al cancelar");
-      return;
+    // 🔥 DEBUG
+    const text = await res.text();
+
+    console.log("STATUS:", res.status);
+    console.log("RAW:", text);
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      console.error("❌ NO ES JSON →", text);
     }
 
-    if (v.telefono) {
-    const telefono = "1" + v.telefono.replace(/\D/g, "");
-
-      const mensaje =
-        "❌ Tu viaje fue cancelado por el conductor.\n\n" +
-        (v.metodoPago === "stripe"
-          ? "💳 Tu pago será reembolsado completamente."
-          : "Puedes intentar nuevamente.");
-
-      window.open(
-        `https://wa.me/${telefono}?text=${encodeURIComponent(mensaje)}`
-      );
+    if (!res.ok) {
+      alert("Error cancelando viaje");
+      return;
     }
 
     alert("Viaje cancelado");
 
+    window.location.href = "/driver";
+
   } catch (error) {
-    console.error(error);
-    alert("Error al cancelar");
+    console.error("ERROR FRONTEND:", error);
+    alert("Error general");
   }
 };
 
@@ -516,10 +523,7 @@ const cancelar = async (v: any) => {
 
           <button
             style={btn("#dc3545")}
-            onClick={(e) => {
-              e.stopPropagation();
-              cancelar(v);
-            }}
+            onClick={() => cancelar()}
           >
             ❌ Cancelar
           </button>

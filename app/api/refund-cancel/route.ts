@@ -55,6 +55,7 @@ export async function POST(req: Request) {
 
     await update(viajeRef, {
       estado: "Cancelado",
+      canceladoPor: "user",
       refundPercent,
       refundId: refund?.id || null,
       refundAt: Date.now()

@@ -7,6 +7,9 @@ import { ref, onValue, update } from "firebase/database";
 import { useJsApiLoader } from "@react-google-maps/api";
 import { googleMapsConfig } from "@/lib/googleMaps";
 import { GoogleMap, Marker, Polyline } from "@react-google-maps/api";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+
 
 export default function UserTrackingPage() {
   const { isLoaded } = useJsApiLoader(googleMapsConfig);
@@ -33,6 +36,16 @@ const handleLoad = (map: any) => {
 
   mapRef.current = map;
 };
+useEffect(() => {
+  const unsub = onAuthStateChanged(auth, (user) => {
+    if (!user) {
+      window.location.href = "/login-user";
+    }
+  });
+
+  return () => unsub();
+}, []);
+
 useEffect(() => {
   if (!eta) return;
 
@@ -133,35 +146,48 @@ useEffect(() => {
 if (d.destinoLat && d.destinoLng) {
   const service = new window.google.maps.DirectionsService();
 
+  // 🔥 CAMBIO CLAVE: destino dinámico según fase
+  const destino =
+    d.estado === "En camino"
+      ? {
+          lat: Number(d.origenLat), // 👈 IR A RECOGER
+          lng: Number(d.origenLng)
+        }
+      : {
+          lat: Number(d.destinoLat), // 👈 VIAJE NORMAL
+          lng: Number(d.destinoLng)
+        };
+
   service.route(
     {
       origin: nueva,
-      destination: {
-        lat: Number(d.destinoLat),
-        lng: Number(d.destinoLng)
-      },
+      destination: destino,
       travelMode: window.google.maps.TravelMode.DRIVING
     },
     (res: any, status: any) => {
       if (status === "OK") {
+        const leg = res.routes[0].legs[0];
+
         const points = res.routes[0].overview_path.map((p: any) => ({
           lat: p.lat(),
           lng: p.lng()
         }));
 
         setPath(points);
-        setDestinoMarker(points[points.length - 1]);
 
-        // 🔥 CONTROL INTELIGENTE DE ETA (cada 5 segundos)
+        // 🔥 marcador correcto
+        setDestinoMarker({
+          lat: destino.lat,
+          lng: destino.lng
+        });
+
+        // 🔥 ETA correcto por fase
         const now = Date.now();
 
-        if (
-          !lastEtaUpdateRef.current ||
-          now - lastEtaUpdateRef.current > 5000
-        ) {
+        if (!lastEtaUpdateRef.current || now - lastEtaUpdateRef.current > 5000) {
           lastEtaUpdateRef.current = now;
 
-          setEta(res.routes[0].legs[0].duration.value);
+          setEta(leg.duration.value);
         }
       }
     }
@@ -177,20 +203,45 @@ if (d.destinoLat && d.destinoLng) {
   const id = new URLSearchParams(window.location.search).get("id");
   if (!id) return;
 
-  const res = await fetch("/api/refund-cancel", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ viajeId: id })
-  });
+  try {
+    // 🔥 FIX TOKEN
+    const user = auth.currentUser;
 
-  const data = await res.json();
+    if (!user) {
+      alert("Debes iniciar sesión");
+      return;
+    }
 
-  if (data.percent === 1) {
-    alert("💳 Reembolso completo");
-  } else if (data.percent === 0.5) {
-    alert("💳 Reembolso 50%");
-  } else {
-    alert("❌ Sin reembolso");
+    const token = await user.getIdToken();
+
+    const res = await fetch("/api/refund-cancel", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`, // 🔥 IMPORTANTE
+      },
+      body: JSON.stringify({ viajeId: id }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error(data);
+      alert("❌ Error cancelando viaje");
+      return;
+    }
+
+    alert(
+      data.percent === 1
+        ? "💳 Reembolso completo"
+        : data.percent === 0.5
+        ? "💳 Reembolso parcial"
+        : "❌ Sin reembolso"
+    );
+
+  } catch (err) {
+    console.error(err);
+    alert("❌ Error de conexión");
   }
 };
 
