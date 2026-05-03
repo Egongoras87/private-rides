@@ -15,7 +15,7 @@ export default function UserTrackingPage() {
   const [pos, setPos] = useState<any>(null);
   const [path, setPath] = useState<any[]>([]);
   const [destinoMarker, setDestinoMarker] = useState<any>(null);
-
+const [viajeData, setViajeData] = useState<any>(null);
   const lastMapRef = useRef<any>(null);
   const lastHeadingRef = useRef(0);
   const mapRef = useRef<any>(null);
@@ -24,7 +24,7 @@ export default function UserTrackingPage() {
   // 🔥 UI
   const [eta, setEta] = useState(0);
   const [fase, setFase] = useState("espera");
-  const [mostrarZelle, setMostrarZelle] = useState(false);
+ 
   const [viajeCancelado, setViajeCancelado] = useState(false);
   const [viajeFinalizado, setViajeFinalizado] = useState(false);
   const lastEtaUpdateRef = useRef(0);
@@ -54,6 +54,7 @@ useEffect(() => {
 
     const unsubscribe = onValue(viajeRef, (snap) => {
       const d = snap.val();
+      setViajeData(d);
       if (!d) return;
 
       // 🔴 estados
@@ -65,11 +66,18 @@ useEffect(() => {
       }
 
       if (d.estado === "Finalizado") {
-        setViajeFinalizado(true);
-        setPos(null);
-        setPath([]);
-        return;
-      }
+  // 🔴 limpiar storage
+  localStorage.removeItem("viajeId");
+  localStorage.removeItem("viajeData");
+
+  // 🔴 limpiar UI completa
+  setViajeFinalizado(true);
+  setPos(null);
+  setPath([]);
+  setDestinoMarker(null); // 🔥 IMPORTANTE
+
+  return;
+}
 
       if (d.estado === "En camino") setFase("pickup");
       if (d.estado === "En viaje") setFase("viaje");
@@ -165,16 +173,26 @@ if (d.destinoLat && d.destinoLng) {
   }, [isLoaded]);
 
   // ❌ CANCELAR
-  const cancelar = async () => {
-    const id = new URLSearchParams(window.location.search).get("id");
-    if (!id) return;
+  const cancelarViaje = async () => {
+  const id = new URLSearchParams(window.location.search).get("id");
+  if (!id) return;
 
-    await update(ref(db, "viajes/" + id), {
-      estado: "Cancelado"
-    });
+  const res = await fetch("/api/refund-cancel", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ viajeId: id })
+  });
 
-    window.location.href = "/";
-  };
+  const data = await res.json();
+
+  if (data.percent === 1) {
+    alert("💳 Reembolso completo");
+  } else if (data.percent === 0.5) {
+    alert("💳 Reembolso 50%");
+  } else {
+    alert("❌ Sin reembolso");
+  }
+};
 
   // 🎯 BOTONES
   const btn = (bg: string) => ({
@@ -200,8 +218,72 @@ if (d.destinoLat && d.destinoLng) {
 
   if (!isLoaded) return <div>Loading...</div>;
 
-  if (viajeCancelado) return <div>❌ Ride canceled</div>;
-  if (viajeFinalizado) return <div>✅ Trip completed</div>;
+  if (viajeCancelado) {
+  return (
+    <div style={{
+      height: "100vh",
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "center",
+      alignItems: "center",
+      background: "#111",
+      color: "#fff",
+      gap: 20
+    }}>
+      <h2>❌ Ride canceled</h2>
+
+      <button
+        style={{
+          padding: 14,
+          borderRadius: 10,
+          border: "none",
+          background: "#dc3545",
+          color: "#fff",
+          fontSize: 16,
+          cursor: "pointer"
+        }}
+        onClick={() => {
+          window.location.href = "/";
+        }}
+      >
+        🔙 Back to Home
+      </button>
+    </div>
+  );
+}
+  if (viajeFinalizado) {
+  return (
+    <div style={{
+      height: "100vh",
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "center",
+      alignItems: "center",
+      background: "#111",
+      color: "#fff",
+      gap: 20
+    }}>
+      <h2>✅ Trip completed</h2>
+
+      <button
+        style={{
+          padding: 14,
+          borderRadius: 10,
+          border: "none",
+          background: "#28a745",
+          color: "#fff",
+          fontSize: 16,
+          cursor: "pointer"
+        }}
+        onClick={() => {
+          window.location.href = "/";
+        }}
+      >
+        🔙 Back to Home
+      </button>
+    </div>
+  );
+}
 
   return (
     <div style={{ height: "100vh", position: "relative" }}>
@@ -214,7 +296,7 @@ if (d.destinoLat && d.destinoLng) {
     disableDefaultUI: true,
     zoomControl: true,
     gestureHandling: "greedy",
-    mapId: "DEMO_MAP_ID"
+
   }}
 >
 
@@ -320,81 +402,26 @@ if (d.destinoLat && d.destinoLng) {
           : "Arriving..."}
       </p>
 
-      <p>{pos?.lat} - {pos?.lng}</p>
+  
+     {/* 💵 INFO DE PAGO */}
+<div style={{ marginTop: 10 }}>
 
-      {/* 💳 PAY */}
-      <div style={{ marginTop: 10 }}>
-        <h4 style={{ marginBottom: 5 }}>💳 Pay Here</h4>
+{viajeData?.metodoPago === "stripe" ? (
+  <p style={{ color: "green", fontWeight: "bold" }}>
+    💳 Paid (${viajeData?.precio?.toFixed(2)})
+  </p>
+) : (
+  <p style={{ fontWeight: "bold", color: "#000" }}>
+    💵 Pay ${viajeData?.precio?.toFixed(2)} to driver
+  </p>
+)}
 
-        <div style={{ display: "flex", gap: 10 }}>
+</div>
 
-          <button
-            onClick={() => setMostrarZelle(prev => !prev)}
-            onMouseDown={press}
-            onMouseUp={release}
-            onMouseLeave={release}
-            style={{ ...btn("#6f42c1"), flex: 1 }}
-          >
-            Zelle
-          </button>
-
-          <button
-            onClick={() =>
-              window.open("https://www.paypal.com/paypalme/ernestogongorasaco")
-            }
-            onMouseDown={press}
-            onMouseUp={release}
-            onMouseLeave={release}
-            style={{ ...btn("#0070ba"), flex: 1 }}
-          >
-            PayPal
-          </button>
-
-          <button
-  onClick={() =>
-    window.open(
-      "https://venmo.com/code?user_id=4536118275999433880&created=1777529554",
-      "_blank"
-    )
-  }
-            onMouseDown={press}
-            onMouseUp={release}
-            onMouseLeave={release}
-            style={{ ...btn("#3d95ce"), flex: 1 }}
-          >
-            Venmo
-          </button>
-
-        </div>
-
-        {mostrarZelle && (
-          <div style={{
-            marginTop: 15,
-            padding: 15,
-            background: "#fff",
-            borderRadius: 12,
-            textAlign: "center",
-            boxShadow: "0 4px 10px rgba(0,0,0,0.1)"
-          }}>
-            <p><b>💳 Zelle</b></p>
-            <p>Ernesto Gongora Saco</p>
-
-            <div style={{ fontSize: 20, fontWeight: "bold" }}>
-              7252876197
-            </div>
-
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText("7252876197");
-                alert("Número copiado");
-              }}
-              style={{ ...btn("#000"), width: "100%", marginTop: 10 }}
-            >
-              Copy Number
-            </button>
-          </div>
-        )}
-      </div>
+{/* ⚠️ AVISO CANCELACIÓN */}
+<p style={{ fontSize: 12, color: "#aaa", marginTop: 5 }}>
+  CCancellations after 5 minutes may incur charges.
+</p>
 
       {/* ❌ CANCEL */}
       <button
@@ -402,7 +429,12 @@ if (d.destinoLat && d.destinoLng) {
   onMouseDown={press}
   onMouseUp={release}
   onMouseLeave={release}
-  onClick={cancelar}
+ onClick={() => {
+    const ok = confirm(
+      "Cancelar puede generar cargo dependiendo del tiempo.\n\n¿Deseas continuar?"
+    );
+    if (ok) cancelarViaje();
+  }}
 >
   Cancel Ride
 </button>

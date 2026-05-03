@@ -2,6 +2,12 @@
 import { useState, useRef, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { ref, set, onValue, update } from "firebase/database";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
+
 
 import {
   GoogleMap,
@@ -21,19 +27,31 @@ declare global {
 }
 
 export default function Home() {
+  const stripePromise = loadStripe("pk_test_51TSmPACMPktsmWMArlXTC4cnMCo7kSs93TdVklce4NmrIJkTdCEGfZsgbMCtvt1gFCnGPUDavnr8sTPpaGZtOBky00H4rQMTKl");
 
+  return (
+    <Elements stripe={stripePromise}>
+      <CheckoutContent />
+    </Elements>
+  );
+}
+ function CheckoutContent() {
+  const [metodoPago, setMetodoPago] = useState<"stripe" | "cash">("stripe");
+const [loadingUser, setLoadingUser] = useState(true);
   const [directions, setDirections] = useState<any>(null);
   const { isLoaded } = useJsApiLoader(googleMapsConfig);
   const [distancia, setDistancia] = useState<number>(0);
   const origenAutoRef = useRef<any>(null);
   const destinoAutoRef = useRef<any>(null);
   const [precio, setPrecio] = useState<number>(0);
-  const [mensaje, setMensaje] = useState<string>("");
+  const [loadingPago, setLoadingPago] = useState(false);
 const [latDestino, setLatDestino] = useState(0);
 const [lngDestino, setLngDestino] = useState(0);
   const [nombre, setNombre] = useState("");
-  const [telefono, setTelefono] = useState("");
-const telefonoDriver = "17252876197"; // formato internacional sin +
+ const [telefono, setTelefono] = useState("");
+const stripe = useStripe();
+const elements = useElements();
+ 
 const [fechaHora, setFechaHora] = useState("");
   const [miUbicacion, setMiUbicacion] =
     useState<{ lat: number; lng: number } | null>(null);
@@ -46,12 +64,12 @@ const [lngOrigen, setLngOrigen] = useState(0);
 const PRICE_PER_MILE = 2.0; // por milla
 const PRICE_PER_MIN = 0.3;  // por minuto
 const MIN_FARE = 12;        // mínimo
-const [mostrarZelle, setMostrarZelle] = useState(false);
+
   const origenRef = useRef<HTMLInputElement | null>(null);
   const destinoRef = useRef<HTMLInputElement | null>(null);
   const estiloBoton = {
   width: "100%",
-  padding: 14,
+  padding: 10,
   borderRadius: 10,
   border: "none",
   fontSize: 16,
@@ -174,12 +192,85 @@ if (!window.google?.maps?.DirectionsService) return;
   });
 };
 
-  // 📤 Reservar viaje
- const reservar = async () => {
+//////////////////FUNCION PAGAR////////////////////////////////////////////////////////////////////////
+const pagar = async () => {
+  try {
+    setLoadingPago(true);
+
+    if (!stripe || !elements) {
+      alert("Stripe no cargó");
+      return false;
+    }
+
+    const cardElement = elements.getElement(CardElement);
+
+    if (!cardElement) {
+      alert("Ingresa la tarjeta");
+      return false;
+    }
+
+    // 🔥 crear intent
+    const res = await fetch("/api/create-payment", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        amount: Math.round(precio * 100)
+      })
+    });
+
+    if (!res.ok) {
+  alert("Error creando pago");
+  return false;
+}
+
+const data = await res.json();
+
+    // 🔥 confirmar pago REAL
+    const result = await stripe.confirmCardPayment(data.clientSecret, {
+      payment_method: {
+        card: cardElement,
+        billing_details: {
+          name: nombre,
+          phone: telefono
+        }
+      }
+    });
+
+    if (result.error) {
+      console.error(result.error);
+      alert("❌ " + result.error.message);
+      return false;
+    }
+
+    if (result.paymentIntent?.status === "succeeded") {
+  return result.paymentIntent.id; // 🔥 devuelve el ID real
+}
+
+    return false;
+
+  } catch (err) {
+    console.error(err);
+    alert("Error en pago");
+    return false;
+  } finally {
+    setLoadingPago(false);
+  }
+};
+
+  // /////////////////////////////////////////📤 Reservar viaje/////////////////////////////////////////
+const reservar = async () => {
+   if (loadingPago) return;
+  if (!precio || precio <= 0) {
+    alert("Calcula el precio primero");
+    return;
+  }
+
   if (!origenRef.current || !destinoRef.current) return;
 
   if (!fechaHora) {
-    setMensaje("⛔ Select date and time");
+    alert("⛔ Select date and time");
     return;
   }
 
@@ -188,17 +279,45 @@ if (!window.google?.maps?.DirectionsService) return;
     return;
   }
 
-  const fechaISO = new Date(fechaHora).getTime();
+  if (!telefono || telefono.length < 8) {
+    alert("Número inválido");
+    return;
+  }
 
-  const origen = origenRef.current.value;
-  const destino = destinoRef.current.value;
+  const uid = auth.currentUser?.uid;
+
+  if (!uid) {
+    alert("Debes iniciar sesión");
+    window.location.href = "/login-user";
+    return;
+  }
 
   try {
+   let paymentIntentId: string | null = null;
+
+// 💳 STRIPE
+if (metodoPago === "stripe") {
+  const result = await pagar();
+
+  if (!result) {
+    alert("❌ Pago fallido");
+    return;
+  }
+
+  paymentIntentId = result; // 🔥 guardas el ID aquí
+}
+
+    const fechaISO = new Date(fechaHora).getTime();
+    const origen = origenRef.current.value;
+    const destino = destinoRef.current.value;
+
     const id = Date.now().toString();
 
     // 🔥 GUARDAR EN FIREBASE
     await set(ref(db, "viajes/" + id), {
       id,
+      userId: uid,
+
       nombre,
       telefono,
       origen,
@@ -210,15 +329,22 @@ if (!window.google?.maps?.DirectionsService) return;
       distancia,
       precio,
       fecha: fechaISO,
+
       estado: "Pendiente",
+      driverId: null,
+
+      metodoPago,
+      pagado: metodoPago === "stripe",
+      estadoPago: metodoPago === "stripe" ? "pagado" : "pendiente",
+     paymentIntentId: metodoPago === "stripe" ? paymentIntentId : null,
+
       driverLat: null,
       driverLng: null,
       timestamp: Date.now()
     });
-   
-    // 🔥 LOCAL STORAGE (NO TOCAR)
-    localStorage.setItem("viajeId", id);
 
+    // 🔥 LOCAL STORAGE
+    localStorage.setItem("viajeId", id);
     localStorage.setItem(
       "viajeData",
       JSON.stringify({
@@ -231,30 +357,47 @@ if (!window.google?.maps?.DirectionsService) return;
         distancia
       })
     );
+console.log("paymentIntentId guardado:", paymentIntentId);                          ////////// console log////////
 
     const trackingUrl = `${window.location.origin}/tracking?id=${id}`;
 
-    const mensajeWhatsApp =
-      "🚗 NEW RIDE\n\n" +
-      "👤 " + nombre + "\n" +
-      "📞 " + telefono + "\n" +
-      "📍 " + origen + "\n" +
-      "🏁 " + destino + "\n" +
-      "💰 $" + precio.toFixed(2) + "\n\n" +
-      "📡 Track:\n" + trackingUrl;
+          const telefonoFinal = "1" + telefono.replace(/\D/g, "");
 
-    window.open(
-      `https://wa.me/${telefonoDriver}?text=${encodeURIComponent(mensajeWhatsApp)}`,
-      "_blank"
-    );
+      const mensajeWhatsApp =
+        "🚗 NEW RIDE\n\n" +
+        "👤 " + nombre + "\n" +
+        "📞 " + telefono + "\n" +
+        "📍 " + origen + "\n" +
+        "🏁 " + destino + "\n" +
+        "💰 $" + precio.toFixed(2) + "\n\n" +
+        "📡 Track:\n" + trackingUrl;
 
-    window.location.href = `/tracking?id=${id}`;
+      const url = `https://wa.me/${telefonoFinal}?text=${encodeURIComponent(mensajeWhatsApp)}`;
+
+      window.open(url, "_blank");
+    
+
+    // 🚀 REDIRECCIÓN
+    setTimeout(() => {
+      window.location.href = `/tracking?id=${id}`;
+    }, 800);
 
   } catch (error) {
     console.error("ERROR:", error);
-    setMensaje("❌ Error de conexión");
+    alert("❌ Error de conexión");
   }
 };
+useEffect(() => {
+  const unsub = onAuthStateChanged(auth, (user) => {
+    if (!user) {
+      window.location.href = "/login-user";
+    } else {
+      setLoadingUser(false); // 🔥 usuario listo
+    }
+  });
+
+  return () => unsub();
+}, []);
   // 📡 Leer ubicación del driver (simulación)
   useEffect(() => {
   const id = localStorage.getItem("viajeId");
@@ -311,7 +454,6 @@ useEffect(() => {
     const data = JSON.parse(saved);
 
     setNombre(data.nombre || "");
-    setTelefono(data.telefono || "");
     setFechaHora(data.fechaHora || "");
 
     setTimeout(() => {
@@ -336,12 +478,14 @@ useEffect(() => {
 
     const estado = data.estado;
 
-    if (estado === "Pendiente" || estado === "En camino") {
-      window.location.href = `/tracking?id=${id}`;
-    } else {
-      localStorage.removeItem("viajeId");
-      localStorage.removeItem("viajeData");
-    }
+   if (estado === "Pendiente" || estado === "Asignado" || estado === "En camino" || estado === "En viaje") {
+  window.location.href = `/tracking?id=${id}`;
+}
+
+if (estado === "Finalizado" || estado === "Cancelado") {
+  localStorage.removeItem("viajeId");
+  localStorage.removeItem("viajeData");
+}
   });
 
   return () => unsubscribe();
@@ -368,6 +512,7 @@ useEffect(() => {
 
   limpiarViejo();
 }, []);
+
 
 const darkMapStyle = [
   {
@@ -427,13 +572,28 @@ const darkMapStyle = [
 ];
 
 const lightMapStyle = [];
+if (loadingUser) {
+  return (
+    <div style={{
+      color: "#fff",
+      display: "flex",
+      height: "100vh",
+      justifyContent: "center",
+      alignItems: "center",
+      fontSize: 18
+    }}>
+      🔐 Verificando sesión...
+    </div>
+  );
+}
 
 if (!isLoaded) {
   return <div>Loading map...</div>;
 }
 ////////////////////////////////RETURN////////////////////////////////
-  return (
-  <>
+return (
+
+  <div>
   {/* FONDO */}
   <div
     style={{
@@ -472,7 +632,7 @@ if (!isLoaded) {
   onChange={(e) => setNombre(e.target.value)}
   style={{
     width: "100%",
-    padding: 14,
+    padding: 8,
     background: "transparent",
     borderRadius: 10,
     border: "1px solid #ccc",
@@ -480,21 +640,21 @@ if (!isLoaded) {
     color: "#fff"
   }}
 />
-
 <input
-  placeholder="Phone"
+  placeholder="Phone number"
   onChange={(e) => setTelefono(e.target.value)}
   style={{
     width: "100%",
-    padding: 14,
-    borderRadius: 10,
+    padding: 8,
     background: "transparent",
+    borderRadius: 10,
     border: "1px solid #ccc",
     fontSize: 16,
-    color: "#fff"
+    color: "#fff",
+    marginTop: 8
   }}
 />
-       
+      
         
         <label style={{ color: "#fff" }}>Date & Time</label>
 
@@ -504,7 +664,7 @@ if (!isLoaded) {
   onChange={(e) => setFechaHora(e.target.value)}
   style={{
     width: "100%",
-    padding: 14,
+    padding: 8,
     background: "transparent",
     borderRadius: 10,
     border: "1px solid #ccc",
@@ -530,7 +690,7 @@ if (!isLoaded) {
     placeholder="Pickup location"
     style={{
       width: "100%",
-      padding: 14,
+      padding: 8,
       borderRadius: 10,
       border: "1px solid #ccc",
       background: "transparent",
@@ -590,11 +750,11 @@ if (!isLoaded) {
     placeholder="Drop-off location"
     style={{
       width: "100%",
-      padding: 14,
+      padding: 8,
       borderRadius: 10,
       border: "1px solid #ccc",
       background: "transparent",
-      marginTop: 8,
+      marginTop: 6,
       color: "#fff"
     }}
   />
@@ -620,7 +780,8 @@ if (!isLoaded) {
   </button>
 
   <button
-    onClick={reservar}
+  onClick={reservar}
+  disabled={loadingPago}
     onMouseDown={presionarBoton}
 onMouseUp={soltarBoton}
 onMouseLeave={soltarBoton}
@@ -631,7 +792,7 @@ onMouseLeave={soltarBoton}
       color: "#fff"
     }}
   >
-    Book
+    {loadingPago ? "Procesando pago..." : "Book"}
   </button>
 
 </div>
@@ -644,75 +805,64 @@ onMouseLeave={soltarBoton}
   Price: ${precio.toFixed(2)}
 </p>
 </div>
+<div style={{ marginTop: 10 }}>
+  <p style={{ color: "#fff" }}>Choose a Payment Method.</p>
 
-        {false && mensaje.includes("✅") && (
-  <div style={{ marginTop: 20 }}>
-    <h3 style={{ marginBottom: 10 }}>💳 Métodos de pago</h3>
+  <div style={{ display: "flex", gap: 10 }}>
+  {/* 💳 CARD (DESPLEGABLE) */}
+  <div style={{ flex: 1 }}>
+    <button
+      onClick={() => setMetodoPago("stripe")}
+      style={{
+        width: "100%",
+        padding: 8,
+        borderRadius: 6,
+        border: "none",
+        background: metodoPago === "stripe" ? "#2ecc71" : "#333",
+        color: "#fff"
+      }}
+    >
+      💳 Card
+    </button>
 
-    
-    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-      
-      <button
-  onClick={() => setMostrarZelle(!mostrarZelle)}
-  style={{
-    flex: 1,
-    padding: 10,
-    background: "#6f42c1",
-    color: "#fff",
-    borderRadius: 10,
-    border: "none"
-  }}
->
-  Zelle
-</button>
-
-      <button
-        onClick={() =>
-          window.open(
-            "https://www.paypal.com/paypalme/ernestogongorasaco"
-          )
-        }
+    {metodoPago === "stripe" && (
+      <div
         style={{
-          flex: 1,
-          padding: 12,
-          background: "#0070ba",
-          color: "#fff",
-          border: "none",
-          borderRadius: 10
+          marginTop: 6,
+          padding: 8,
+          background: "#fff",
+          borderRadius: 6
         }}
       >
-        PayPal
-      </button>
-
-      <button
-        onClick={() =>
-          window.open(
-            "https://venmo.com/code?user_id=4536118275999433880&created=1777321277"
-          )
-        }
-        style={{
-          flex: 1,
-          padding: 12,
-          background: "#3d95ce",
-          color: "#fff",
-          border: "none",
-          borderRadius: 10
-        }}
-      >
-        Venmo
-      </button>
-
-    </div>
+        <CardElement />
+      </div>
+    )}
   </div>
-)}
+
+  {/* 💵 CASH */}
+  <button
+    onClick={() => setMetodoPago("cash")}
+    style={{
+      flex: 1,
+      padding: 8,
+      borderRadius: 6,
+      border: "none",
+      background: metodoPago === "cash" ? "#f39c12" : "#333",
+      color: "#fff"
+    }}
+  >
+    💵 Cash
+  </button>
+</div>
+        </div>
 <button
   onClick={() => setModoOscuroMapa(!modoOscuroMapa)}
   style={{
-    marginTop: 10,
-    padding: 10,
-    borderRadius: 10,
+    marginTop: 4,
+    padding: 4,
+    borderRadius: 6,
     border: "none",
-    background: "rgba(255,255,255,0.2)",
+    background: "transparent",
     color: "#fff",
     backdropFilter: "blur(5px)"
   }}
@@ -746,7 +896,8 @@ onMouseLeave={soltarBoton}
   </GoogleMap>
 </div>
 
+ </div>
 </div>
-    </>
-  );
+
+);
 }

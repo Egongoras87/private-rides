@@ -13,17 +13,17 @@ import { GoogleMap, Marker, Polyline } from "@react-google-maps/api";
 
 
 export default function DriverTrackingPage() {
-
+const [viajeData, setViajeData] = useState<any>(null);
   const watchRef = useRef<any>(null);
   const lastHeadingRef = useRef(0);
-  const lastGpsRef = useRef<any>(null);   // 📡 GPS
+ 
 const lastMapRef = useRef<any>(null);   // 🗺️ cámara
   const [pos, setPos] = useState<any>(null);
   const [fase, setFase] = useState("pickup");
 const [eta, setEta] = useState(0);
   const mapRef = useRef<any>(null);
-  const animRef = useRef<any>(null);
-const lastPanRef = useRef(0);
+ 
+
 const lastRouteRef = useRef(0);
 const [path, setPath] = useState<any[]>([]);
 const [viajeFinalizado, setViajeFinalizado] = useState(false);
@@ -67,11 +67,14 @@ useEffect(() => {
 
   const viajeRef = ref(db, "viajes/" + id);
 
-  const unsubscribe = onValue(viajeRef, (snap) => {
+  const unsubscribe = onValue(viajeRef, async (snap) => {
   const d = snap.val();
-  const uid = auth.currentUser?.uid;
+if (!d) return;
 
-  if (!uid) return;
+setViajeData(d);
+
+const uid = auth.currentUser?.uid;
+if (!uid) return;
 
   // 🔒 PROTECCIÓN DRIVER (AQUÍ EXACTAMENTE)
   if (d?.driverId && d.driverId !== uid) {
@@ -89,28 +92,31 @@ useEffect(() => {
     return;
   }
 
-    // 🔴 2. FINALIZADO (PRIMERO SIEMPRE)
-    if (d.estado === "Finalizado") {
+  // 🔴 2. FINALIZADO (PRIMERO SIEMPRE)
+if (d.estado === "Finalizado") {
   console.log("✅ VIAJE FINALIZADO (DRIVER)");
 
   const uid = auth.currentUser?.uid;
+
+  // 🔴 limpiar driver activo
   if (uid) {
-    update(ref(db, "drivers/" + uid), {
+    await update(ref(db, "drivers/" + uid), {
       viajeActivo: null
     });
   }
 
+  // 🔴 DETENER GPS (CLAVE)
   if (watchRef.current) {
     navigator.geolocation.clearWatch(watchRef.current);
     watchRef.current = null;
   }
 
- 
+  // 🔴 LIMPIAR UI
   setPos(null);
   setPath([]);
   setViajeFinalizado(true);
 
-  return;
+  return; // 🔥 ESTO ES LO MÁS IMPORTANTE
 }
 // ❌ CANCELADO
 if (d.estado === "Cancelado") {
@@ -174,42 +180,70 @@ setPath((prev) =>
 );
   
 
-    // 🚗 NAVEGACIÓN TIPO UBER
-   const dx = nueva.lng - (lastMapRef.current?.lng || nueva.lng);
-const dy = nueva.lat - (lastMapRef.current?.lat || nueva.lat);
+   // 🚗 NAVEGACIÓN TIPO UBER (PRO)
 
-let headingDeg = Math.atan2(dy, dx) * (180 / Math.PI);
+// 🔴 1. INICIALIZAR
+if (!lastMapRef.current) {
+  lastMapRef.current = nueva;
+  return;
+}
 
-if (headingDeg < 0) headingDeg += 360;
+// 🔴 2. DIFERENCIA DE MOVIMIENTO
+const dx = nueva.lng - lastMapRef.current.lng;
+const dy = nueva.lat - lastMapRef.current.lat;
 
-const diff = headingDeg - lastHeadingRef.current;
-const adjustedDiff = ((diff + 540) % 360) - 180;
+// 🔥 evitar ruido GPS
+if (Math.abs(dx) < 0.00001 && Math.abs(dy) < 0.00001) {
+  return;
+}
+
+// 🔴 3. CALCULAR HEADING REAL
+let heading = Math.atan2(dy, dx) * (180 / Math.PI);
+if (heading < 0) heading += 360;
+
+// 🔴 4. SUAVIZADO (CLAVE PARA QUE NO SALTE)
+let diff = heading - lastHeadingRef.current;
+diff = ((diff + 540) % 360) - 180;
+
+const smoothFactor = 0.2;
 
 lastHeadingRef.current =
-  lastHeadingRef.current + adjustedDiff * 0.35;
+  lastHeadingRef.current + diff * smoothFactor;
 
+// 🔴 5. FALLBACK
 if (!isFinite(lastHeadingRef.current)) {
-  lastHeadingRef.current = headingDeg;
+  lastHeadingRef.current = heading;
 }
-    if (mapRef.current) {
+
+// 🔴 6. MOVER CÁMARA (ESTILO UBER REAL)
+if (mapRef.current) {
   const map = mapRef.current;
 
-  // calcular velocidad
   const speed = Math.hypot(dx, dy);
 
-  // zoom dinámico
   const zoom = speed > 0.0005 ? 15 : 17;
 
-  // 🔥 movimiento estilo Uber REAL
+  // 🔥 OFFSET (ADELANTA LA CÁMARA)
+  const offsetDistance = 0.0003;
+
+  const rad = (lastHeadingRef.current * Math.PI) / 180;
+
+  const offsetLat = nueva.lat + Math.sin(rad) * offsetDistance;
+  const offsetLng = nueva.lng + Math.cos(rad) * offsetDistance;
+
   map.moveCamera({
-    center: nueva,
-    heading: lastHeadingRef.current || 0,
-    tilt: 60,
+    center: {
+      lat: offsetLat,
+      lng: offsetLng
+    },
+    heading: lastHeadingRef.current,
+    tilt: 65,
     zoom: zoom
   });
 }
 
-    lastMapRef.current = nueva;
+// 🔴 7. GUARDAR POSICIÓN
+lastMapRef.current = nueva;
 
  // 🔥 CONTROL DE RUTA
 const nowRoute = Date.now();
@@ -301,7 +335,22 @@ if (!lastRouteRef.current || nowRoute - lastRouteRef.current > 3000) {
 
           if (instruction !== lastInstructionRef.current) {
             lastInstructionRef.current = instruction;
-            speak(`En ${Math.round(distancia)} metros, ${instruction}`);
+            const miles = distancia / 1609;
+
+if (miles < 0.02) return; // evita ruido
+
+const textoDistancia =
+  miles < 0.1
+    ? `${(miles * 5280).toFixed(0)} pies`
+    : `${miles.toFixed(2)} millas`;
+
+speak(`En ${textoDistancia}, ${instruction}`);
+if (
+  !instruction.toLowerCase().includes("left") &&
+  !instruction.toLowerCase().includes("right")
+) {
+  return;
+}
           }
         }
       }
@@ -337,7 +386,7 @@ useEffect(() => {
       
 
       lastSendTime = Date.now();
-      lastGpsRef.current = { lat, lng };
+      
 
       update(ref(db, "viajes/" + id), {
         driverLat: lat,
@@ -470,8 +519,10 @@ if (uid) {
 
   // 🎯 BOTONES 3D (IGUAL QUE TU TRACKING)
   const btn = (bg: string) => ({
-    padding: 12,
-    borderRadius: 10,
+    padding: 9,
+    borderRadius: 9,
+    fontSize: 10, 
+    fontWeight: "bold",
     border: "none",
     background: bg,
     color: "#fff",
@@ -524,13 +575,13 @@ if (viajeFinalizado) {
     <GoogleMap
   onLoad={handleLoad}
   mapContainerStyle={{ width: "100%", height: "100%" }}
-  center={pos || { lat: 36.1699, lng: -115.1398 }}
+  center={undefined}
   zoom={17}
   options={{
     disableDefaultUI: true,
     zoomControl: true,
     gestureHandling: "greedy",
-    mapId: "DEMO_MAP_ID"
+    mapId: "c7f305f9e66d61eb57ab057d"
   }}
 >
 
@@ -617,10 +668,24 @@ if (viajeFinalizado) {
         bottom: 0,
         width: "100%",
         background: "#fff",
-        padding: 20,
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20
+        padding: 16,
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16
       }}>
+
+{viajeData?.metodoPago === "cash" && !viajeData?.pagado && (
+  <div style={{
+    background: "#ff0000",
+    color: "#fff",
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 10,
+    textAlign: "center",
+    fontWeight: "bold"
+  }}>
+    💵 CASH - CLIENT MUST PAY DRIVER
+  </div>
+)}
 
         <h3>
           {fase === "pickup"
@@ -680,7 +745,7 @@ if (viajeFinalizado) {
     📍 Recoger
   </button>
 )}
-          <button
+         <button
   style={btn("#25D366")}
   onMouseDown={press}
   onMouseUp={release}
@@ -691,24 +756,28 @@ if (viajeFinalizado) {
 
     const viajeRef = ref(db, "viajes/" + id);
 
-    onValue(viajeRef, (snap) => {
-      const d = snap.val();
-      const uid = auth.currentUser?.uid;
+    onValue(
+      viajeRef,
+      (snap) => {
+        const d = snap.val();
 
-if (!uid) return;
-      if (!d?.telefono) return;
+        if (!d?.telefono) return;
 
-      const telefono = "1" + d.telefono;
+        // 🔥 CORRECTO
+        const telefono = "1" + String(d.telefono).replace(/\D/g, "");
 
-      window.open(
-        `https://wa.me/${telefono}?text=🚗 Estoy en camino`,
-        "_blank"
-      );
-    }, { onlyOnce: true });
+        window.open(
+          `https://wa.me/${telefono}?text=${encodeURIComponent("🚗 Estoy en camino")}`,
+          "_blank"
+        );
+      },
+      { onlyOnce: true }
+    );
   }}
 >
   💬 WhatsApp
 </button>
+
 <button
   style={btn("#4285F4")}
   onMouseDown={press}
@@ -720,36 +789,37 @@ if (!uid) return;
 
     const viajeRef = ref(db, "viajes/" + id);
 
-    onValue(viajeRef, (snap) => {
-      const d = snap.val();
-      const uid = auth.currentUser?.uid;
+    onValue(
+      viajeRef,
+      (snap) => {
+        const d = snap.val();
+        const uid = auth.currentUser?.uid;
 
-if (!uid) return;
-      if (!d) return;
+        if (!uid) return;
+        if (!d) return;
 
-      let url = "";
+        let url = "";
 
-      if (fase === "pickup" && d.origenLat && d.origenLng) {
-        const destino = `${d.origenLat},${d.origenLng}`;
+        if (fase === "pickup" && d.origenLat && d.origenLng) {
+          const destino = `${d.origenLat},${d.origenLng}`;
+          url = `https://www.google.com/maps/dir/?api=1&destination=${destino}&travelmode=driving`;
+        } else if (
+          fase === "viaje" &&
+          d.origenLat &&
+          d.destinoLat
+        ) {
+          const origen = `${d.origenLat},${d.origenLng}`;
+          const destino = `${d.destinoLat},${d.destinoLng}`;
 
-        url = `https://www.google.com/maps/dir/?api=1&destination=${destino}&travelmode=driving&dir_action=navigate`;
+          url = `https://www.google.com/maps/dir/?api=1&origin=${origen}&destination=${destino}&travelmode=driving`;
+        }
 
-      } else if (
-        fase === "viaje" &&
-        d.origenLat && d.origenLng &&
-        d.destinoLat && d.destinoLng
-      ) {
-        const origen = `${d.origenLat},${d.origenLng}`;
-        const destino = `${d.destinoLat},${d.destinoLng}`;
-
-        url = `https://www.google.com/maps/dir/?api=1&origin=${origen}&destination=${destino}&travelmode=driving&dir_action=navigate`;
-      }
-
-      if (url) {
-        window.open(url, "_blank");
-      }
-
-    }, { onlyOnce: true });
+        if (url) {
+          window.open(url, "_blank");
+        }
+      },
+      { onlyOnce: true }
+    );
   }}
 >
   🧭 Google Maps
