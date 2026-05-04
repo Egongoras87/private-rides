@@ -14,7 +14,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 🔥 VALIDAR ENV (DENTRO DEL HANDLER)
+    // 🔥 VALIDAR ENV
     if (
       !process.env.FIREBASE_PROJECT_ID ||
       !process.env.FIREBASE_CLIENT_EMAIL ||
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
       throw new Error("Falta STRIPE_SECRET_KEY");
     }
 
-    // 🔥 INIT FIREBASE (SAFE)
+    // 🔥 INIT FIREBASE
     const adminApp =
       getApps().length > 0
         ? getApp()
@@ -58,8 +58,6 @@ export async function POST(req: Request) {
     }
 
     const v = snap.val();
-
-    console.log("🚗 VIAJE:", v);
 
     // 🔒 evitar doble cancel
     if (v.estado === "Cancelado" || v.estado === "Finalizado") {
@@ -101,7 +99,7 @@ export async function POST(req: Request) {
 
     let refund = null;
 
-    // 🔥 REEMBOLSO SEGURO
+    // 🔥 REEMBOLSO
     if (refundPercent > 0) {
       const precio = Number(v.precio || 0);
 
@@ -111,16 +109,16 @@ export async function POST(req: Request) {
 
       const amount = Math.floor(precio * 100 * refundPercent);
 
+      if (amount <= 0) {
+        throw new Error("Monto inválido");
+      }
+
       console.log("💳 DEBUG:", {
         precio,
         refundPercent,
         amount,
         paymentIntentId: v.paymentIntentId,
       });
-
-      if (amount <= 0) {
-        throw new Error("Monto inválido");
-      }
 
       refund = await stripe.refunds.create({
         payment_intent: v.paymentIntentId,
