@@ -3,10 +3,19 @@ export const dynamic = "force-dynamic";
 
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { ref, onValue, update, get, runTransaction } from "firebase/database";
+import {
+  ref,
+  onValue,
+  update,
+  get,
+  runTransaction,
+  onDisconnect,
+  set
+} from "firebase/database";
 import { useEffect, useState, useRef } from "react";
 import { useJsApiLoader } from "@react-google-maps/api";
 import { googleMapsConfig } from "@/lib/googleMaps";
+
 
 
 // 🔥 ETA
@@ -36,7 +45,23 @@ const calcularETA = (o: any, d: any) =>
     );
   });
 
+  const calcularDistancia = (a: any, b: any) => {
+  const R = 3958.8;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLng = (b.lng - a.lng) * Math.PI / 180;
 
+  const lat1 = a.lat * Math.PI / 180;
+  const lat2 = b.lat * Math.PI / 180;
+
+  const x =
+    Math.sin(dLat / 2) ** 2 +
+    Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
+
+  const c = 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+
+  return R * c;
+};
+ 
 export default function DriverPage() {
   const [viajes, setViajes] = useState<any[]>([]);
   const [etas, setEtas] = useState<any>({});
@@ -44,14 +69,40 @@ export default function DriverPage() {
 const audioRef = useRef<HTMLAudioElement | null>(null);
 const viajesPrevRef = useRef<string[]>([]);
 const [sonidoActivo, setSonidoActivo] = useState(false);
-const [tomandoViajeId, setTomandoViajeId] = useState<string | null>(null);
-  
+ const [activo, setActivo] = useState(true);
 
+useEffect(() => {
+  let watchId: number | null = null;
+
+  const unsub = onAuthStateChanged(auth, (user) => {
+    if (!user || !activo) return;
+
+    if (!navigator.geolocation) return;
+
+    watchId = navigator.geolocation.watchPosition((pos) => {
+      update(ref(db, "drivers/" + user.uid), {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        lastSeen: Date.now(),
+        online: true
+      });
+    });
+  });
+
+  return () => {
+    unsub();
+
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId);
+    }
+  };
+}, [activo]);
 // 🔐 AUTH
  useEffect(() => {
   let off: any = null;
 
   const unsub = onAuthStateChanged(auth, async (user) => {
+    
     if (!user) {
       window.location.href = "/login?redirect=/driver";
       return;
@@ -87,6 +138,28 @@ const [tomandoViajeId, setTomandoViajeId] = useState<string | null>(null);
 }, []);
 
 useEffect(() => {
+  const unsub = onAuthStateChanged(auth, (user) => {   
+    if (!user) return;
+
+    const driverRef = ref(db, "drivers/" + user.uid);
+
+    // 🟢 ONLINE
+    update(driverRef, {
+  uid: user.uid,
+  lastSeen: Date.now()
+});
+
+    // 🔴 OFFLINE automático
+    onDisconnect(driverRef).update({
+      online: false,
+      lastSeen: Date.now()
+    });
+  });
+
+  return () => unsub();
+}, []);
+
+useEffect(() => {
   audioRef.current = new Audio("/alert.mp3");
 }, []);
   // 📡 VIAJES
@@ -112,24 +185,42 @@ const nuevos = idsActuales.filter(
 // si hay nuevos → sonar
 // si hay nuevos → sonar SOLO si está activado
 if (nuevos.length > 0 && sonidoActivo) {
-  audioRef.current?.play().catch(() => {});
+ const nuevos = idsActuales.filter(
+  (id) => !viajesPrevRef.current.includes(id)
+);
 }
 
-// guardar lista actual
+// guardar lista actual SIEMPRE
 viajesPrevRef.current = idsActuales;
-const activos = lista.filter((v) => {
-  return (
-    v.estado === "Pendiente" &&
-    (!v.driverId || v.driverId === "")
-  );
+
+const ahora = Date.now();
+
+const filtrados = lista.filter((v) => {
+  if (
+  v.estado !== "Pendiente" &&
+  !(v.estado === "Asignado" && v.driverId === auth.currentUser?.uid)
+) {
+  return false;
+}
+
+  const esInmediato = Math.abs((v.fecha || 0) - ahora) < 30 * 60 * 1000;
+
+  if (esInmediato) {
+   if (!etas[v.id]) return true; // 🔥 MOSTRAR mientras carga
+
+return etas[v.id] < 20;
+  }
+
+  return true;
 });
 
-
-setViajes(activos);
+setViajes(filtrados);
     });
 
     return () => unsub();
   }, []);
+
+
   useEffect(() => {
   if (!isLoaded) return;
   if (!navigator.geolocation) return;
@@ -179,110 +270,104 @@ setViajes((prev) => {
   });
 }, [viajes, isLoaded]);
 
-  // 🚗 EN CAMINO/////////////////////////////////////////////////////////////////////////////
-const enCamino = async (v: any) => {
-  if (!v?.id) return;
-
-  // 🔒 EVITAR DOBLE CLICK POR VIAJE
-  if (v.estado !== "Pendiente") return;
-  setTomandoViajeId(v.id);
-
+  ////////////////////////////////// 🚗 ACEPTAR RIDE/////////////////////////////////////////////////////////////////////////////
+const aceptarViaje = async (v: any) => {
   const uid = auth.currentUser?.uid;
+
   if (!uid) {
-    setTomandoViajeId(null);
+    alert("Error de usuario");
     return;
   }
 
   const viajeRef = ref(db, "viajes/" + v.id);
 
-  try {
-    // 🔒 1. TRANSACCIÓN → SOLO ASIGNAR
-    const result = await runTransaction(viajeRef, (currentData) => {
-      if (!currentData) return;
+  const result = await runTransaction(viajeRef, (data) => {
+    if (!data) return;
 
-      // 🚫 ya tomado por otro driver
-      if (currentData.driverId && currentData.driverId !== uid) {
-        return;
-      }
+    // 🔴 si otro driver ya lo tomó
+    if (data.driverId && data.driverId !== uid) return;
 
-      // 🚫 ya no disponible
-      if (currentData.estado !== "Pendiente") {
-        return;
-      }
+    // 🔴 si ya no está disponible
+    if (data.estado !== "Pendiente") return;
 
-      // ✅ ASIGNAR
-      return {
-        ...currentData,
-        driverId: uid,
-        estado: "Asignado",
-        asignadoAt: Date.now()
-      };
-    });
-
-    // 🚫 si otro lo tomó
-    if (!result.committed) {
-      alert("❌ Este viaje ya fue tomado por otro driver");
-      setTomandoViajeId(null);
-      return;
-    }
-
-    // 🔴 2. GUARDAR EN DRIVER
-    await update(ref(db, "drivers/" + uid), {
-      viajeActivo: v.id
-    });
-
-    // 🚗 3. CAMBIAR A "EN CAMINO"
-    await update(viajeRef, {
-      estado: "En camino"
-    });
-
-    // 📲 WHATSAPP
-    if (v.telefono) {
-    const telefono = "1" + v.telefono.replace(/\D/g, "");
-      const link = `${window.location.origin}/tracking?id=${v.id}`;
-
-      window.open(
-        `https://wa.me/${telefono}?text=${encodeURIComponent(
-          "🚗 Voy en camino\n\n📍 Sigue tu viaje aquí:\n" + link
-        )}`
-      );
-    }
-
-    // 🔀 IR A TRACKING
-    setTomandoViajeId(null);
-    window.location.href = `/driver-tracking?id=${v.id}`;
-
-  } catch (error) {
-    console.error("ERROR TRANSACTION:", error);
-    alert("❌ Error al tomar el viaje");
-    setTomandoViajeId(null);
-  }
-};
-
-// 📍 LLEGAR
-const llegarPickup = async (v: any) => {
-  if (!v?.id) return;
-
-  await update(ref(db, "viajes/" + v.id), {
-    estado: "En pickup"
+    // 🟢 asignar viaje
+    return {
+      ...data,
+      driverId: uid,
+      estado: "Asignado",
+      asignadoAt: Date.now()
+    };
   });
-};
 
-// 🚀 INICIAR
+  if (!result.committed) {
+    alert("❌ Otro driver tomó este viaje");
+    return;
+  }
+
+  // 🔥 marcar driver ocupado
+  await update(ref(db, "drivers/" + uid), {
+    viajeActivo: v.id
+  });
+
+  alert("✅ Viaje aceptado");
+};
+////////////////////////////////////////////// INICIAR VIAJE ////////////////////////////////////////////////////////////
 const iniciarViaje = async (v: any) => {
   if (!v?.id) return;
 
-  await update(ref(db, "viajes/" + v.id), {
-    estado: "En viaje"
-  });
-};
+  const uid = auth.currentUser?.uid;
 
-// ✅ FINALIZAR
+  // 🔒 validar dueño
+  if (v.driverId !== uid) {
+    alert("Este viaje no es tuyo");
+    return;
+  }
+
+  // 🔒 validar que esté aceptado
+  if (v.estado !== "Asignado") {
+    alert("Primero debes aceptar el viaje");
+    return;
+  }
+
+  const ahora = Date.now();
+
+  // 🔥 BLOQUEO VIAJES PROGRAMADOS
+  if (v.fecha && v.fecha > ahora + 2 * 60 * 1000) {
+    alert("⏳ Aún no es hora de iniciar este viaje");
+    return;
+  }
+
+  // 🚗 iniciar
+  await update(ref(db, "viajes/" + v.id), {
+    estado: "En camino"
+  });
+
+  window.location.href = `/driver-tracking?id=${v.id}`;
+};
+// /////////////////////////////////////FINALIZAR////////////////////////////////////////////////////////////////////////////
 const finalizar = async (v: any) => {
   if (!v?.id) return;
 
   const uid = auth.currentUser?.uid;
 
+  // 📍 VALIDAR DISTANCIA
+  if (v.driverLat && v.driverLng && v.destinoLat && v.destinoLng) {
+    const dist = calcularDistancia(
+      { lat: Number(v.driverLat), lng: Number(v.driverLng) },
+      { lat: Number(v.destinoLat), lng: Number(v.destinoLng) }
+    );
+
+    // 🔥 SI ESTÁ LEJOS (ej: más de 0.1 millas ≈ 160m)
+    if (dist > 0.1) {
+      const confirmar = confirm(
+        "⚠️ Aún no has llegado al destino.\n\n¿Seguro quieres finalizar el viaje?"
+      );
+
+      if (!confirmar) return;
+    }
+  }
+
+  // 💵 CASH VALIDATION
   if (v.metodoPago === "cash" && !v.pagado) {
     if (!confirm("¿Cliente pagó en efectivo?")) return;
   }
@@ -321,7 +406,7 @@ const rechazar = async (v: any) => {
     if (v.metodoPago === "stripe" && v.pagado && v.paymentIntentId) {
       const token = await auth.currentUser?.getIdToken();
 
-await fetch("/api/refund-driver", {
+await fetch("/api/refund-reject", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
@@ -359,9 +444,9 @@ await fetch("/api/refund-driver", {
   }
 };
 // ❌ CANCELAR VIAJE (YA TOMADO)////////////////////////////////////////////////////////////////////////////
-const cancelar = async () => {
+const cancelar = async (v: any) => {
   try {
-    const id = new URLSearchParams(window.location.search).get("id");
+    const id = v.id;
 
     if (!id) {
       alert("No hay viajeId");
@@ -414,14 +499,122 @@ const cancelar = async () => {
     alert("Error general");
   }
 };
+const estiloBoton = (color: string) => ({
+  padding: "10px 14px",
+  borderRadius: "10px",
+  border: "none",
+  cursor: "pointer",
+  fontWeight: "bold",
+  fontSize: "14px",
+  color: "#fff",
+  background: color,
+  boxShadow: "0 5px 0 rgba(0,0,0,0.2)",
+  transition: "all 0.1s ease-in-out",
+});
+
+const presionar = (e: any) => {
+  e.currentTarget.style.transform = "translateY(3px)";
+  e.currentTarget.style.boxShadow = "0 2px 0 rgba(0,0,0,0.2)";
+};
+
+const soltar = (e: any) => {
+  e.currentTarget.style.transform = "translateY(0)";
+  e.currentTarget.style.boxShadow = "0 5px 0 rgba(0,0,0,0.2)";
+};
 
   if (!isLoaded) return <div>Cargando...</div>;
 
-  return (
-  <div style={{ padding: 20 }}>
-    <h2>🚗 Driver Panel</h2>
+ return (
+  <div
+    style={{
+      minHeight: "100vh",
+      background: "#0f0f0f",
+      color: "#fff",
+      fontFamily: "system-ui"
+    }}
+  >
+    <div
+  style={{
+    position: "sticky",
+    top: 0,
+    zIndex: 10,
+    background: "#1a1a1a",
+    padding: "12px 16px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.5)"
+  }}
+>
+  {/* IZQUIERDA */}
+  <div>
+    <h3 style={{ margin: 0 }}>🚗 Driver Panel</h3>
+    <span style={{ fontSize: 12, color: activo ? "#00ff99" : "#ff4d4d" }}>
+  {activo ? "● Online" : "● Offline"}
+</span>
+  </div>
 
-    {viajes.map((v) => (
+  {/* DERECHA */}
+  <div style={{ display: "flex", alignItems: "center", gap: 15 }}>
+
+    {/* 🔊 SONIDO */}
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        setSonidoActivo(!sonidoActivo);
+
+        if (!sonidoActivo) {
+          audioRef.current?.play().catch(() => {});
+        }
+      }}
+      style={{
+        background: "transparent",
+        border: "none",
+        fontSize: "22px",
+        cursor: "pointer",
+        color: "#fff",
+        transition: "0.2s"
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.2)")}
+      onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+    >
+      {sonidoActivo ? "🔊" : "🔇"}
+    </button>
+    <button
+  onClick={async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    const nuevoEstado = !activo;
+
+    setActivo(nuevoEstado);
+
+    await update(ref(db, "drivers/" + uid), {
+      activo: nuevoEstado,
+      online: nuevoEstado
+    });
+  }}
+>
+  {activo ? "🟢 Online" : "🔴 Offline"}
+</button>
+    <button
+  onClick={() => (window.location.href = "/admin-drivers")}
+  style={{
+    background: "transparent",
+    border: "none",
+    color: "#fff",
+    fontSize: 18,
+    cursor: "pointer"
+  }}
+>
+  ⚙️
+</button>
+
+ </div>
+</div> {/* 🔥 CIERRA HEADER COMPLETO */}
+
+<div style={{ padding: 16 }}>
+  {viajes.map((v) => (
       <div
         key={v.id}
         onClick={() => {
@@ -464,6 +657,21 @@ const cancelar = async () => {
   <b>Estado:</b>{" "}
   {v.estado === "Asignado" ? "🔒 Assigned" : v.estado}
 </p>
+{v.esProgramado && (
+  <p style={{ color: "#17a2b8", fontWeight: "bold" }}>
+    🕓 Viaje programado
+  </p>
+)}
+{v.driverId && v.driverId !== auth.currentUser?.uid && (
+  <p style={{ color: "red", fontWeight: "bold" }}>
+    ❌ Tomado por otro driver
+  </p>
+)}
+{v.fecha && (
+  <p style={{ color: "#ffc107", fontWeight: "bold" }}>
+    ⏳ {Math.max(0, Math.floor((v.fecha - Date.now()) / 60000))} min restantes
+  </p>
+)}
 
         {/* 💳 PAYMENT STATUS */}
         {v.metodoPago === "cash" && !v.pagado && (
@@ -479,73 +687,73 @@ const cancelar = async () => {
         )}
 
         {/* BOTONES */}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button
-  style={btn("#6c757d")} // gris elegante tipo Uber
-  onClick={(e) => {
-    e.stopPropagation();
-    rechazar(v);
-  }}
->
-  ❌ Rechazar
-</button>
+        <div style={{ display: "flex", gap: 5, marginTop: 10 }}>
 
   <button
-  style={btn("#28a745")}
-  disabled={tomandoViajeId === v.id}
-  onClick={(e) => {
-    e.stopPropagation();
-    enCamino(v);
-  }}
->
-  {tomandoViajeId === v.id ? "Tomando..." : "En camino"}
-</button>
+    style={estiloBoton("#28a745")}
+    disabled={v.estado !== "Pendiente"}
+    onMouseDown={presionar}
+    onMouseUp={soltar}
+    onMouseLeave={soltar}
+    onClick={(e) => {
+      e.stopPropagation();
+      aceptarViaje(v);
+    }}
+  >
+    ✅ Aceptar
+  </button>
 
-          <button
-            style={btn("#007bff")}
-            onClick={(e) => {
-              e.stopPropagation();
-              iniciarViaje(v);
-            }}
-          >
-            🚀 Iniciar
-          </button>
+  <button
+    style={estiloBoton("#6c757d")}
+    onClick={(e) => {
+      e.stopPropagation();
+      rechazar(v);
+    }}
+  >
+    ❌ Rechazar
+  </button>
 
-          <button
-            style={btn("#28a745")}
-            onClick={(e) => {
-              e.stopPropagation();
-              finalizar(v);
-            }}
-          >
-            ✅ Finalizar
-          </button>
+  {/* 🔥 AQUÍ VA */}
+  {(() => {
+    const ahora = Date.now();
+    const puedeIniciar =
+      v.estado === "Asignado" &&
+      (!v.fecha || v.fecha <= ahora + 2 * 60 * 1000);
 
-          <button
-            style={btn("#dc3545")}
-            onClick={() => cancelar()}
-          >
-            ❌ Cancelar
-          </button>
-         <button
-  onClick={(e) => {
-    e.stopPropagation();
+    return (
+      <button
+        style={estiloBoton("#007bff")}
+        disabled={!puedeIniciar}
+        onMouseDown={presionar}
+        onMouseUp={soltar}
+        onMouseLeave={soltar}
+        onClick={(e) => {
+          e.stopPropagation();
+          iniciarViaje(v);
+        }}
+      >
+        {puedeIniciar ? "🚗 Iniciar" : "⏳ Esperar"}
+      </button>
+    );
+  })()}
 
-    // 🔁 cambiar estado
-    setSonidoActivo(!sonidoActivo);
+  <button
+    style={estiloBoton("#dc3545")}
+    onClick={(e) => {
+      e.stopPropagation();
+      cancelar(v);
+    }}
+  >
+    ❌ Cancelar
+  </button>
 
-    // 🔊 reproducir solo al activar
-    if (!sonidoActivo) {
-      audioRef.current?.play().catch(() => {});
-    }
-  }}
->
-  {sonidoActivo ? "🔊 Sonido ON" : "🔇 Sonido OFF"}
-</button>
+</div>
+        
 
         </div>
-      </div>
-    ))}
-    </div>
+          ))}
+  </div>
+
+</div> 
 );
 }

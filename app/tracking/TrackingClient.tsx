@@ -470,8 +470,8 @@ if (d.destinoLat && d.destinoLng) {
 </div>
 
 {/* ⚠️ AVISO CANCELACIÓN */}
-<p style={{ fontSize: 12, color: "#aaa", marginTop: 5 }}>
-  CCancellations after 5 minutes may incur charges.
+<p style={{ fontSize: 12, color: "#686666", marginTop: 5 }}>
+  Cancellations after 2 minutes may incur charges.
 </p>
 
       {/* ❌ CANCEL */}
@@ -482,7 +482,7 @@ if (d.destinoLat && d.destinoLng) {
   onMouseLeave={release}
  onClick={() => {
     const ok = confirm(
-      "Cancelar puede generar cargo dependiendo del tiempo.\n\n¿Deseas continuar?"
+      "Canceling may incur a fee, depending on the timing..\n\nDo you wish to continue"
     );
     if (ok) cancelarViaje();
   }}

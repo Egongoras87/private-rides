@@ -1,10 +1,10 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { db } from "@/lib/firebase";
-import { ref, set, onValue, update } from "firebase/database";
-import { onAuthStateChanged } from "firebase/auth";
+import { ref, set, onValue, update, get, runTransaction } from "firebase/database";
 import { auth } from "@/lib/firebase";
-
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/components/AuthProvider";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 
@@ -19,6 +19,7 @@ import {
 
 import { googleMapsConfig } from "@/lib/googleMaps";
 
+const stripePromise = loadStripe("pk_test_51TSmPACMPktsmWMArlXTC4cnMCo7kSs93TdVklce4NmrIJkTdCEGfZsgbMCtvt1gFCnGPUDavnr8sTPpaGZtOBky00H4rQMTKl");
 // ✅ SOLUCIÓN TYPE
 declare global {
   interface Window {
@@ -27,7 +28,7 @@ declare global {
 }
 
 export default function Home() {
-  const stripePromise = loadStripe("pk_test_51TSmPACMPktsmWMArlXTC4cnMCo7kSs93TdVklce4NmrIJkTdCEGfZsgbMCtvt1gFCnGPUDavnr8sTPpaGZtOBky00H4rQMTKl");
+  
 
   return (
     <Elements stripe={stripePromise}>
@@ -37,7 +38,7 @@ export default function Home() {
 }
  function CheckoutContent() {
   const [metodoPago, setMetodoPago] = useState<"stripe" | "cash">("stripe");
-const [loadingUser, setLoadingUser] = useState(true);
+const router = useRouter();
   const [directions, setDirections] = useState<any>(null);
   const { isLoaded } = useJsApiLoader(googleMapsConfig);
   const [distancia, setDistancia] = useState<number>(0);
@@ -51,7 +52,7 @@ const [lngDestino, setLngDestino] = useState(0);
  const [telefono, setTelefono] = useState("");
 const stripe = useStripe();
 const elements = useElements();
- 
+ const { user, loading } = useAuth();
 const [fechaHora, setFechaHora] = useState("");
   const [miUbicacion, setMiUbicacion] =
     useState<{ lat: number; lng: number } | null>(null);
@@ -77,6 +78,11 @@ const MIN_FARE = 12;        // mínimo
   transition: "all 0.15s ease",
   boxShadow: "0 4px 0 rgba(0,0,0,0.2)"
 };
+useEffect(() => {
+  if (!loading && !user) {
+    router.push("/login-user");
+  }
+}, [user, loading]);
 
 const presionarBoton = (e: any) => {
   e.currentTarget.style.transform = "scale(0.96)";
@@ -192,7 +198,7 @@ if (!window.google?.maps?.DirectionsService) return;
   });
 };
 
-//////////////////FUNCION PAGAR////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////FUNCION PAGAR////////////////////////////////////////////////////////////////////////
 const pagar = async () => {
   try {
     setLoadingPago(true);
@@ -259,7 +265,7 @@ const data = await res.json();
   }
 };
 
-  // /////////////////////////////////////////📤 Reservar viaje/////////////////////////////////////////
+  // ///////////////////////////////////////////////////////////////📤 PEDIR VIAJE////////////////////////////////////////
 const reservar = async () => {
    if (loadingPago) return;
   if (!precio || precio <= 0) {
@@ -286,11 +292,10 @@ const reservar = async () => {
 
   const uid = auth.currentUser?.uid;
 
-  if (!uid) {
-    alert("Debes iniciar sesión");
-    window.location.href = "/login-user";
-    return;
-  }
+  if (!user) {
+  alert("Debes iniciar sesión");
+  return;
+}
 
   try {
    let paymentIntentId: string | null = null;
@@ -308,40 +313,53 @@ if (metodoPago === "stripe") {
 }
 
     const fechaISO = new Date(fechaHora).getTime();
+    const ahora = Date.now();
+
+// 🔥 si es más de 10 min en el futuro → programado
+const esProgramado = fechaISO > ahora + 10 * 60 * 1000;
     const origen = origenRef.current.value;
     const destino = destinoRef.current.value;
 
     const id = Date.now().toString();
 
+  
     // 🔥 GUARDAR EN FIREBASE
     await set(ref(db, "viajes/" + id), {
-      id,
-      userId: uid,
+  id,
+  userId: uid,
 
-      nombre,
-      telefono,
-      origen,
-      destino,
-      origenLat: latOrigen,
-      origenLng: lngOrigen,
-      destinoLat: latDestino,
-      destinoLng: lngDestino,
-      distancia,
-      precio,
-      fecha: fechaISO,
+  nombre,
+  telefono,
+  origen,
+  destino,
 
-      estado: "Pendiente",
-      driverId: null,
+  origenLat: latOrigen,
+  origenLng: lngOrigen,
+  destinoLat: latDestino,
+  destinoLng: lngDestino,
 
-      metodoPago,
-      pagado: metodoPago === "stripe",
-      estadoPago: metodoPago === "stripe" ? "pagado" : "pendiente",
-     paymentIntentId: metodoPago === "stripe" ? paymentIntentId : null,
+  distancia,
+  precio,
+  fecha: fechaISO,
 
-      driverLat: null,
-      driverLng: null,
-      timestamp: Date.now()
-    });
+  estado: "Pendiente",   // 🔥 CLAVE
+  driverId: null,        // 🔥 CLAVE
+  esProgramado,
+
+  metodoPago,
+  pagado: metodoPago === "stripe",
+  estadoPago: metodoPago === "stripe" ? "pagado" : "pendiente",
+  paymentIntentId: metodoPago === "stripe" ? paymentIntentId : null,
+
+  driverLat: null,
+  driverLng: null,
+  timestamp: Date.now()
+});
+if (esProgramado) {
+  console.log("🕓 Viaje programado");
+} else {
+  console.log("🚗 Viaje inmediato");
+}   
 
     // 🔥 LOCAL STORAGE
     localStorage.setItem("viajeId", id);
@@ -357,7 +375,6 @@ if (metodoPago === "stripe") {
         distancia
       })
     );
-console.log("paymentIntentId guardado:", paymentIntentId);                          ////////// console log////////
 
     const trackingUrl = `${window.location.origin}/tracking?id=${id}`;
 
@@ -387,17 +404,7 @@ console.log("paymentIntentId guardado:", paymentIntentId);                      
     alert("❌ Error de conexión");
   }
 };
-useEffect(() => {
-  const unsub = onAuthStateChanged(auth, (user) => {
-    if (!user) {
-      window.location.href = "/login-user";
-    } else {
-      setLoadingUser(false); // 🔥 usuario listo
-    }
-  });
 
-  return () => unsub();
-}, []);
   // 📡 Leer ubicación del driver (simulación)
   useEffect(() => {
   const id = localStorage.getItem("viajeId");
@@ -491,27 +498,6 @@ if (estado === "Finalizado" || estado === "Cancelado") {
   return () => unsubscribe();
 }, []);
       
-// 🔁 DEBUG (opcional)
-useEffect(() => {
-  const id = localStorage.getItem("viajeId");
-
-  if (id) {
-    console.log("Viaje activo detectado:", id);
-  }
-}, []);
-
-
-// 🔁 LIMPIEZA FUTURA (placeholder)
-useEffect(() => {
-  const limpiarViejo = () => {
-    const id = localStorage.getItem("viajeId");
-    if (!id) return;
-
-    // puedes usarlo después si quieres TTL real
-  };
-
-  limpiarViejo();
-}, []);
 
 
 const darkMapStyle = [
@@ -572,7 +558,7 @@ const darkMapStyle = [
 ];
 
 const lightMapStyle = [];
-if (loadingUser) {
+if (loading) {
   return (
     <div style={{
       color: "#fff",
@@ -587,8 +573,22 @@ if (loadingUser) {
   );
 }
 
+if (!user) {
+  window.location.href = "/login-user";
+  return null;
+}
 if (!isLoaded) {
-  return <div>Loading map...</div>;
+  return (
+    <div style={{
+      color: "#fff",
+      display: "flex",
+      height: "100vh",
+      justifyContent: "center",
+      alignItems: "center"
+    }}>
+      🗺️ Cargando mapa...
+    </div>
+  );
 }
 ////////////////////////////////RETURN////////////////////////////////
 return (

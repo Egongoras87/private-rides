@@ -22,6 +22,22 @@ const lastMapRef = useRef<any>(null);   // 🗺️ cámara
   const [fase, setFase] = useState("pickup");
 const [eta, setEta] = useState(0);
   const mapRef = useRef<any>(null);
+  const calcularDistancia = (a: any, b: any) => {
+  const R = 3958.8;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLng = (b.lng - a.lng) * Math.PI / 180;
+
+  const lat1 = a.lat * Math.PI / 180;
+  const lat2 = b.lat * Math.PI / 180;
+
+  const x =
+    Math.sin(dLat / 2) ** 2 +
+    Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
+
+  const c = 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+
+  return R * c;
+};
  
 
 const lastRouteRef = useRef(0);
@@ -394,6 +410,16 @@ useEffect(() => {
         timestamp: Date.now()
       });
       
+      const uid = auth.currentUser?.uid;
+
+if (uid) {
+  update(ref(db, "drivers/" + uid), {
+    lat: lat,
+    lng: lng,
+    lastSeen: Date.now()
+  });
+}
+
     },
     (err) => console.log("GPS ERROR:", err),
     {
@@ -410,12 +436,34 @@ useEffect(() => {
   };
 }, []);
 
-  // 🔴 FUNCIONES DRIVER
+  // 🔴 FUNCIONES DRIVER////////////////////////////////////////////////////////////////////////////////
   const finalizar = async (id: string) => {
   try {
     const viajeRef = ref(db, "viajes/" + id);
 
-    // 🔴 1. ACTUALIZAR ESTADO
+    // 🔥 OBTENER DATA ACTUAL
+    const snap = await new Promise<any>((resolve) => {
+      onValue(viajeRef, (s) => resolve(s.val()), { onlyOnce: true });
+    });
+
+    if (!snap) return;
+
+    // 📍 VALIDAR DISTANCIA
+    if (snap.driverLat && snap.driverLng && snap.destinoLat && snap.destinoLng) {
+      const dist = calcularDistancia(
+        { lat: Number(snap.driverLat), lng: Number(snap.driverLng) },
+        { lat: Number(snap.destinoLat), lng: Number(snap.destinoLng) }
+      );
+
+      if (dist > 0.1) {
+        const confirmar = confirm(
+          "⚠️ Aún no has llegado al destino.\n\n¿Seguro quieres finalizar el viaje?"
+        );
+
+        if (!confirmar) return;
+      }
+    }
+
     await update(viajeRef, {
       estado: "Finalizado",
       driverLat: null,
@@ -423,21 +471,16 @@ useEffect(() => {
       timestampFinalizado: Date.now()
     });
 
-    // 🔴 2. DETENER GPS
     if (watchRef.current) {
       navigator.geolocation.clearWatch(watchRef.current);
       watchRef.current = null;
     }
 
-    // 🔴 3. LIMPIAR MAPA
-   
     setPos(null);
     setPath([]);
 
-    // 🔴 4. FEEDBACK
     alert("Viaje finalizado");
 
-    // 🔴 5. REDIRECCIÓN
     window.location.href = "/driver";
 
   } catch (err) {

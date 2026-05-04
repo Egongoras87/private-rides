@@ -3,7 +3,6 @@ import Stripe from "stripe";
 console.log("🔥 FIREBASE:", !!process.env.FIREBASE_PRIVATE_KEY);
 console.log("🔥 STRIPE:", !!process.env.STRIPE_SECRET_KEY);
 
-
 import { initializeApp, cert, getApps, getApp, App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getDatabase } from "firebase-admin/database";
@@ -70,6 +69,7 @@ export async function POST(req: Request) {
     const token = authHeader.replace("Bearer ", "");
     const decoded = await authAdmin.verifyIdToken(token);
     const uid = decoded.uid;
+console.log("🔥 UID TOKEN:", uid); 
 
     // 🔒 BODY
     const { viajeId } = await req.json();
@@ -92,14 +92,16 @@ export async function POST(req: Request) {
     }
 
     const v = snap.val();
+console.log("🔥 DRIVER ID DB:", v.driverId);
 
     // 🔒 VALIDAR DRIVER
-    if (v.driverId !== uid) {
-      return NextResponse.json(
-        { error: "No autorizado" },
-        { status: 403 }
-      );
-    }
+
+if (v.estado !== "Pendiente" && v.driverId !== uid) {
+  return NextResponse.json(
+    { error: "No autorizado" },
+    { status: 403 }
+  );
+}
 
     // 🔒 YA REEMBOLSADO
     if (v.refundId) {
