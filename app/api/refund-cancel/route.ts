@@ -2,54 +2,59 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getDatabase } from "firebase-admin/database";
 import { initializeApp, cert, getApps, getApp } from "firebase-admin/app";
-import { App } from "firebase-admin/app";
-// 🔥 INIT FIREBASE
-let adminApp: App;
 
-if (!getApps().length) {
-  if (
-    !process.env.FIREBASE_PROJECT_ID ||
-    !process.env.FIREBASE_CLIENT_EMAIL ||
-    !process.env.FIREBASE_PRIVATE_KEY
-  ) {
-    throw new Error("Faltan variables Firebase");
-  }
-
-  adminApp = initializeApp({
-    credential: cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
-    }),
-    databaseURL:
-      "https://private-rides-52e08-default-rtdb.firebaseio.com",
-  });
-} else {
-  adminApp = getApp();
-}
-
-// 🔥 INIT STRIPE (VERSIÓN REAL)
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error("Falta STRIPE_SECRET_KEY");
-}
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
-
-// 🚀 API
 export async function POST(req: Request) {
   try {
     const { viajeId } = await req.json();
 
     if (!viajeId) {
-      return NextResponse.json({ error: "Missing viajeId" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing viajeId" },
+        { status: 400 }
+      );
     }
 
+    // 🔥 VALIDAR ENV (DENTRO DEL HANDLER)
+    if (
+      !process.env.FIREBASE_PROJECT_ID ||
+      !process.env.FIREBASE_CLIENT_EMAIL ||
+      !process.env.FIREBASE_PRIVATE_KEY
+    ) {
+      throw new Error("Faltan variables Firebase");
+    }
+
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new Error("Falta STRIPE_SECRET_KEY");
+    }
+
+    // 🔥 INIT FIREBASE (SAFE)
+    const adminApp =
+      getApps().length > 0
+        ? getApp()
+        : initializeApp({
+            credential: cert({
+              projectId: process.env.FIREBASE_PROJECT_ID,
+              clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+              privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+            }),
+            databaseURL:
+              "https://private-rides-52e08-default-rtdb.firebaseio.com",
+          });
+
     const db = getDatabase(adminApp);
+
+    // 🔥 INIT STRIPE
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+    // 🔥 OBTENER VIAJE
     const viajeRef = db.ref("viajes/" + viajeId);
     const snap = await viajeRef.once("value");
 
     if (!snap.exists()) {
-      return NextResponse.json({ error: "Viaje no existe" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Viaje no existe" },
+        { status: 404 }
+      );
     }
 
     const v = snap.val();
@@ -58,15 +63,29 @@ export async function POST(req: Request) {
 
     // 🔒 evitar doble cancel
     if (v.estado === "Cancelado" || v.estado === "Finalizado") {
-      return NextResponse.json({ error: "Ya cerrado" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Ya cerrado" },
+        { status: 400 }
+      );
     }
 
     // 💵 CASH → solo cancelar
     if (v.metodoPago !== "stripe" || !v.paymentIntentId) {
-      await viajeRef.update({ estado: "Cancelado" });
-      return NextResponse.json({ refunded: false });
+      await viajeRef.update({
+        estado: "Cancelado",
+        canceladoPor: "user",
+        refundPercent: 0,
+        refundId: null,
+        refundAt: Date.now(),
+      });
+
+      return NextResponse.json({
+        refunded: false,
+        percent: 0,
+      });
     }
 
+    // 🔥 CALCULAR REEMBOLSO
     const now = Date.now();
     let refundPercent = 1;
 
@@ -82,8 +101,22 @@ export async function POST(req: Request) {
 
     let refund = null;
 
+    // 🔥 REEMBOLSO SEGURO
     if (refundPercent > 0) {
-      const amount = Math.floor((v.precio || 0) * 100 * refundPercent);
+      const precio = Number(v.precio || 0);
+
+      if (isNaN(precio)) {
+        throw new Error("Precio inválido");
+      }
+
+      const amount = Math.floor(precio * 100 * refundPercent);
+
+      console.log("💳 DEBUG:", {
+        precio,
+        refundPercent,
+        amount,
+        paymentIntentId: v.paymentIntentId,
+      });
 
       if (amount <= 0) {
         throw new Error("Monto inválido");
@@ -97,6 +130,7 @@ export async function POST(req: Request) {
       console.log("💳 REFUND OK:", refund.id);
     }
 
+    // 🔥 ACTUALIZAR VIAJE
     await viajeRef.update({
       estado: "Cancelado",
       canceladoPor: "user",
@@ -112,6 +146,7 @@ export async function POST(req: Request) {
 
   } catch (err: any) {
     console.error("🔥 REFUND ERROR DETALLE:", err);
+    console.error("🔥 STACK:", err?.stack);
 
     return NextResponse.json(
       {
