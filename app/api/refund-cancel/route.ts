@@ -5,29 +5,27 @@ import { initializeApp, cert, getApps, getApp } from "firebase-admin/app";
 
 export async function POST(req: Request) {
   try {
-    const { viajeId } = await req.json();
-
-    if (!viajeId) {
-      return NextResponse.json(
-        { error: "Missing viajeId" },
-        { status: 400 }
-      );
-    }
-
     // 🔥 VALIDAR ENV
     if (
       !process.env.FIREBASE_PROJECT_ID ||
       !process.env.FIREBASE_CLIENT_EMAIL ||
-      !process.env.FIREBASE_PRIVATE_KEY
+      !process.env.FIREBASE_PRIVATE_KEY ||
+      !process.env.STRIPE_SECRET_KEY
     ) {
-      throw new Error("Faltan variables Firebase");
+      console.log("❌ ENV ERROR:", {
+        project: process.env.FIREBASE_PROJECT_ID,
+        email: process.env.FIREBASE_CLIENT_EMAIL,
+        key: !!process.env.FIREBASE_PRIVATE_KEY,
+        stripe: !!process.env.STRIPE_SECRET_KEY
+      });
+
+      return NextResponse.json(
+        { error: "Faltan variables de entorno" },
+        { status: 500 }
+      );
     }
 
-    if (!process.env.STRIPE_SECRET_KEY) {
-      throw new Error("Falta STRIPE_SECRET_KEY");
-    }
-
-    // 🔥 INIT FIREBASE
+    // 🔥 INIT FIREBASE (DENTRO DEL HANDLER)
     const adminApp =
       getApps().length > 0
         ? getApp()
@@ -44,46 +42,44 @@ export async function POST(req: Request) {
     const db = getDatabase(adminApp);
 
     // 🔥 INIT STRIPE
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: "2026-04-22.dahlia",
+    });
 
-    // 🔥 OBTENER VIAJE
+    // 📦 BODY
+    const { viajeId } = await req.json();
+
+    if (!viajeId) {
+      return NextResponse.json({ error: "Falta viajeId" }, { status: 400 });
+    }
+
+    // 🔍 BUSCAR VIAJE
     const viajeRef = db.ref("viajes/" + viajeId);
     const snap = await viajeRef.once("value");
 
     if (!snap.exists()) {
-      return NextResponse.json(
-        { error: "Viaje no existe" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Viaje no existe" }, { status: 404 });
     }
 
     const v = snap.val();
 
-    // 🔒 evitar doble cancel
-    if (v.estado === "Cancelado" || v.estado === "Finalizado") {
-      return NextResponse.json(
-        { error: "Ya cerrado" },
-        { status: 400 }
-      );
+    // 🔒 SOLO BLOQUEAR SI FINALIZADO
+    if (v.estado === "Finalizado") {
+      return NextResponse.json({ error: "Viaje finalizado" }, { status: 400 });
     }
 
-    // 💵 CASH → solo cancelar
+    // 💳 NO STRIPE → SOLO CANCELAR
     if (v.metodoPago !== "stripe" || !v.paymentIntentId) {
       await viajeRef.update({
         estado: "Cancelado",
         canceladoPor: "user",
-        refundPercent: 0,
-        refundId: null,
-        refundAt: Date.now(),
+        refundPercent: 0
       });
 
-      return NextResponse.json({
-        refunded: false,
-        percent: 0,
-      });
+      return NextResponse.json({ refunded: false });
     }
 
-    // 🔥 CALCULAR REEMBOLSO
+    // 🧠 CALCULAR REFUND
     const now = Date.now();
     let refundPercent = 1;
 
@@ -92,64 +88,40 @@ export async function POST(req: Request) {
     } else if (v.asignadoAt) {
       const minutos = (now - v.asignadoAt) / 60000;
 
-      if (minutos <= 2) refundPercent = 1;
-      else if (minutos <= 5) refundPercent = 0.5;
+      if (minutos <= 5) refundPercent = 1;
+      else if (minutos <= 10) refundPercent = 0.5;
       else refundPercent = 0;
     }
 
     let refund = null;
 
-// 🔥 REEMBOLSO LIMPIO
-if (refundPercent > 0) {
-  const precio = Number(v.precio || 0);
+    // 💸 HACER REFUND
+    if (refundPercent > 0) {
+      refund = await stripe.refunds.create({
+        payment_intent: v.paymentIntentId,
+        amount: Math.round(v.precio * 100 * refundPercent),
+      });
+    }
 
-  if (isNaN(precio)) {
-    throw new Error("Precio inválido");
-  }
-
-  const amount = Math.floor(precio * 100 * refundPercent);
-
-  console.log("💳 DEBUG:", {
-    precio,
-    refundPercent,
-    amount,
-    paymentIntentId: v.paymentIntentId,
-  });
-
-  if (amount <= 0) {
-    throw new Error("Monto inválido");
-  }
-
-  refund = await stripe.refunds.create({
-    payment_intent: v.paymentIntentId,
-    amount,
-  });
-
-  console.log("💳 REFUND OK:", refund.id);
-}
-
-    // 🔥 ACTUALIZAR VIAJE
+    // 🔄 ACTUALIZAR FIREBASE
     await viajeRef.update({
       estado: "Cancelado",
       canceladoPor: "user",
       refundPercent,
       refundId: refund?.id || null,
-      refundAt: Date.now(),
+      refundAt: Date.now()
     });
 
     return NextResponse.json({
       refunded: refundPercent > 0,
-      percent: refundPercent,
+      percent: refundPercent
     });
 
-  } catch (err: any) {
-    console.error("🔥 REFUND ERROR DETALLE:", err);
-    console.error("🔥 STACK:", err?.stack);
+  } catch (err) {
+    console.error("🔥 REFUND ERROR:", err);
 
     return NextResponse.json(
-      {
-        error: err.message || "Internal error",
-      },
+      { error: "Error procesando refund" },
       { status: 500 }
     );
   }

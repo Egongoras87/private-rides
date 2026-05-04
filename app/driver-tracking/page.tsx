@@ -16,7 +16,7 @@ export default function DriverTrackingPage() {
 const [viajeData, setViajeData] = useState<any>(null);
   const watchRef = useRef<any>(null);
   const lastHeadingRef = useRef(0);
- 
+ const [loadingCancel, setLoadingCancel] = useState(false);
 const lastMapRef = useRef<any>(null);   // 🗺️ cámara
   const [pos, setPos] = useState<any>(null);
   const [fase, setFase] = useState("pickup");
@@ -489,78 +489,87 @@ if (uid) {
 };
 /////////////////////////////////////////  CANCELAR  /////////////////////////////////////////////
   const cancelar = async () => {
-  const id = new URLSearchParams(window.location.search).get("id");
-  if (!id) return;
-
   try {
+    // 🔒 evitar doble click
+    if (loadingCancel) return;
+    setLoadingCancel(true);
+
+    // 🔥 obtener ID (más robusto en móvil)
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id");
+
+    if (!id) {
+      alert("No se encontró el viaje");
+      return;
+    }
+
     const user = auth.currentUser;
     if (!user) {
-      alert("No autenticado");
+      alert("Debes iniciar sesión");
+      window.location.href = "/login-user";
       return;
     }
 
     const token = await user.getIdToken();
 
-    // 🔥 1. LLAMAR BACKEND (REFUND REAL)
-    const res = await fetch("/api/refund-driver", {
+    // 🔥 fetch con timeout (IMPORTANTE EN MOBILE)
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const res = await fetch("/api/refund-cancel", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`
       },
-      body: JSON.stringify({
-        viajeId: id,
-        driverId: user.uid
-      })
+      body: JSON.stringify({ viajeId: id }),
+      signal: controller.signal
     });
 
-    const data = await res.json();
-console.log("🔥 STRIPE KEY:", process.env.STRIPE_SECRET_KEY ? "OK" : "MISSING");
+    clearTimeout(timeout);
+
+    // 🔍 DEBUG
+    const text = await res.text();
+    console.log("STATUS:", res.status);
+    console.log("RAW:", text);
+
+    let data = null;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      console.warn("Respuesta no JSON");
+    }
 
     if (!res.ok) {
-      console.error(data);
-      alert("❌ Error cancelando viaje");
+      alert(data?.error || "Error cancelando el viaje");
       return;
     }
 
-    // 🔥 2. WHATSAPP
-    const viajeRef = ref(db, "viajes/" + id);
-
-    let telefono = "";
-    await new Promise((resolve) => {
-      onValue(
-        viajeRef,
-        (snap) => {
-          const d = snap.val();
-          telefono = d?.telefono || "";
-          resolve(true);
-        },
-        { onlyOnce: true }
-      );
-    });
-
-    if (telefono) {
-      const tel = "1" + telefono;
-      const mensaje =
-        "❌ Driver canceled your ride\n\n" +
-        (data.refunded
-          ? "💳 Your payment will be refunded."
-          : "Please try again.");
-
-      window.open(
-        `https://wa.me/${tel}?text=${encodeURIComponent(mensaje)}`,
-        "_blank"
-      );
+    // 📲 MENSAJE (más claro en móvil)
+    if (data?.refunded) {
+      alert("❌ Viaje cancelado\n💳 El dinero será devuelto.");
+    } else {
+      alert("❌ Viaje cancelado");
     }
 
-    alert("Viaje cancelado");
+    // 🔄 limpiar storage
+    localStorage.removeItem("viajeId");
+    localStorage.removeItem("viajeData");
 
-    // 🔥 3. REDIRIGIR
-    window.location.replace("/driver");
+    // 🔄 redirección más estable en móvil
+    window.location.replace("/");
 
-  } catch (error) {
-    console.error(error);
-    alert("❌ Error cancelando");
+  } catch (error: any) {
+    console.error("ERROR FRONTEND:", error);
+
+    if (error.name === "AbortError") {
+      alert("Tiempo de espera agotado. Intenta de nuevo.");
+    } else {
+      alert("Error de conexión");
+    }
+
+  } finally {
+    setLoadingCancel(false);
   }
 };
 
