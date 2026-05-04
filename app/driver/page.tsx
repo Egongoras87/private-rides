@@ -572,7 +572,7 @@ const soltar = (e: any) => {
         border: "none",
         fontSize: "22px",
         cursor: "pointer",
-        color: "#fff",
+        color: "#eee9e9",
         transition: "0.2s"
       }}
       onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.2)")}
@@ -581,6 +581,19 @@ const soltar = (e: any) => {
       {sonidoActivo ? "🔊" : "🔇"}
     </button>
     <button
+  onClick={() => (window.location.href = "/driver/profile")}
+  style={{
+    background: "#333",
+    border: "none",
+    padding: "8px 12px",
+    borderRadius: 8,
+    color: "#fff",
+    cursor: "pointer"
+  }}
+>
+  👤 Perfil
+</button>
+<button
   onClick={async () => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
@@ -594,6 +607,14 @@ const soltar = (e: any) => {
       online: nuevoEstado
     });
   }}
+  style={{
+    background: "#333",
+    border: "none",
+    padding: "8px 12px",
+    borderRadius: 8,
+    color: "#fff",
+    cursor: "pointer"
+  }}
 >
   {activo ? "🟢 Online" : "🔴 Offline"}
 </button>
@@ -602,7 +623,7 @@ const soltar = (e: any) => {
   style={{
     background: "transparent",
     border: "none",
-    color: "#fff",
+    color: "#f1ebeb",
     fontSize: 18,
     cursor: "pointer"
   }}
