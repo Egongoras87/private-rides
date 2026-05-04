@@ -99,34 +99,34 @@ export async function POST(req: Request) {
 
     let refund = null;
 
-    // 🔥 REEMBOLSO
-    if (refundPercent > 0) {
-      const precio = Number(v.precio || 0);
+// 🔥 REEMBOLSO LIMPIO
+if (refundPercent > 0) {
+  const precio = Number(v.precio || 0);
 
-      if (isNaN(precio)) {
-        throw new Error("Precio inválido");
-      }
+  if (isNaN(precio)) {
+    throw new Error("Precio inválido");
+  }
 
-      const amount = Math.floor(precio * 100 * refundPercent);
+  const amount = Math.floor(precio * 100 * refundPercent);
 
-      if (amount <= 0) {
-        throw new Error("Monto inválido");
-      }
+  console.log("💳 DEBUG:", {
+    precio,
+    refundPercent,
+    amount,
+    paymentIntentId: v.paymentIntentId,
+  });
 
-      console.log("💳 DEBUG:", {
-        precio,
-        refundPercent,
-        amount,
-        paymentIntentId: v.paymentIntentId,
-      });
+  if (amount <= 0) {
+    throw new Error("Monto inválido");
+  }
 
-      refund = await stripe.refunds.create({
-        payment_intent: v.paymentIntentId,
-        amount,
-      });
+  refund = await stripe.refunds.create({
+    payment_intent: v.paymentIntentId,
+    amount,
+  });
 
-      console.log("💳 REFUND OK:", refund.id);
-    }
+  console.log("💳 REFUND OK:", refund.id);
+}
 
     // 🔥 ACTUALIZAR VIAJE
     await viajeRef.update({
