@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useRef, useState } from "react";
 import { db } from "@/lib/firebase";
-import { ref, onValue, update } from "firebase/database";
+import { ref, onValue, update, get } from "firebase/database";
 import { useJsApiLoader } from "@react-google-maps/api";
 import { googleMapsConfig } from "@/lib/googleMaps";
 import { GoogleMap, Marker, Polyline } from "@react-google-maps/api";
@@ -198,54 +198,126 @@ if (d.destinoLat && d.destinoLng) {
     return () => unsubscribe();
   }, [isLoaded]);
 
-  // ❌ CANCELAR
-  const cancelarViaje = async () => {
-  const id = new URLSearchParams(window.location.search).get("id");
-  if (!id) return;
-
+  // /////////////////////////////////////////////////////////////❌ CANCELAR////////////////////////////////////////////
+const cancelarViaje = async () => {
   try {
-    // 🔥 FIX TOKEN
-    const user = auth.currentUser;
+    // 🔥 obtener id de forma segura (mobile-proof)
+    const id =
+      new URLSearchParams(window.location.search).get("id") ||
+      localStorage.getItem("viajeId");
 
+    if (!id) {
+      alert("No se encontró el viaje");
+      return;
+    }
+
+    const user = auth.currentUser;
     if (!user) {
       alert("Debes iniciar sesión");
       return;
     }
 
-    const token = await user.getIdToken();
+    const viajeRef = ref(db, "viajes/" + id);
 
-    const res = await fetch("/api/refund-cancel", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`, // 🔥 IMPORTANTE
-      },
-      body: JSON.stringify({ viajeId: id }),
-    });
+    // 🔥 obtener datos (estable en móvil)
+    const snap = await get(viajeRef);
 
-    const data = await res.json();
-
-    if (!res.ok) {
-      console.error(data);
-      alert("❌ Error cancelando viaje");
+    if (!snap.exists()) {
+      alert("Viaje no encontrado");
       return;
     }
 
-    alert(
-      data.percent === 1
-        ? "💳 Reembolso completo"
-        : data.percent === 0.5
-        ? "💳 Reembolso parcial"
-        : "❌ Sin reembolso"
-    );
+    const viaje = snap.val();
+
+    // 🔥 CALCULAR TIEMPO
+    const ahora = Date.now();
+    const tiempo = ahora - (viaje.timestamp || ahora);
+    const minutos = tiempo / 60000;
+
+    let porcentaje = 0;
+
+    if (minutos <= 2) porcentaje = 1;
+    else if (minutos <= 5) porcentaje = 0.5;
+    else porcentaje = 0;
+
+    // 🔥 ALERTA ANTES DE CANCELAR (IMPORTANTE UX)
+    if (viaje.metodoPago === "stripe") {
+      const confirmar = confirm(
+        porcentaje === 1
+          ? "Cancelar viaje\n💳 Reembolso completo"
+          : porcentaje === 0.5
+          ? "Cancelar viaje\n💳 Reembolso parcial (50%)"
+          : "Cancelar viaje\n❌ Sin reembolso"
+      );
+
+      if (!confirmar) return;
+    }
+
+    // 🔥 LIBERAR DRIVER + NOTIFICAR
+    if (viaje.driverId) {
+      await update(ref(db, "drivers/" + viaje.driverId), {
+        viajeActivo: null
+      });
+
+      // 🔥 enviar WhatsApp si existe
+      if (viaje.driverTelefono) {
+        const mensaje =
+          "❌ VIAJE CANCELADO\n\n" +
+          "El cliente canceló el viaje.\n\n" +
+          "📍 " + viaje.origen + "\n" +
+          "🏁 " + viaje.destino;
+
+        const url = `https://wa.me/1${viaje.driverTelefono}?text=${encodeURIComponent(mensaje)}`;
+
+        // ⚠️ en móvil NO bloquea si es dentro de interacción
+        window.open(url, "_blank");
+      }
+    }
+
+    // 🔥 CANCELAR VIAJE
+    await update(viajeRef, {
+      estado: "Cancelado",
+      driverId: null,
+      canceladoEn: Date.now()
+    });
+
+    // 🔥 REEMBOLSO
+    if (
+      viaje.metodoPago === "stripe" &&
+      viaje.paymentIntentId &&
+      porcentaje > 0
+    ) {
+      const token = await user.getIdToken(true);
+
+      await fetch("/api/refund-cancel", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          viajeId: id,
+          percent: porcentaje
+        }),
+      });
+    }
+
+    // 🔥 FINALIZAR TRACKING (IMPORTANTE)
+    localStorage.removeItem("viajeId");
+
+    alert("❌ Viaje cancelado");
+
+    // 🔥 REDIRECCIÓN SEGURA (MÓVIL)
+    setTimeout(() => {
+      window.location.href = "/";
+    }, 1200);
 
   } catch (err) {
-    console.error(err);
-    alert("❌ Error de conexión");
+    console.error("ERROR CANCELAR:", err);
+    alert("Error cancelando viaje");
   }
 };
-
-  // 🎯 BOTONES
+  //////////////////////////////////////////////////////// 🎯 BOTONES///////////////////////////////////////
   const btn = (bg: string) => ({
     padding: 12,
     borderRadius: 10,
