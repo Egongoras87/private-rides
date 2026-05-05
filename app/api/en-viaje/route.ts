@@ -4,10 +4,11 @@ import { requireDriver } from "@/lib/auth-helpers";
 
 export async function POST(req: Request) {
   try {
-    // 🔐 SOLO DRIVERS AUTORIZADOS
+    // 🔐 SOLO DRIVER
     const { uid } = await requireDriver(req);
 
     const { viajeId } = await req.json();
+
     if (!viajeId) {
       return NextResponse.json({ error: "viajeId requerido" }, { status: 400 });
     }
@@ -21,17 +22,32 @@ export async function POST(req: Request) {
 
     const v = snap.val();
 
-    // 🔒 SOLO EL DRIVER ASIGNADO
+    // 🔒 VALIDAR DRIVER
     if (v.driverId !== uid) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 });
     }
 
-    // 🔒 TRANSICIÓN VÁLIDA
-    // Debe venir de "En camino"
-    if (v.estado !== "En camino") {
+    // 🔒 BLOQUEAR SI YA TERMINÓ
+    if (v.estado === "Finalizado") {
+      return NextResponse.json({ error: "Viaje ya finalizado" }, { status: 400 });
+    }
+
+    // 🔒 BLOQUEAR SI CANCELADO
+    if (v.estado === "Cancelado") {
+      return NextResponse.json({ error: "Viaje cancelado" }, { status: 400 });
+    }
+
+    // 🔒 EVITAR DOBLE TRANSICIÓN
+    if (v.estado === "En viaje") {
+      return NextResponse.json({ ok: true });
+    }
+
+    // ✅ PERMITIR TRANSICIONES VÁLIDAS
+    if (v.estado !== "En camino" && v.estado !== "Asignado") {
       return NextResponse.json({ error: "Estado inválido" }, { status: 400 });
     }
 
+    // 🔥 UPDATE
     await refViaje.update({
       estado: "En viaje",
       enViajeAt: Date.now()

@@ -310,44 +310,45 @@ setViajes((prev) => {
 
   ////////////////////////////////// 🚗 ACEPTAR RIDE/////////////////////////////////////////////////////////////////////////////
 const aceptarViaje = async (v: any) => {
-  const uid = auth.currentUser?.uid;
+  const user = auth.currentUser;
 
-  if (!uid) {
+  if (!user) {
     alert("Error de usuario");
     return;
   }
 
-  const viajeRef = ref(db, "viajes/" + v.id);
+  try {
+    const token = await user.getIdToken();
 
-  const result = await runTransaction(viajeRef, (data) => {
-    if (!data) return;
+    // 🔐 TODO SE VALIDA EN BACKEND
+    const res = await fetch("/api/aceptar-viaje", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token
+      },
+      body: JSON.stringify({ viajeId: v.id })
+    });
 
-    // 🔴 si otro driver ya lo tomó
-    if (data.driverId && data.driverId !== uid) return;
+    const data = await res.json();
 
-    // 🔴 si ya no está disponible
-    if (data.estado !== "Pendiente") return;
+    if (!res.ok) {
+      alert(data.error || "❌ Otro driver tomó este viaje");
+      return;
+    }
 
-    // 🟢 asignar viaje
-    return {
-      ...data,
-      driverId: uid,
-      estado: "Asignado",
-      asignadoAt: Date.now()
-    };
-  });
+    // 🟢 SOLO ESTO SE QUEDA EN FRONTEND
+    await update(ref(db, "drivers/" + user.uid), {
+      viajeActivo: v.id
+    });
 
-  if (!result.committed) {
-    alert("❌ Otro driver tomó este viaje");
-    return;
+    alert("✅ Viaje aceptado");
+
+    
+  } catch (error) {
+    console.error("ERROR ACEPTANDO:", error);
+    alert("Error aceptando viaje");
   }
-
-  // 🔥 marcar driver ocupado
-  await update(ref(db, "drivers/" + uid), {
-    viajeActivo: v.id
-  });
-
-  alert("✅ Viaje aceptado");
 };
 ////////////////////////////////////////////// INICIAR VIAJE ////////////////////////////////////////////////////////////
 const iniciarViaje = async (v: any) => {
@@ -506,33 +507,38 @@ const rechazar = async (v: any) => {
 
     const token = await user.getIdToken();
 
-    // 🔐 TODO se maneja en backend
-    const res = await fetch("/api/rechazar-viaje-driver", {
+    // 🔐 USAR ENDPOINT CORRECTO
+    const res = await fetch("/api/refund-reject", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`
+        Authorization: "Bearer " + token
       },
       body: JSON.stringify({
         viajeId: v.id
       })
     });
 
-    const data = await res.json();
+    let data: any = {};
+    try {
+      data = await res.json();
+    } catch {
+      console.error("❌ Respuesta no JSON");
+    }
 
     if (!res.ok) {
-      alert(data.error || "Error rechazando viaje");
+      alert(data?.error || "Error rechazando viaje");
       return;
     }
 
-    // 📲 WhatsApp (esto sí puede quedarse en frontend)
+    // 📲 MENSAJE (frontend opcional)
     if (v.telefono) {
       const telefono = "1" + v.telefono.replace(/\D/g, "");
 
       const mensaje =
         "❌ Driver no disponible\n\n" +
         (v.metodoPago === "stripe"
-          ? "💳 Tu pago será procesado automáticamente."
+          ? "💳 Tu pago será reembolsado automáticamente."
           : "Puedes intentar nuevamente más tarde.");
 
       window.open(

@@ -37,6 +37,7 @@ export default function Home() {
   );
 }
  function CheckoutContent() {
+  const [mostrarCardModal, setMostrarCardModal] = useState(false);
   const [metodoPago, setMetodoPago] = useState<"stripe" | "cash">("stripe");
 const router = useRouter();
   const [directions, setDirections] = useState<any>(null);
@@ -50,6 +51,8 @@ const [latDestino, setLatDestino] = useState(0);
 const [lngDestino, setLngDestino] = useState(0);
   const [nombre, setNombre] = useState("");
  const [telefono, setTelefono] = useState("");
+const [paymentMethodId, setPaymentMethodId] = useState<string | null>(null);
+const [cardGuardada, setCardGuardada] = useState(false);
 const stripe = useStripe();
 const elements = useElements();
  const { user, loading } = useAuth();
@@ -83,6 +86,20 @@ useEffect(() => {
     router.push("/login-user");
   }
 }, [user, loading]);
+const [pressed, setPressed] = useState<string | null>(null);
+
+const handlePress = (id: string) => setPressed(id);
+const handleRelease = () => setPressed(null);
+
+const getButtonStyle = (id: string, base: any) => ({
+  ...base,
+  transform: pressed === id ? "scale(0.96)" : "scale(1)",
+  boxShadow:
+    pressed === id
+      ? "0 2px 4px rgba(0,0,0,0.3)"
+      : "0 6px 12px rgba(0,0,0,0.4)",
+  transition: "all 0.15s ease"
+});
 
 const presionarBoton = (e: any) => {
   e.currentTarget.style.transform = "scale(0.96)";
@@ -198,76 +215,12 @@ if (!window.google?.maps?.DirectionsService) return;
   });
 };
 
-///////////////////////////////////////////FUNCION PAGAR////////////////////////////////////////////////////////////////////////
-const pagar = async () => {
-  try {
-    setLoadingPago(true);
 
-    if (!stripe || !elements) {
-      alert("Stripe no cargó");
-      return false;
-    }
-
-    const cardElement = elements.getElement(CardElement);
-
-    if (!cardElement) {
-      alert("Ingresa la tarjeta");
-      return false;
-    }
-
-    // 🔥 crear intent
-    const res = await fetch("/api/create-payment", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        amount: Math.round(precio * 100)
-      })
-    });
-
-    if (!res.ok) {
-  alert("Error creando pago");
-  return false;
-}
-
-const data = await res.json();
-
-    // 🔥 confirmar pago REAL
-    const result = await stripe.confirmCardPayment(data.clientSecret, {
-      payment_method: {
-        card: cardElement,
-        billing_details: {
-          name: nombre,
-          phone: telefono
-        }
-      }
-    });
-
-    if (result.error) {
-      console.error(result.error);
-      alert("❌ " + result.error.message);
-      return false;
-    }
-
-    if (result.paymentIntent?.status === "succeeded") {
-  return result.paymentIntent.id; // 🔥 devuelve el ID real
-}
-
-    return false;
-
-  } catch (err) {
-    console.error(err);
-    alert("Error en pago");
-    return false;
-  } finally {
-    setLoadingPago(false);
-  }
-};
 
   // ///////////////////////////////////////////////////////////////📤 PEDIR VIAJE////////////////////////////////////////
 const reservar = async () => {
-   if (loadingPago) return;
+  if (loadingPago) return;
+
   if (!precio || precio <= 0) {
     alert("Calcula el precio primero");
     return;
@@ -290,44 +243,41 @@ const reservar = async () => {
     return;
   }
 
-  const uid = auth.currentUser?.uid;
+  const user = auth.currentUser;
 
   if (!user) {
-  alert("Debes iniciar sesión");
-  return;
-}
-
-  try {
-   let paymentIntentId: string | null = null;
-
-// 💳 STRIPE
-if (metodoPago === "stripe") {
-  const result = await pagar();
-
-  if (!result) {
-    alert("❌ Pago fallido");
+    alert("Debes iniciar sesión");
     return;
   }
 
-  paymentIntentId = result; // 🔥 guardas el ID aquí
+  try {
+    let paymentIntentId: string | null = null;
+
+// 🔒 VALIDAR TARJETA ANTES DE PAGAR
+if (metodoPago === "stripe" && !paymentMethodId) {
+  alert("Ingresa los datos de la tarjeta");
+  return;
 }
 
     const fechaISO = new Date(fechaHora).getTime();
     const ahora = Date.now();
 
-// 🔥 si es más de 10 min en el futuro → programado
-const esProgramado = fechaISO > ahora + 10 * 60 * 1000;
+    const esProgramado = fechaISO > ahora + 10 * 60 * 1000;
+
     const origen = origenRef.current.value;
     const destino = destinoRef.current.value;
 
-    const id = Date.now().toString();
+    // 🔐 TOKEN (ya validamos user arriba)
+    const token = await user.getIdToken();
 
-  
-    // 🔥 GUARDAR EN FIREBASE
-    await set(ref(db, "viajes/" + id), {
-  id,
-  userId: uid,
-
+    // 🔥 CREAR VIAJE EN BACKEND
+    const res = await fetch("/api/create-viaje", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token
+      },
+      body: JSON.stringify({
   nombre,
   telefono,
   origen,
@@ -342,31 +292,39 @@ const esProgramado = fechaISO > ahora + 10 * 60 * 1000;
   precio,
   fecha: fechaISO,
 
-  estado: "Pendiente",   // 🔥 CLAVE
-  driverId: null,        // 🔥 CLAVE
   esProgramado,
 
   metodoPago,
   pagado: metodoPago === "stripe",
   estadoPago: metodoPago === "stripe" ? "pagado" : "pendiente",
-  paymentIntentId: metodoPago === "stripe" ? paymentIntentId : null,
 
-  driverLat: null,
-  driverLng: null,
-  timestamp: Date.now()
-});
-if (esProgramado) {
-  console.log("🕓 Viaje programado");
-} else {
-  console.log("🚗 Viaje inmediato");
-}   
+  // 👇 🔥 AQUÍ EXACTAMENTE
+  paymentMethodId: metodoPago === "stripe" ? paymentMethodId : null
+})
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || "Error creando viaje");
+      return;
+    }
+
+    // 🔥 ID SOLO VIENE DEL BACKEND
+    const viajeId = data.id;
+
+    if (esProgramado) {
+      console.log("🕓 Viaje programado");
+    } else {
+      console.log("🚗 Viaje inmediato");
+    }
 
     // 🔥 LOCAL STORAGE
-    localStorage.setItem("viajeId", id);
+    localStorage.setItem("viajeId", viajeId);
     localStorage.setItem(
       "viajeData",
       JSON.stringify({
-        id,
+        id: viajeId,
         nombre,
         telefono,
         origen,
@@ -376,27 +334,26 @@ if (esProgramado) {
       })
     );
 
-    const trackingUrl = `${window.location.origin}/tracking?id=${id}`;
+    const trackingUrl = `${window.location.origin}/tracking?id=${viajeId}`;
 
-          const telefonoFinal = "1" + telefono.replace(/\D/g, "");
+    const telefonoFinal = "1" + telefono.replace(/\D/g, "");
 
-      const mensajeWhatsApp =
-        "🚗 NEW RIDE\n\n" +
-        "👤 " + nombre + "\n" +
-        "📞 " + telefono + "\n" +
-        "📍 " + origen + "\n" +
-        "🏁 " + destino + "\n" +
-        "💰 $" + precio.toFixed(2) + "\n\n" +
-        "📡 Track:\n" + trackingUrl;
+    const mensajeWhatsApp =
+      "🚗 NEW RIDE\n\n" +
+      "👤 " + nombre + "\n" +
+      "📞 " + telefono + "\n" +
+      "📍 " + origen + "\n" +
+      "🏁 " + destino + "\n" +
+      "💰 $" + precio.toFixed(2) + "\n\n" +
+      "📡 Track:\n" + trackingUrl;
 
-      const url = `https://wa.me/${telefonoFinal}?text=${encodeURIComponent(mensajeWhatsApp)}`;
+    const url = `https://wa.me/${telefonoFinal}?text=${encodeURIComponent(mensajeWhatsApp)}`;
 
-      window.open(url, "_blank");
-    
+    window.open(url, "_blank");
 
     // 🚀 REDIRECCIÓN
     setTimeout(() => {
-      window.location.href = `/tracking?id=${id}`;
+      window.location.href = `/tracking?id=${viajeId}`;
     }, 800);
 
   } catch (error) {
@@ -404,38 +361,33 @@ if (esProgramado) {
     alert("❌ Error de conexión");
   }
 };
-
   // 📡 Leer ubicación del driver (simulación)
-  useEffect(() => {
+ useEffect(() => {
   const id = localStorage.getItem("viajeId");
   if (!id) return;
-  
 
   const viajeRef = ref(db, "viajes/" + id);
 
   const unsubscribe = onValue(viajeRef, (snapshot) => {
-  const data = snapshot.val();
+    const data = snapshot.val();
 
+    if (!data) return; // 🔥 IMPORTANTE
 
-if (!data.driverLat || !data.driverLng) {
-  setDriverUbicacion(null);
-  return;
-}
+    if (!data.driverLat || !data.driverLng) {
+      setDriverUbicacion(null);
+      return;
+    }
 
-const lat = Number(data.driverLat);
-const lng = Number(data.driverLng);
+    const lat = Number(data.driverLat);
+    const lng = Number(data.driverLng);
 
-  // 🔥 AQUÍ VA LA VALIDACIÓN
-  
-
-  if (!isNaN(lat) && !isNaN(lng)) {
-    setDriverUbicacion({ lat, lng });
-  }
-});
+    if (!isNaN(lat) && !isNaN(lng)) {
+      setDriverUbicacion({ lat, lng });
+    }
+  });
 
   return () => unsubscribe();
 }, []);
-
 
 
 // 🔁 GUARDAR FORM DATA
@@ -765,35 +717,39 @@ return (
        <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
   
   <button
-    onClick={calcularRuta}
-    onMouseDown={presionarBoton}
-    onMouseUp={soltarBoton}
-    onMouseLeave={soltarBoton}
-    style={{
-      flex: 1,
-      ...estiloBoton,
-      background: "#000",
-      color: "#fff"
-    }}
-  >
-    Calculate
-  </button>
+  onClick={calcularRuta}
+  onMouseDown={() => handlePress("calc")}
+  onMouseUp={handleRelease}
+  onMouseLeave={handleRelease}
+  onTouchStart={() => handlePress("ID")}
+onTouchEnd={handleRelease}
+  style={getButtonStyle("calc", {
+    flex: 1,
+    ...estiloBoton,
+    background: "#000",
+    color: "#fff"
+  })}
+>
+  Get Price
+</button>
 
-  <button
+ <button
   onClick={reservar}
   disabled={loadingPago}
-    onMouseDown={presionarBoton}
-onMouseUp={soltarBoton}
-onMouseLeave={soltarBoton}
-    style={{
-      flex: 1,
-      ...estiloBoton,
-      background: "#2ecc71",
-      color: "#fff"
-    }}
-  >
-    {loadingPago ? "Procesando pago..." : "Request the Ride"}
-  </button>
+  onMouseDown={() => handlePress("ride")}
+  onMouseUp={handleRelease}
+  onMouseLeave={handleRelease}
+  onTouchStart={() => handlePress("ID")}
+onTouchEnd={handleRelease}
+  style={getButtonStyle("ride", {
+    flex: 1,
+    ...estiloBoton,
+    background: "#2ecc71",
+    color: "#fff"
+  })}
+>
+  {loadingPago ? "PProcessing payment...." : "Request the Ride"}
+</button>
 
 </div>
 <div style={{ marginTop: 8 }}>
@@ -813,57 +769,51 @@ onMouseLeave={soltarBoton}
   {/* 💳 CARD (MAS GRANDE) */}
   <div style={{ flex: 2 }}>
     <button
-      onClick={() => setMetodoPago("stripe")}
-      style={{
-        width: "100%",
-        padding: 10,
-        borderRadius: 6,
-        border: "none",
-        background: metodoPago === "stripe" ? "#2ecc71" : "#333",
-        color: "#fff",
-        fontSize: 16
-      }}
-    >
-      💳 Card
-    </button>
+  onClick={() => {
+    setMetodoPago("stripe");
+    setMostrarCardModal(true);
+  }}
+  onMouseDown={() => handlePress("card")}
+  onMouseUp={handleRelease}
+  onMouseLeave={handleRelease}
+  onTouchStart={() => handlePress("ID")}
+onTouchEnd={handleRelease}
+  style={getButtonStyle("card", {
+    width: "100%",
+    padding: 10,
+    borderRadius: 6,
+    border: "none",
+    background: metodoPago === "stripe" ? "#2ecc71" : "#333",
+    color: "#fff",
+    fontSize: 16
+  })}
+>
+  💳 Card
+</button>
 
-    {metodoPago === "stripe" && (
-      <div
-        style={{
-          marginTop: 6,
-          padding: 12,
-          background: "#fff",
-          borderRadius: 8
-        }}
-      >
-        <CardElement
-          options={{
-            style: {
-              base: {
-                fontSize: "18px", // 🔥 más grande para escribir cómodo
-              },
-            },
-          }}
-        />
-      </div>
-    )}
+   
   </div>
 
   {/* 💵 CASH (MAS PEQUEÑO) */}
-  <button
-    onClick={() => setMetodoPago("cash")}
-    style={{
-      flex: 1,
-      padding: 8,
-      borderRadius:12,
-      border: "none",
-      background: metodoPago === "cash" ? "#f39c12" : "#333",
-      color: "#fff",
-      fontSize: 16
-    }}
-  >
-    💵 Cash
-  </button>
+ <button
+  onClick={() => setMetodoPago("cash")}
+  onMouseDown={() => handlePress("cash")}
+  onMouseUp={handleRelease}
+  onMouseLeave={handleRelease}
+  onTouchStart={() => handlePress("ID")}
+onTouchEnd={handleRelease}
+  style={getButtonStyle("cash", {
+    flex: 1,
+    padding: 8,
+    borderRadius: 12,
+    border: "none",
+    background: metodoPago === "cash" ? "#f39c12" : "#333",
+    color: "#fff",
+    fontSize: 16
+  })}
+>
+  💵 Cash
+</button>
 
 </div>
         </div>
@@ -907,7 +857,112 @@ onMouseLeave={soltarBoton}
     {driverUbicacion && <Marker position={driverUbicacion} />}
   </GoogleMap>
 </div>
+{mostrarCardModal && (
+  <div
+    style={{
+      position: "fixed",
+      top: 0,
+      left: 0,
+      width: "100%",
+      height: "100%",
+      background: "rgba(0,0,0,0.85)",
+      zIndex: 9999,
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center"
+    }}
+  >
+    <div
+      style={{
+        width: "90%",
+        maxWidth: 400,
+        background: "#fff",
+        borderRadius: 12,
+        padding: 20,
+        display: "flex",
+        flexDirection: "column",
+        gap: 15
+      }}
+    >
+      <h3 style={{ textAlign: "center" }}>💳 Enter Card</h3>
 
+      <div
+        style={{
+          padding: 14,
+          border: "1px solid #ccc",
+          borderRadius: 8
+        }}
+      >
+        <CardElement
+          options={{
+            style: {
+              base: {
+                fontSize: "20px",
+                letterSpacing: "2px"
+              }
+            }
+          }}
+        />
+      </div>
+
+      <button
+  onClick={async () => {
+    if (!stripe || !elements) {
+      alert("Stripe no cargado");
+      return;
+    }
+
+    const card = elements.getElement(CardElement);
+
+    if (!card) {
+      alert("Ingrese la tarjeta");
+      return;
+    }
+
+    const { error, paymentMethod } = await stripe.createPaymentMethod({
+      type: "card",
+      card
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    // ✅ GUARDAR
+    setPaymentMethodId(paymentMethod.id);
+    setCardGuardada(true);
+
+    console.log("💳 Guardada:", paymentMethod.id);
+
+    setMostrarCardModal(false);
+  }}
+  style={{
+    padding: 12,
+    borderRadius: 8,
+    border: "none",
+    background: "#2ecc71",
+    color: "#fff"
+  }}
+>
+  💾 Save Card
+</button>
+
+      <button
+        onClick={() => setMostrarCardModal(false)}
+        style={{
+          padding: 10,
+          borderRadius: 8,
+          border: "none",
+          background: "#ccc",
+          color: "#000"
+        }}
+      >
+        ⬅ Back
+      </button>
+    </div>
+  </div>
+)}
  </div>
 </div>
 
