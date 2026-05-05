@@ -968,3 +968,4 @@ onTouchEnd={handleRelease}
 
 );
 }
+// fix permissions.
