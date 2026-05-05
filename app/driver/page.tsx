@@ -68,7 +68,14 @@ export default function DriverPage() {
   const { isLoaded } = useJsApiLoader(googleMapsConfig);
 const audioRef = useRef<HTMLAudioElement | null>(null);
 const viajesPrevRef = useRef<string[]>([]);
-const [sonidoActivo, setSonidoActivo] = useState(false);
+const firstLoad = useRef(true);
+const [sonidoActivo, setSonidoActivo] = useState(() => {
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("sonido") !== "false";
+  }
+  return true;
+});
+const prevViajesRef = useRef<string[]>([]);
  const [activo, setActivo] = useState(true);
 
 useEffect(() => {
@@ -138,6 +145,10 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
+  localStorage.setItem("sonido", sonidoActivo.toString());
+}, [sonidoActivo]);
+
+useEffect(() => {
   const unsub = onAuthStateChanged(auth, (user) => {   
     if (!user) return;
 
@@ -176,18 +187,23 @@ console.log("🔥 SNAP:", snap.val());
       }));
 // 🔊 DETECTAR NUEVOS VIAJES
 const idsActuales = lista.map((v) => v.id);
-
+if (firstLoad.current) {
+  firstLoad.current = false;
+  viajesPrevRef.current = idsActuales;
+  return;
+}
 // comparar con anteriores
 const nuevos = idsActuales.filter(
   (id) => !viajesPrevRef.current.includes(id)
 );
 
 // si hay nuevos → sonar
-// si hay nuevos → sonar SOLO si está activado
 if (nuevos.length > 0 && sonidoActivo) {
- const nuevos = idsActuales.filter(
-  (id) => !viajesPrevRef.current.includes(id)
-);
+  console.log("🔊 NUEVO VIAJE DETECTADO");
+
+  audioRef.current?.pause();
+  audioRef.current!.currentTime = 0;
+  audioRef.current?.play().catch(() => {});
 }
 
 // guardar lista actual SIEMPRE

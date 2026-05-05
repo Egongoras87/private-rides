@@ -792,7 +792,7 @@ onMouseLeave={soltarBoton}
       color: "#fff"
     }}
   >
-    {loadingPago ? "Procesando pago..." : "Book"}
+    {loadingPago ? "Procesando pago..." : "Request the Ride"}
   </button>
 
 </div>
@@ -809,17 +809,19 @@ onMouseLeave={soltarBoton}
   <p style={{ color: "#fff" }}>Choose a Payment Method.</p>
 
   <div style={{ display: "flex", gap: 10 }}>
-  {/* 💳 CARD (DESPLEGABLE) */}
-  <div style={{ flex: 1 }}>
+  
+  {/* 💳 CARD (MAS GRANDE) */}
+  <div style={{ flex: 2 }}>
     <button
       onClick={() => setMetodoPago("stripe")}
       style={{
         width: "100%",
-        padding: 8,
+        padding: 10,
         borderRadius: 6,
         border: "none",
         background: metodoPago === "stripe" ? "#2ecc71" : "#333",
-        color: "#fff"
+        color: "#fff",
+        fontSize: 16
       }}
     >
       💳 Card
@@ -829,30 +831,40 @@ onMouseLeave={soltarBoton}
       <div
         style={{
           marginTop: 6,
-          padding: 8,
+          padding: 12,
           background: "#fff",
-          borderRadius: 6
+          borderRadius: 8
         }}
       >
-        <CardElement />
+        <CardElement
+          options={{
+            style: {
+              base: {
+                fontSize: "18px", // 🔥 más grande para escribir cómodo
+              },
+            },
+          }}
+        />
       </div>
     )}
   </div>
 
-  {/* 💵 CASH */}
+  {/* 💵 CASH (MAS PEQUEÑO) */}
   <button
     onClick={() => setMetodoPago("cash")}
     style={{
       flex: 1,
       padding: 8,
-      borderRadius: 6,
+      borderRadius:12,
       border: "none",
       background: metodoPago === "cash" ? "#f39c12" : "#333",
-      color: "#fff"
+      color: "#fff",
+      fontSize: 16
     }}
   >
     💵 Cash
   </button>
+
 </div>
         </div>
 <button

@@ -310,7 +310,7 @@ const cancelarViaje = async () => {
     // 🔥 REDIRECCIÓN SEGURA (MÓVIL)
     setTimeout(() => {
       window.location.href = "/";
-    }, 1200);
+    }, 1500);
 
   } catch (err) {
     console.error("ERROR CANCELAR:", err);
