@@ -22,7 +22,7 @@ const [viajeData, setViajeData] = useState<any>(null);
   const lastMapRef = useRef<any>(null);
   const lastHeadingRef = useRef(0);
   const mapRef = useRef<any>(null);
-  const [pulse, setPulse] = useState(0);
+  const lastRouteRef = useRef(0);
 
   // 🔥 UI
   const [eta, setEta] = useState(0);
@@ -60,143 +60,172 @@ useEffect(() => {
 }, [eta]);
   // 🔥 TRACKING
   useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get("id");
-    if (!id) return;
+  const id = new URLSearchParams(window.location.search).get("id");
+  if (!id) return;
 
-    const viajeRef = ref(db, "viajes/" + id);
+  const viajeRef = ref(db, "viajes/" + id);
 
-    const unsubscribe = onValue(viajeRef, (snap) => {
-      const d = snap.val();
-      setViajeData(d);
-      if (!d) return;
+  const unsubscribe = onValue(viajeRef, (snap) => {
+    const d = snap.val();
 
-      // 🔴 estados
-      if (d.estado === "Cancelado") {
-        setViajeCancelado(true);
-        setPos(null);
-        setPath([]);
-        return;
-      }
-
-      if (d.estado === "Finalizado") {
-  // 🔴 limpiar storage
-  localStorage.removeItem("viajeId");
-  localStorage.removeItem("viajeData");
-
-  // 🔴 limpiar UI completa
-  setViajeFinalizado(true);
-  setPos(null);
-  setPath([]);
-  setDestinoMarker(null); // 🔥 IMPORTANTE
-
-  return;
-}
-
-      if (d.estado === "En camino") setFase("pickup");
-      if (d.estado === "En viaje") setFase("viaje");
-
-      if (!d.driverLat || !d.driverLng) return;
-
-      const nueva = {
-        lat: Number(d.driverLat),
-        lng: Number(d.driverLng)
-      };
-
-      // 🔥 suavizado
-      setPos((prev: any) => {
-        if (!prev) return nueva;
-        return {
-          lat: prev.lat + (nueva.lat - prev.lat) * 0.35,
-          lng: prev.lng + (nueva.lng - prev.lng) * 0.35
-        };
-      });
-
-      // 🔥 ROTACIÓN
-      const dx = nueva.lng - (lastMapRef.current?.lng || nueva.lng);
-      const dy = nueva.lat - (lastMapRef.current?.lat || nueva.lat);
-
-      let headingDeg = Math.atan2(dy, dx) * (180 / Math.PI);
-      if (headingDeg < 0) headingDeg += 360;
-
-      const diff = headingDeg - lastHeadingRef.current;
-      const adjustedDiff = ((diff + 540) % 360) - 180;
-
-      lastHeadingRef.current += adjustedDiff * 0.35;
-
-      if (!isFinite(lastHeadingRef.current)) {
-        lastHeadingRef.current = headingDeg;
-      }
-
-      // 🔥 CÁMARA
-      if (mapRef.current) {
-        const speed = Math.hypot(dx, dy);
-        const zoom = speed > 0.0005 ? 15 : 17;
-
-        mapRef.current.moveCamera({
-          center: nueva,
-          heading: lastHeadingRef.current || 0,
-          tilt: 60,
-          zoom
-        });
-      }
-
-      lastMapRef.current = nueva;
-
-     // 🔥 RUTA
-if (d.destinoLat && d.destinoLng) {
-  const service = new window.google.maps.DirectionsService();
-
-  // 🔥 CAMBIO CLAVE: destino dinámico según fase
-  const destino =
-    d.estado === "En camino"
-      ? {
-          lat: Number(d.origenLat), // 👈 IR A RECOGER
-          lng: Number(d.origenLng)
-        }
-      : {
-          lat: Number(d.destinoLat), // 👈 VIAJE NORMAL
-          lng: Number(d.destinoLng)
-        };
-
-  service.route(
-    {
-      origin: nueva,
-      destination: destino,
-      travelMode: window.google.maps.TravelMode.DRIVING
-    },
-    (res: any, status: any) => {
-      if (status === "OK") {
-        const leg = res.routes[0].legs[0];
-
-        const points = res.routes[0].overview_path.map((p: any) => ({
-          lat: p.lat(),
-          lng: p.lng()
-        }));
-
-        setPath(points);
-
-        // 🔥 marcador correcto
-        setDestinoMarker({
-          lat: destino.lat,
-          lng: destino.lng
-        });
-
-        // 🔥 ETA correcto por fase
-        const now = Date.now();
-
-        if (!lastEtaUpdateRef.current || now - lastEtaUpdateRef.current > 5000) {
-          lastEtaUpdateRef.current = now;
-
-          setEta(leg.duration.value);
-        }
-      }
+    // 🔒 NO DATA → limpiar todo
+    if (!d) {
+      setViajeData(null);
+      setPos(null);
+      setPath([]);
+      setDestinoMarker(null);
+      return;
     }
-  );
-}
+
+    setViajeData(d);
+
+    // 🔴 1. FINALIZADO (PRIORIDAD MÁXIMA)
+    if (d.estado === "Finalizado") {
+      console.log("✅ VIAJE FINALIZADO (USER)");
+
+      localStorage.removeItem("viajeId");
+      localStorage.removeItem("viajeData");
+
+      setViajeFinalizado(true);
+      setViajeCancelado(false);
+
+      setPos(null);
+      setPath([]);
+      setDestinoMarker(null);
+
+      return; // 🚨 CRÍTICO
+    }
+
+    // 🔴 2. CANCELADO
+    if (d.estado === "Cancelado") {
+      console.log("❌ VIAJE CANCELADO (USER)");
+
+      setViajeCancelado(true);
+      setViajeFinalizado(false);
+
+      setPos(null);
+      setPath([]);
+      setDestinoMarker(null);
+
+      return; // 🚨 CRÍTICO
+    }
+
+    // 🟢 RESET estados UI
+    setViajeFinalizado(false);
+    setViajeCancelado(false);
+
+    // 🟢 FASE
+    if (d.estado === "En camino") setFase("pickup");
+    else if (d.estado === "En viaje") setFase("viaje");
+
+    // 🔒 VALIDACIÓN FUERTE DE COORDENADAS
+    const lat = Number(d.driverLat);
+    const lng = Number(d.driverLng);
+
+    if (!isFinite(lat) || !isFinite(lng)) return;
+
+    const nueva = { lat, lng };
+
+    // 🔥 SUAVIZADO
+    setPos((prev: any) => {
+      if (!prev) return nueva;
+      return {
+        lat: prev.lat + (nueva.lat - prev.lat) * 0.35,
+        lng: prev.lng + (nueva.lng - prev.lng) * 0.35
+      };
     });
 
-    return () => unsubscribe();
-  }, [isLoaded]);
+    // 🔥 ROTACIÓN SEGURA
+    const prevPos = lastMapRef.current || nueva;
+
+    const dx = nueva.lng - prevPos.lng;
+    const dy = nueva.lat - prevPos.lat;
+
+    let headingDeg = Math.atan2(dy, dx) * (180 / Math.PI);
+    if (headingDeg < 0) headingDeg += 360;
+
+    if (!isFinite(headingDeg)) headingDeg = 0;
+
+    const diff = headingDeg - lastHeadingRef.current;
+    const adjustedDiff = ((diff + 540) % 360) - 180;
+
+    lastHeadingRef.current += adjustedDiff * 0.35;
+
+    // 🔥 CÁMARA
+    if (mapRef.current) {
+      const speed = Math.hypot(dx, dy);
+      const zoom = speed > 0.0005 ? 15 : 17;
+
+      mapRef.current.moveCamera({
+        center: nueva,
+        heading: lastHeadingRef.current || 0,
+        tilt: 60,
+        zoom
+      });
+    }
+
+    lastMapRef.current = nueva;
+
+    // 🔥 RUTA (OPTIMIZADA)
+    const now = Date.now();
+
+    if (
+      d.destinoLat &&
+      d.destinoLng &&
+      (!lastRouteRef.current || now - lastRouteRef.current > 8000)
+    ) {
+      lastRouteRef.current = now;
+
+      const service = new window.google.maps.DirectionsService();
+
+      const destino =
+        d.estado === "En camino"
+          ? {
+              lat: Number(d.origenLat),
+              lng: Number(d.origenLng)
+            }
+          : {
+              lat: Number(d.destinoLat),
+              lng: Number(d.destinoLng)
+            };
+
+      // 🔒 VALIDACIÓN DESTINO
+      if (!isFinite(destino.lat) || !isFinite(destino.lng)) return;
+
+      service.route(
+        {
+          origin: nueva,
+          destination: destino,
+          travelMode: window.google.maps.TravelMode.DRIVING
+        },
+        (res: any, status: any) => {
+          if (status !== "OK") return;
+
+          const leg = res.routes[0].legs[0];
+
+          const points = res.routes[0].overview_path.map((p: any) => ({
+            lat: p.lat(),
+            lng: p.lng()
+          }));
+
+          setPath(points);
+
+          setDestinoMarker(destino);
+
+          // 🔥 ETA CONTROLADO
+          const now = Date.now();
+
+          if (!lastEtaUpdateRef.current || now - lastEtaUpdateRef.current > 5000) {
+            lastEtaUpdateRef.current = now;
+            setEta(leg.duration.value);
+          }
+        }
+      );
+    }
+  });
+
+  return () => unsubscribe();
+}, [isLoaded]);
 
   // /////////////////////////////////////////////////////////////❌ CANCELAR////////////////////////////////////////////
 const cancelarViaje = async () => {
@@ -441,8 +470,7 @@ const cancelarViaje = async () => {
   position={pos}
   icon={{
     path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
-    scale: 18 + pulse, // 🔥 animación
-    fillColor: "#1494df",
+       fillColor: "#1494df",
     fillOpacity: 0.15, // 🔥 efecto glow
     strokeColor: "#1e87a1",
     strokeWeight: 1

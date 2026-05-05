@@ -384,6 +384,7 @@ if (
  // 📡 GPS DRIVER → FIREBASE
 useEffect(() => {
   if (typeof window === "undefined") return;
+
   const id = new URLSearchParams(window.location.search).get("id");
   if (!id) return;
 
@@ -394,32 +395,45 @@ useEffect(() => {
   let lastSendTime = 0;
 
   watchRef.current = navigator.geolocation.watchPosition(
-    (pos) => {
+    async (pos) => {
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
 
+      // ⏱ throttle
       if (Date.now() - lastSendTime < 1000) return;
-      
-
       lastSendTime = Date.now();
-      
 
-      update(ref(db, "viajes/" + id), {
-        driverLat: lat,
-        driverLng: lng,
-        timestamp: Date.now()
-      });
-      
-      const uid = auth.currentUser?.uid;
+      try {
+        const user = auth.currentUser;
+        if (!user) return;
 
-if (uid) {
-  update(ref(db, "drivers/" + uid), {
-    lat: lat,
-    lng: lng,
-    lastSeen: Date.now()
-  });
-}
+        const uid = user.uid;
+        const token = await user.getIdToken();
 
+        // 🔐 1. ACTUALIZAR VIAJE (backend seguro)
+        await fetch("/api/update-driver-location", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token
+          },
+          body: JSON.stringify({
+            viajeId: id,
+            lat,
+            lng
+          })
+        });
+
+        // 🟢 2. ACTUALIZAR DRIVER (frontend permitido)
+        await update(ref(db, "drivers/" + uid), {
+          lat,
+          lng,
+          lastSeen: Date.now()
+        });
+
+      } catch (err) {
+        console.error("ERROR GPS:", err);
+      }
     },
     (err) => console.log("GPS ERROR:", err),
     {
@@ -436,25 +450,51 @@ if (uid) {
   };
 }, []);
 
-  // 🔴 FUNCIONES DRIVER////////////////////////////////////////////////////////////////////////////////
+  //////////////////////// 🔴 FUNCIONES DRIVER////////////////////////////////////////////////////////////////////////////////
   const finalizar = async (id: string) => {
   try {
+    const user = auth.currentUser;
+    if (!user) {
+      alert("No autenticado");
+      return;
+    }
+
     const viajeRef = ref(db, "viajes/" + id);
 
-    // 🔥 OBTENER DATA ACTUAL
+    // 🔥 OBTENER DATA ACTUAL (UNA SOLA VEZ)
     const snap = await new Promise<any>((resolve) => {
       onValue(viajeRef, (s) => resolve(s.val()), { onlyOnce: true });
     });
 
-    if (!snap) return;
+    if (!snap) {
+      alert("Viaje no encontrado");
+      return;
+    }
 
-    // 📍 VALIDAR DISTANCIA
-    if (snap.driverLat && snap.driverLng && snap.destinoLat && snap.destinoLng) {
+    // 🔒 VALIDAR ESTADO (CRÍTICO)
+    if (snap.estado !== "En viaje") {
+      alert("No puedes finalizar aún. Debes haber recogido al cliente.");
+      return;
+    }
+
+    // 📍 VALIDAR DISTANCIA (DESTINO)
+    const driverLat = Number(snap?.driverLat);
+    const driverLng = Number(snap?.driverLng);
+    const destinoLat = Number(snap?.destinoLat);
+    const destinoLng = Number(snap?.destinoLng);
+
+    if (
+      isFinite(driverLat) &&
+      isFinite(driverLng) &&
+      isFinite(destinoLat) &&
+      isFinite(destinoLng)
+    ) {
       const dist = calcularDistancia(
-        { lat: Number(snap.driverLat), lng: Number(snap.driverLng) },
-        { lat: Number(snap.destinoLat), lng: Number(snap.destinoLng) }
+        { lat: driverLat, lng: driverLng },
+        { lat: destinoLat, lng: destinoLng }
       );
 
+      // ⚠ NO HA LLEGADO → advertencia
       if (dist > 0.1) {
         const confirmar = confirm(
           "⚠️ Aún no has llegado al destino.\n\n¿Seguro quieres finalizar el viaje?"
@@ -464,13 +504,26 @@ if (uid) {
       }
     }
 
-    await update(viajeRef, {
-      estado: "Finalizado",
-      driverLat: null,
-      driverLng: null,
-      timestampFinalizado: Date.now()
+    const token = await user.getIdToken();
+
+    // 🔐 FINALIZAR EN BACKEND
+    const res = await fetch("/api/finalizar-viaje", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token
+      },
+      body: JSON.stringify({ viajeId: id })
     });
 
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || "Error finalizando");
+      return;
+    }
+
+    // 🧹 LIMPIAR TRACKING
     if (watchRef.current) {
       navigator.geolocation.clearWatch(watchRef.current);
       watchRef.current = null;
@@ -484,17 +537,18 @@ if (uid) {
     window.location.href = "/driver";
 
   } catch (err) {
-    console.log("❌ Error finalizando:", err);
+    console.error("❌ Error finalizando:", err);
+    alert("Error inesperado");
   }
 };
 /////////////////////////////////////////  CANCELAR  /////////////////////////////////////////////
-  const cancelar = async () => {
+ const cancelar = async () => {
   try {
     // 🔒 evitar doble click
     if (loadingCancel) return;
     setLoadingCancel(true);
 
-    // 🔥 obtener ID (más robusto en móvil)
+    // 🔥 obtener ID
     const params = new URLSearchParams(window.location.search);
     const id = params.get("id");
 
@@ -506,17 +560,18 @@ if (uid) {
     const user = auth.currentUser;
     if (!user) {
       alert("Debes iniciar sesión");
-      window.location.href = "/login-user";
+      window.location.replace("/login-driver"); // 🔁 driver login
       return;
     }
 
     const token = await user.getIdToken();
 
-    // 🔥 fetch con timeout (IMPORTANTE EN MOBILE)
+    // 🔥 timeout (mobile safe)
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
 
-    const res = await fetch("/api/refund-cancel", {
+    // 🔐 ENDPOINT CORRECTO (DRIVER)
+    const res = await fetch("/api/cancelar-viaje-driver", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -528,14 +583,10 @@ if (uid) {
 
     clearTimeout(timeout);
 
-    // 🔍 DEBUG
-    const text = await res.text();
-    console.log("STATUS:", res.status);
-    console.log("RAW:", text);
-
-    let data = null;
+    // 🔍 debug seguro
+    let data: any = {};
     try {
-      data = JSON.parse(text);
+      data = await res.json();
     } catch {
       console.warn("Respuesta no JSON");
     }
@@ -545,19 +596,28 @@ if (uid) {
       return;
     }
 
-    // 📲 MENSAJE (más claro en móvil)
-    if (data?.refunded) {
+    // 📲 MENSAJE UX
+    if (data?.refundId) {
       alert("❌ Viaje cancelado\n💳 El dinero será devuelto.");
     } else {
       alert("❌ Viaje cancelado");
     }
 
+    // 🧹 LIMPIEZA TOTAL TRACKING (CLAVE)
+    if (watchRef.current) {
+      navigator.geolocation.clearWatch(watchRef.current);
+      watchRef.current = null;
+    }
+
+    setPos(null);
+    setPath([]);
+
     // 🔄 limpiar storage
     localStorage.removeItem("viajeId");
     localStorage.removeItem("viajeData");
 
-    // 🔄 redirección más estable en móvil
-    window.location.replace("/");
+    // 🔁 REDIRECCIÓN CORRECTA (SIEMPRE DRIVER)
+    window.location.replace("/driver");
 
   } catch (error: any) {
     console.error("ERROR FRONTEND:", error);
@@ -780,26 +840,57 @@ if (viajeFinalizado) {
           
           {fase === "pickup" && (
   <button
-    style={btn("#ffc107")}
-    onMouseDown={press}
-    onMouseUp={release}
-    onMouseLeave={release}
-    onClick={async () => {
-      const id = new URLSearchParams(window.location.search).get("id");
-      if (!id) return;
+  style={btn("#ffc107")}
+  onMouseDown={press}
+  onMouseUp={release}
+  onMouseLeave={release}
+  onClick={async () => {
+    const id = new URLSearchParams(window.location.search).get("id");
+    if (!id) return;
+
+    try {
+      const user = auth.currentUser;
+      if (!user) {
+        alert("No autenticado");
+        return;
+      }
+
+      const token = await user.getIdToken();
 
       // 🔥 ACTIVAR AUDIO (CLAVE EN MÓVIL)
       window.speechSynthesis.resume();
 
+      // 🔥 UI inmediata (no se rompe tu UX)
       setFase("viaje");
 
-      await update(ref(db, "viajes/" + id), {
-        estado: "En viaje"
+      // 🔐 CAMBIO DE ESTADO SEGURO (backend)
+      const res = await fetch("/api/en-viaje", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token
+        },
+        body: JSON.stringify({ viajeId: id })
       });
-    }}
-  >
-    📍 Recoger
-  </button>
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.error("❌ Error:", data.error);
+        alert(data.error || "Error cambiando estado");
+        return;
+      }
+
+      console.log("✅ Estado cambiado a EN VIAJE");
+
+    } catch (err) {
+      console.error("ERROR:", err);
+      alert("Error inesperado");
+    }
+  }}
+>
+  📍 Recoger
+</button>
 )}
          <button
   style={btn("#25D366")}

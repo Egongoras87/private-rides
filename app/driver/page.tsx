@@ -15,7 +15,7 @@ import {
 import { useEffect, useState, useRef } from "react";
 import { useJsApiLoader } from "@react-google-maps/api";
 import { googleMapsConfig } from "@/lib/googleMaps";
-
+import { useRouter } from "next/navigation";
 
 
 // 🔥 ETA
@@ -69,6 +69,7 @@ export default function DriverPage() {
 const audioRef = useRef<HTMLAudioElement | null>(null);
 const viajesPrevRef = useRef<string[]>([]);
 const firstLoad = useRef(true);
+
 const [sonidoActivo, setSonidoActivo] = useState(() => {
   if (typeof window !== "undefined") {
     return localStorage.getItem("sonido") !== "false";
@@ -173,70 +174,91 @@ useEffect(() => {
 useEffect(() => {
   audioRef.current = new Audio("/alert.mp3");
 }, []);
-  // 📡 VIAJES
-  useEffect(() => {
-    const viajesRef = ref(db, "viajes");
+// ///////////////////////////////////////////////////////////////📡 VIAJES
+useEffect(() => {
+  const viajesRef = ref(db, "viajes");
 
-    const unsub = onValue(viajesRef, (snap) => {
-      const data = snap.val();
-      if (!data) return setViajes([]);
-console.log("🔥 SNAP:", snap.val());
-      const lista = Object.entries(data).map(([id, v]: any) => ({
-        id,
-        ...v
-      }));
-// 🔊 DETECTAR NUEVOS VIAJES
-const idsActuales = lista.map((v) => v.id);
-if (firstLoad.current) {
-  firstLoad.current = false;
-  viajesPrevRef.current = idsActuales;
-  return;
-}
-// comparar con anteriores
-const nuevos = idsActuales.filter(
-  (id) => !viajesPrevRef.current.includes(id)
-);
+  const unsub = onValue(viajesRef, (snap) => {
+    const data = snap.val();
 
-// si hay nuevos → sonar
-if (nuevos.length > 0 && sonidoActivo) {
-  console.log("🔊 NUEVO VIAJE DETECTADO");
+    if (!data) {
+      setViajes([]);
+      return;
+    }
 
-  audioRef.current?.pause();
-  audioRef.current!.currentTime = 0;
-  audioRef.current?.play().catch(() => {});
-}
+    console.log("🔥 SNAP:", data);
 
-// guardar lista actual SIEMPRE
-viajesPrevRef.current = idsActuales;
+    // 🔥 1. CONVERTIR DATA
+    const lista = Object.entries(data).map(([id, v]: any) => ({
+      id,
+      ...v
+    }));
 
-const ahora = Date.now();
+    // =========================================================
+    // 🔊 2. AUDIO (CORREGIDO)
+    // =========================================================
 
-const filtrados = lista.filter((v) => {
-  if (
-  v.estado !== "Pendiente" &&
-  !(v.estado === "Asignado" && v.driverId === auth.currentUser?.uid)
-) {
-  return false;
-}
+    // 🔥 SOLO VIAJES PENDIENTES
+    const pendientes = lista.filter((v) => v.estado === "Pendiente");
 
-  const esInmediato = Math.abs((v.fecha || 0) - ahora) < 30 * 60 * 1000;
+    const idsActuales = pendientes.map((v) => v.id);
 
-  if (esInmediato) {
-   if (!etas[v.id]) return true; // 🔥 MOSTRAR mientras carga
+    if (firstLoad.current) {
+      firstLoad.current = false;
+      viajesPrevRef.current = idsActuales;
+    } else {
+      const nuevos = idsActuales.filter(
+        (id) => !viajesPrevRef.current.includes(id)
+      );
 
-return etas[v.id] < 20;
-  }
+      if (nuevos.length > 0 && sonidoActivo) {
+        console.log("🔊 NUEVO VIAJE DETECTADO");
 
-  return true;
-});
+        audioRef.current?.pause();
+        if (audioRef.current) audioRef.current.currentTime = 0;
 
-setViajes(filtrados);
+        audioRef.current?.play().catch(() => {});
+      }
+
+      viajesPrevRef.current = idsActuales;
+    }
+
+    // =========================================================
+    // 🔥 3. FILTRO ORIGINAL (RESPETADO)
+    // =========================================================
+
+    const ahora = Date.now();
+
+    const filtrados = lista.filter((v) => {
+      // 🔒 SOLO VIAJES VISIBLES PARA DRIVER
+      if (
+        v.estado !== "Pendiente" &&
+        !(v.estado === "Asignado" && v.driverId === auth.currentUser?.uid)
+      ) {
+        return false;
+      }
+
+      const esInmediato =
+        Math.abs((v.fecha || 0) - ahora) < 30 * 60 * 1000;
+
+      if (esInmediato) {
+        if (!etas[v.id]) return true; // 🔥 mostrar mientras carga
+
+        return etas[v.id] < 20;
+      }
+
+      return true;
     });
 
-    return () => unsub();
-  }, []);
+    // =========================================================
+    // 🔥 4. SET FINAL
+    // =========================================================
 
+    setViajes(filtrados);
+  });
 
+  return () => unsub();
+}, []);
   useEffect(() => {
   if (!isLoaded) return;
   if (!navigator.geolocation) return;
@@ -331,72 +353,132 @@ const aceptarViaje = async (v: any) => {
 const iniciarViaje = async (v: any) => {
   if (!v?.id) return;
 
-  const uid = auth.currentUser?.uid;
+  try {
+    const user = auth.currentUser;
+    if (!user) {
+      alert("No autenticado");
+      return;
+    }
 
-  // 🔒 validar dueño
-  if (v.driverId !== uid) {
-    alert("Este viaje no es tuyo");
-    return;
+    const uid = user.uid;
+
+    // 🔒 validar dueño
+    if (v.driverId !== uid) {
+      alert("Este viaje no es tuyo");
+      return;
+    }
+
+    // 🔒 validar que esté aceptado
+    if (v.estado !== "Asignado") {
+      alert("Primero debes aceptar el viaje");
+      return;
+    }
+
+    const ahora = Date.now();
+
+    // 🔥 BLOQUEO VIAJES PROGRAMADOS
+    if (v.fecha && v.fecha > ahora + 2 * 60 * 1000) {
+      alert("⏳ Aún no es hora de iniciar este viaje");
+      return;
+    }
+
+    const token = await user.getIdToken();
+
+    // 🔐 CAMBIO DE ESTADO SEGURO (backend)
+    const res = await fetch("/api/iniciar-viaje", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token
+      },
+      body: JSON.stringify({ viajeId: v.id })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error("❌ Error:", data.error);
+      alert(data.error || "No se pudo iniciar el viaje");
+      return;
+    }
+
+    console.log("🚗 Viaje en camino");
+
+    // 🔁 REDIRECCIÓN (mantienes tu flujo)
+    window.location.href = `/driver-tracking?id=${v.id}`;
+
+  } catch (err) {
+    console.error("ERROR iniciarViaje:", err);
+    alert("Error inesperado");
   }
-
-  // 🔒 validar que esté aceptado
-  if (v.estado !== "Asignado") {
-    alert("Primero debes aceptar el viaje");
-    return;
-  }
-
-  const ahora = Date.now();
-
-  // 🔥 BLOQUEO VIAJES PROGRAMADOS
-  if (v.fecha && v.fecha > ahora + 2 * 60 * 1000) {
-    alert("⏳ Aún no es hora de iniciar este viaje");
-    return;
-  }
-
-  // 🚗 iniciar
-  await update(ref(db, "viajes/" + v.id), {
-    estado: "En camino"
-  });
-
-  window.location.href = `/driver-tracking?id=${v.id}`;
 };
 // /////////////////////////////////////FINALIZAR////////////////////////////////////////////////////////////////////////////
 const finalizar = async (v: any) => {
   if (!v?.id) return;
 
-  const uid = auth.currentUser?.uid;
+  try {
+    const user = auth.currentUser;
+    if (!user) {
+      alert("No autenticado");
+      return;
+    }
 
-  // 📍 VALIDAR DISTANCIA
-  if (v.driverLat && v.driverLng && v.destinoLat && v.destinoLng) {
-    const dist = calcularDistancia(
-      { lat: Number(v.driverLat), lng: Number(v.driverLng) },
-      { lat: Number(v.destinoLat), lng: Number(v.destinoLng) }
-    );
+    const uid = user.uid;
 
-    // 🔥 SI ESTÁ LEJOS (ej: más de 0.1 millas ≈ 160m)
-    if (dist > 0.1) {
-      const confirmar = confirm(
-        "⚠️ Aún no has llegado al destino.\n\n¿Seguro quieres finalizar el viaje?"
+    // 📍 VALIDAR DISTANCIA
+    if (v.driverLat && v.driverLng && v.destinoLat && v.destinoLng) {
+      const dist = calcularDistancia(
+        { lat: Number(v.driverLat), lng: Number(v.driverLng) },
+        { lat: Number(v.destinoLat), lng: Number(v.destinoLng) }
       );
 
-      if (!confirmar) return;
+      if (dist > 0.1) {
+        const confirmar = confirm(
+          "⚠️ Aún no has llegado al destino.\n\n¿Seguro quieres finalizar el viaje?"
+        );
+        if (!confirmar) return;
+      }
     }
-  }
 
-  // 💵 CASH VALIDATION
-  if (v.metodoPago === "cash" && !v.pagado) {
-    if (!confirm("¿Cliente pagó en efectivo?")) return;
-  }
+    // 💵 VALIDACIÓN CASH
+    if (v.metodoPago === "cash" && !v.pagado) {
+      const confirmCash = confirm("¿Cliente pagó en efectivo?");
+      if (!confirmCash) return;
+    }
 
-  await update(ref(db, "viajes/" + v.id), {
-    estado: "Finalizado",
-    pagado: true
-  });
+    // 🔐 TOKEN PARA BACKEND
+    const token = await user.getIdToken();
 
-  if (uid) {
+    // 🔥 FINALIZAR EN BACKEND (SEGURO)
+    const res = await fetch("/api/finalizar-viaje", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token
+      },
+      body: JSON.stringify({
+        viajeId: v.id
+      })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error("❌ Error:", data.error);
+      alert(data.error || "Error finalizando viaje");
+      return;
+    }
+
+    // 🔴 LIMPIAR DRIVER (esto sí puede ir en frontend)
     await update(ref(db, "drivers/" + uid), {
       viajeActivo: null
     });
+
+    console.log("✅ Viaje finalizado correctamente");
+
+  } catch (err) {
+    console.error("ERROR FINALIZANDO:", err);
+    alert("Error inesperado");
   }
 };
 
@@ -411,42 +493,46 @@ const btn = (bg: string) => ({
 });
 
 
-// ❌ RECHAZAR VIAJE ///////////////////////////////////////////////
+// //////////////////////////////////////////❌ RECHAZAR VIAJE ///////////////////////////////////////////////
 const rechazar = async (v: any) => {
   if (!v?.id) return;
 
   try {
-    const viajeRef = ref(db, "viajes/" + v.id);
-
-    // 🔴 REFUND SOLO SI APLICA
-    if (v.metodoPago === "stripe" && v.pagado && v.paymentIntentId) {
-      const token = await auth.currentUser?.getIdToken();
-
-await fetch("/api/refund-reject", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`
-  },
-  body: JSON.stringify({
-    viajeId: v.id
-  })
-});
+    const user = auth.currentUser;
+    if (!user) {
+      alert("No autenticado");
+      return;
     }
 
-    await update(viajeRef, {
-      estado: "Cancelado",
-      canceladoPor: "driver",
-      mensaje: "Driver no disponible"
+    const token = await user.getIdToken();
+
+    // 🔐 TODO se maneja en backend
+    const res = await fetch("/api/rechazar-viaje-driver", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        viajeId: v.id
+      })
     });
 
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || "Error rechazando viaje");
+      return;
+    }
+
+    // 📲 WhatsApp (esto sí puede quedarse en frontend)
     if (v.telefono) {
-    const telefono = "1" + v.telefono.replace(/\D/g, "");
+      const telefono = "1" + v.telefono.replace(/\D/g, "");
 
       const mensaje =
         "❌ Driver no disponible\n\n" +
         (v.metodoPago === "stripe"
-          ? "💳 Tu pago será reembolsado completamente."
+          ? "💳 Tu pago será procesado automáticamente."
           : "Puedes intentar nuevamente más tarde.");
 
       window.open(
@@ -454,17 +540,20 @@ await fetch("/api/refund-reject", {
       );
     }
 
+    console.log("✅ Viaje rechazado correctamente");
+
   } catch (error) {
     console.error("ERROR RECHAZANDO:", error);
     alert("Error al rechazar viaje");
   }
 };
-// ❌ CANCELAR VIAJE (YA TOMADO)////////////////////////////////////////////////////////////////////////////
+//////////////////////////////// ❌ CANCELAR VIAJE (YA TOMADO)///////////////////////////////////////////////////
+
+const router = useRouter();
+
 const cancelar = async (v: any) => {
   try {
-    const id = v.id;
-
-    if (!id) {
+    if (!v?.id) {
       alert("No hay viajeId");
       return;
     }
@@ -475,40 +564,44 @@ const cancelar = async (v: any) => {
       return;
     }
 
-    const token = await user.getIdToken();
-
-    const res = await fetch("/api/refund-driver", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        viajeId: id
-      })
-    });
-
-    // 🔥 DEBUG
-    const text = await res.text();
-
-    console.log("STATUS:", res.status);
-    console.log("RAW:", text);
-
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      console.error("❌ NO ES JSON →", text);
-    }
-
-    if (!res.ok) {
-      alert("Error cancelando viaje");
+    // 🔒 VALIDACIÓN FRONT (UX)
+    if (v.estado === "Cancelado" || v.estado === "Finalizado") {
+      alert("Este viaje ya no se puede cancelar");
       return;
     }
 
-    alert("Viaje cancelado");
+    const confirmar = confirm("¿Seguro deseas cancelar este viaje?");
+    if (!confirmar) return;
 
-    window.location.href = "/driver";
+    const token = await user.getIdToken();
+
+    const res = await fetch("/api/cancelar-viaje-driver", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token
+      },
+      body: JSON.stringify({ viajeId: v.id })
+    });
+
+    let data: any = {};
+    try {
+      data = await res.json();
+    } catch {
+      console.error("❌ Respuesta no es JSON");
+    }
+
+    if (!res.ok) {
+      console.error("❌ Error:", data?.error);
+      alert(data?.error || "Error cancelando viaje");
+      return;
+    }
+
+    // 🔔 Feedback
+    alert("Viaje cancelado correctamente");
+
+    // 🔁 REDIRECCIÓN SEGURA (no vuelve a tracking ni a home)
+    router.replace("/driver");
 
   } catch (error) {
     console.error("ERROR FRONTEND:", error);
@@ -758,19 +851,20 @@ const soltar = (e: any) => {
       (!v.fecha || v.fecha <= ahora + 2 * 60 * 1000);
 
     return (
-      <button
-        style={estiloBoton("#007bff")}
-        disabled={!puedeIniciar}
-        onMouseDown={presionar}
-        onMouseUp={soltar}
-        onMouseLeave={soltar}
-        onClick={(e) => {
-          e.stopPropagation();
-          iniciarViaje(v);
-        }}
-      >
-        {puedeIniciar ? "🚗 Iniciar" : "⏳ Esperar"}
-      </button>
+     <button
+  style={estiloBoton("#007bff")}
+  disabled={!puedeIniciar}
+  onMouseDown={presionar}
+  onMouseUp={soltar}
+  onMouseLeave={soltar}
+  onClick={async (e) => {
+    e.stopPropagation();
+    if (!puedeIniciar) return; // 🔒 extra guard
+    await iniciarViaje(v);     // 👉 backend
+  }}
+>
+  {puedeIniciar ? "🚗 Iniciar" : "⏳ Esperar"}
+</button>
     );
   })()}
 
