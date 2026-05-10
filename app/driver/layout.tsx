@@ -15,7 +15,7 @@ export const metadata = {
 
       {
         url:
-          "/driver-icon.png?v=2"
+          "/driver-icon.png?v=10"
       }
     ],
 
@@ -23,7 +23,7 @@ export const metadata = {
 
       {
         url:
-          "/driver-icon.png?v=2"
+          "/driver-icon.png?v=10"
       }
     ]
   },
