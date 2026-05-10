@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { db } from "@/lib/firebase";
-import { ref, set, onValue, } from "firebase/database";
+import { ref, set, onValue, get, } from "firebase/database";
 import { auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
@@ -105,10 +105,60 @@ useEffect(() => {
   }
 }, [user]); // Se ejecuta cada vez que el estado del usuario cambia
 useEffect(() => {
-  if (!loading && !user) {
-    router.push("/login-user");
+
+  if (loading) {
+    return;
   }
-}, [user, loading]);
+
+  const verificarRol =
+    async () => {
+
+      try {
+
+        // ❌ NO LOGIN
+        if (!user) {
+
+          router.push(
+            "/login-user"
+          );
+
+          return;
+        }
+
+        // 🔥 VERIFICAR DRIVER
+        const driverSnap =
+          await get(
+
+            ref(
+              db,
+              "drivers/" +
+                user.uid
+            )
+          );
+
+        // ✅ SI ES DRIVER
+        if (
+          driverSnap.exists()
+        ) {
+
+          window.location.href =
+            "/driver";
+
+          return;
+        }
+
+      } catch (err) {
+
+        console.error(
+          "ROLE ERROR:",
+          err
+        );
+      }
+    };
+
+  verificarRol();
+
+}, [user, loading, router]);
 
   // 📍 Calcular ruta
   const calcularRuta = () => {

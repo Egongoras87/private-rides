@@ -238,39 +238,51 @@ useEffect(() => {
   // FIREBASE
   // ---------------------------------------------------
 
-  useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get("id");
-    if (!id) return;
+ useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get("id");
+  if (!id) return;
 
-    const viajeRef = ref(db, "viajes/" + id);
+  const viajeRef = ref(db, "viajes/" + id);
 
-    const unsub = onValue(viajeRef, (snap) => {
-      const d = snap.val();
-      if (!d) return;
+  const unsub = onValue(viajeRef, (snap) => {
+    const d = snap.val();
+    if (!d) return;
 
-      // Usamos el spread operator {...d} para forzar a React a reconocer 
-      // un nuevo objeto y actualizar la interfaz.
-      setViajeData({ ...d }); 
+    // 1. Sincronizar datos del viaje
+    setViajeData({ ...d }); 
 
-      const nuevaFase = d.estado === "En viaje" ? "viaje" : "pickup";
-      setFase(nuevaFase);
-
-      if (d.estado === "Finalizado" || d.estado === "Cancelado") {
-        setViajeFinalizado(true);
-
-        if (watchRef.current) {
-          navigator.geolocation.clearWatch(watchRef.current);
-        }
-
-        if (d.estado === "Cancelado") {
-          alert("Viaje cancelado");
-          window.location.replace("/driver");
-        }
+    // 2. Sincronizar Fase (Importante para la ruta)
+    // Si el estado en Firebase cambia a "En viaje", la fase DEBE ser "viaje"
+    const nuevaFase = d.estado === "En viaje" ? "viaje" : "pickup";
+    
+    setFase((prevFase) => {
+      // Solo actualizamos si realmente cambió para evitar re-renders infinitos
+      if (prevFase !== nuevaFase) {
+        // Al cambiar de fase desde Firebase, reseteamos la ruta para que el GPS pida la nueva
+        fullPathRef.current = []; 
+        return nuevaFase;
       }
+      return prevFase;
     });
 
-    return () => unsub();
-  }, []);
+    // 3. Manejo de fin de viaje
+    if (d.estado === "Finalizado" || d.estado === "Cancelado") {
+      setViajeFinalizado(true);
+
+      if (watchRef.current) {
+        navigator.geolocation.clearWatch(watchRef.current);
+      }
+
+      if (d.estado === "Cancelado") {
+        alert("Viaje cancelado");
+        window.location.replace("/driver");
+      }
+    }
+  });
+
+  return () => unsub();
+}, []); // Se mantiene [] porque el ID viene de la URL y no cambiará durante la sesión
   
 
   // ---------------------------------------------------
@@ -307,7 +319,8 @@ useEffect(() => {
 const solicitarRuta = useCallback((
   origin: any,
   destination: any,
-  force = false
+  force = false,
+  faseActualOverride?: "pickup" | "viaje" // Añadimos este parámetro opcional
 ) => {
   if (!directionsRef.current) return;
   const now = Date.now();
@@ -973,14 +986,14 @@ setCompletedPath([]);
             <h2 style={{ fontSize: "22px", margin: "2px 0", fontWeight: "bold", textTransform: "capitalize" }}>
               {viajeData?.nombre || "Loading..." }
             </h2>
-            <div style={{ fontSize: "13px", color: "#1976FF", fontWeight: "600" }}>
+            <div style={{ fontSize: "15px", color: "#1976FF", fontWeight: "600" }}>
               ⏱️ {etaActual > 0 ? `${Math.ceil(etaActual / 60)} min away` : "Calculating ETA..."}
             </div>
           </div>
           
           {viajeData?.telefono && (
             <a href={`tel:${viajeData.telefono}`} style={{
-              background: "#333", width: "45px", height: "45px", borderRadius: "12px", 
+              background: "#333", width: "40px", height: "40px", borderRadius: "10px", 
               display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none"
             }}>📞</a>
           )}
@@ -989,8 +1002,8 @@ setCompletedPath([]);
         {/* FILA 2: ALERTAS DE PAGO */}
         {viajeData?.metodoPago === "cash" && !viajeData?.pagado && (
           <div style={{ 
-            background: "rgba(255, 77, 77, 0.15)", color: "#ff4d4d", padding: "8px", 
-            borderRadius: "10px", marginBottom: 15, textAlign: "center", fontSize: "12px", 
+            background: "rgba(255, 77, 77, 0.15)", color: "#ff4d4d", padding: "6px", 
+            borderRadius: "10px", marginBottom: 15, textAlign: "center", fontSize: "15px", 
             fontWeight: "bold", border: "1px solid #ff4d4d" 
           }}>
             💵 COLLECT CASH: ${viajeData?.precio}
@@ -1001,19 +1014,63 @@ setCompletedPath([]);
         <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
           {fase === "pickup" && (
             <>
-              <button style={{ ...btn("#dc3545"), flex: 1, padding: "14px" }} onClick={cancelar}>❌ Cancel</button>
+              <button style={{ ...btn("#dc3545"), flex: 1, padding: "14px",fontSize: "15px" }} onClick={cancelar}>❌ Cancel</button>
               <button 
-                style={{ ...btn("#1976FF"), flex: 2, padding: "14px" }} 
-                onClick={async () => {
-                  /* Tu lógica de Recoger que ya tienes arriba */
-                  // (Se mantiene igual para no romper la funcionalidad)
-                }}
-              >📍 Picked Up</button>
+  style={{ ...btn("#1976FF"), flex: 2, padding: "14px",fontSize: "15px" }} 
+  onClick={async () => {
+   try {
+      // 1. Validación de distancia
+      if (driverPos && viajeData?.origenLat) {
+        const dist = calcularDistancia(driverPos, { 
+          lat: Number(viajeData.origenLat), 
+          lng: Number(viajeData.origenLng) 
+        });
+        if (dist > 120 && !window.confirm("⚠️ Pareces lejos. ¿Continuar?")) return;
+      }
+
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch("/api/en-viaje", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({ viajeId: viajeData.id }),
+      });
+
+      if (!res.ok) return alert("Error en el servidor");
+
+      // --- EL SECRETO PARA NO REFRESCAR ---
+      
+      // A. Cambiamos la fase inmediatamente
+      setFase("viaje");
+
+      // B. Limpiamos TODAS las referencias de ruta
+      fullPathRef.current = []; // Esto gatilla la lógica de "PRIMERA RUTA" en tu useEffect
+      setRemainingPath([]);
+      setCompletedPath([]);
+      setRutasAlternativas([]);
+      lastRouteTimeRef.current = 0; // Reseteamos el tiempo para que solicitarRuta no ignore la llamada
+
+      // C. Pedimos la nueva ruta al DESTINO de inmediato
+      if (driverPos && viajeData?.destinoLat) {
+        solicitarRuta(
+          driverPos, 
+          { lat: Number(viajeData.destinoLat), lng: Number(viajeData.destinoLng) }, 
+          true // 'true' fuerza el bypass del throttle de 15 seg
+        );
+      }
+
+    } catch (err) {
+      console.error(err);
+      alert("Error de conexión");
+    }
+  }}
+>
+  📍 Recoger/Pickup
+</button>
             </>
           )}
 
           {fase === "viaje" && (
-            <button style={{ ...btn("#28a745"), width: "100%", padding: "16px", fontSize: "18px" }} 
+            <button style={{ ...btn("#28a745"), width: "100%", padding: "10px", fontSize: "15px" }} 
                     onClick={() => finalizar(viajeData.id)}>
               ✅ Drop Off / Finish
             </button>
