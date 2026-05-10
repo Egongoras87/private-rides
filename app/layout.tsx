@@ -1,176 +1,77 @@
 import "./globals.css";
-
+import { Metadata } from "next";
 import AuthProvider from "@/components/AuthProvider";
 
-export const metadata = {
-
+export const metadata: Metadata = {
   // ---------------------------------------------------
-  // APP INFO
+  // APP INFO & IDENTITY
   // ---------------------------------------------------
-
   title: "Private Rides",
-
-  description:
-    "Aplicación de transporte privado tipo Uber",
-
-  // ---------------------------------------------------
-  // GOOGLE VERIFICATION
-  // ---------------------------------------------------
-
-  verification: {
-
-    google:
-      "ABC123XYZ456"
-  },
+  description: "Aplicación de transporte privado tipo Uber",
+  applicationName: "Private Rides",
 
   // ---------------------------------------------------
-  // ICONOS
+  // PWA USER CONFIG (Fundamental para separar apps)
   // ---------------------------------------------------
-
+  manifest: "/manifest-user.json",
+  
   icons: {
-
-    icon: [
-
-      {
-        url:
-          "/icon.png?v=10"
-      }
-    ],
-
-    apple: [
-
-      {
-        url:
-          "/icon.png?v=10"
-      }
-    ]
+    icon: "/icon.png?v=10",
+    apple: "/icon.png?v=10",
   },
-
-  // ---------------------------------------------------
-  // PWA USER
-  // ---------------------------------------------------
-
-  manifest:
-    "/manifest-user.json",
 
   // ---------------------------------------------------
   // IOS PWA
   // ---------------------------------------------------
-
   appleWebApp: {
-
     capable: true,
-
-    statusBarStyle:
-      "black-translucent",
-
-    title:
-      "Private Rides"
+    statusBarStyle: "default", // Cambiado a default para que combine con el fondo blanco
+    title: "Private Rides",
   },
 
   // ---------------------------------------------------
   // OPEN GRAPH
   // ---------------------------------------------------
-
   openGraph: {
-
-    title:
-      "Private Rides",
-
-    description:
-      "Servicio de transporte privado",
-
-    siteName:
-      "Private Rides",
-
-    type:
-      "website"
-  }
+    title: "Private Rides",
+    description: "Servicio de transporte privado",
+    siteName: "Private Rides",
+    type: "website",
+  },
+  
+  verification: {
+    google: "ABC123XYZ456",
+  },
 };
 
 // ---------------------------------------------------
-// VIEWPORT
+// VIEWPORT (Diferenciación visual por color)
 // ---------------------------------------------------
-
 export const viewport = {
-
-  width:
-    "device-width",
-
+  width: "device-width",
   initialScale: 1,
-
   maximumScale: 1,
-
-  userScalable: "no",
-
-  viewportFit:
-    "cover",
-
-  themeColor:
-    "#000000"
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#FFFFFF", // Blanco para el usuario
 };
-
-// ---------------------------------------------------
-// ROOT LAYOUT
-// ---------------------------------------------------
 
 export default function RootLayout({
   children
-}: any) {
-
+}: {
+  children: React.ReactNode;
+}) {
   return (
-
-    <html
-  lang="en"
-  suppressHydrationWarning
->
-
-      <head>
-
-        {/* --------------------------------------------------- */}
-        {/* PWA IOS */}
-        {/* --------------------------------------------------- */}
-
-        <meta
-          name="apple-mobile-web-app-capable"
-          content="yes"
-        />
-
-        <meta
-          name="apple-mobile-web-app-status-bar-style"
-          content="black-translucent"
-        />
-
-        {/* --------------------------------------------------- */}
-        {/* APPLE ICON */}
-        {/* --------------------------------------------------- */}
-
-        <link
-          rel="apple-touch-icon"
-          href="/icon.png?v=10"
-        />
-
-        {/* --------------------------------------------------- */}
-        {/* USER MANIFEST */}
-        {/* --------------------------------------------------- */}
-
-        <link
-          rel="manifest"
-          href="/manifest-user.json"
-        />
-
-      </head>
-
+    <html lang="en" suppressHydrationWarning>
+      {/* No es necesario agregar <head> manualmente con links de manifest 
+          si ya están definidos en el objeto metadata de arriba. 
+          Next.js los inserta automáticamente de forma eficiente.
+      */}
       <body>
-
         <AuthProvider>
-
           {children}
-
         </AuthProvider>
-
       </body>
-
     </html>
   );
 }
