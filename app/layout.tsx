@@ -1,60 +1,66 @@
 import "./globals.css";
-import { Metadata } from "next";
+import { Metadata, Viewport } from "next";
+import { headers } from "next/headers"; // Asegúrate de que esta importación esté así
 import AuthProvider from "@/components/AuthProvider";
 
-export const metadata: Metadata = {
-  // ---------------------------------------------------
-  // APP INFO & IDENTITY
-  // ---------------------------------------------------
-  title: "Private Rides",
-  description: "Aplicación de transporte privado tipo Uber",
-  applicationName: "Private Rides",
+// 1. VIEWPORT DINÁMICO
+export async function generateViewport(): Promise<Viewport> {
+  // ✅ CORREGIDO: Añadido 'await' antes de headers()
+  const headersList = await headers(); 
+  const host = headersList.get("host") || "";
+  const isDriver = host.includes("driver.privaterideslasvegas.com");
 
-  // ---------------------------------------------------
-  // PWA USER CONFIG (Fundamental para separar apps)
-  // ---------------------------------------------------
-  manifest: "/manifest-user.json",
-  
-  icons: {
-    icon: "/icon.png?v=10",
-    apple: "/icon.png?v=10",
-  },
+  return {
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+    viewportFit: "cover",
+    themeColor: isDriver ? "#000000" : "#FFFFFF", 
+  };
+}
 
-  // ---------------------------------------------------
-  // IOS PWA
-  // ---------------------------------------------------
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default", // Cambiado a default para que combine con el fondo blanco
+// 2. METADATA DINÁMICA
+export async function generateMetadata(): Promise<Metadata> {
+  // ✅ CORREGIDO: Añadido 'await' antes de headers()
+  const headersList = await headers();
+  const host = headersList.get("host") || "";
+  const isDriver = host.includes("driver.privaterideslasvegas.com");
+
+  if (isDriver) {
+    return {
+      title: "PR Driver",
+      description: "Acceso exclusivo para conductores - Private Rides",
+      applicationName: "PR Driver",
+      manifest: "/manifest-driver.json",
+      icons: {
+        icon: "/drivericon.png?v=11",
+        apple: "/drivericon.png?v=11",
+      },
+      appleWebApp: {
+        capable: true,
+        statusBarStyle: "black-translucent",
+        title: "PR Driver",
+      },
+    };
+  }
+
+  return {
     title: "Private Rides",
-  },
-
-  // ---------------------------------------------------
-  // OPEN GRAPH
-  // ---------------------------------------------------
-  openGraph: {
-    title: "Private Rides",
-    description: "Servicio de transporte privado",
-    siteName: "Private Rides",
-    type: "website",
-  },
-  
-  verification: {
-    google: "ABC123XYZ456",
-  },
-};
-
-// ---------------------------------------------------
-// VIEWPORT (Diferenciación visual por color)
-// ---------------------------------------------------
-export const viewport = {
-  width: "device-width",
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-  viewportFit: "cover",
-  themeColor: "#FFFFFF", // Blanco para el usuario
-};
+    description: "Premium Transportation Service in Las Vegas",
+    applicationName: "Private Rides",
+    manifest: "/manifest-user.json",
+    icons: {
+      icon: "/icon.png?v=11",
+      apple: "/icon.png?v=11",
+    },
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: "default",
+      title: "Private Rides",
+    },
+  };
+}
 
 export default function RootLayout({
   children
@@ -63,11 +69,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      {/* No es necesario agregar <head> manualmente con links de manifest 
-          si ya están definidos en el objeto metadata de arriba. 
-          Next.js los inserta automáticamente de forma eficiente.
-      */}
-      <body>
+      <body className="antialiased">
         <AuthProvider>
           {children}
         </AuthProvider>
