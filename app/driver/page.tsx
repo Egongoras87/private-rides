@@ -69,8 +69,6 @@ export default function DriverPage() {
   const [etas, setEtas] = useState<any>({});
   const { isLoaded } = useJsApiLoader(googleMapsConfig);
 
-const viajesPrevRef = useRef<string[]>([]);
-const firstLoad = useRef(true);
 const ultimoViajeNotificadoRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null); // Para poder detener el sonido después
 const [sonidoActivo, setSonidoActivo] = useState(() => {
@@ -79,7 +77,6 @@ const [sonidoActivo, setSonidoActivo] = useState(() => {
   }
   return true;
 });
-const prevViajesRef = useRef<string[]>([]);
  const [activo, setActivo] = useState(true);
 
 useEffect(() => {

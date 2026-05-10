@@ -3,7 +3,7 @@
   "name": "Private Rides Driver",
   "short_name": "PR Driver",
   "description": "Aplicación oficial para conductores de Private Rides Las Vegas",
-  "start_url": "/",
+  "start_url": "/login-driver",
   "scope": "/",
   "display": "standalone",
   "background_color": "#000000",
