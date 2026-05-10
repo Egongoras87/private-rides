@@ -75,10 +75,11 @@ useEffect(() => {
 
     // 2. Sincronización de Fase
     // Usamos una variable local para la lógica inmediata antes de que el estado 'fase' actualice
-    let faseActual = "espera";
-    if (d.estado === "Asignado") faseActual = "aceptado";
-    else if (d.estado === "En camino") faseActual = "pickup";
-    else if (d.estado === "En viaje") faseActual = "viaje";
+   let faseActual = "espera";
+if (d.estado === "Pendiente") faseActual = "pendiente"; // 👈 AÑADE ESTA LÍNEA
+else if (d.estado === "Asignado") faseActual = "aceptado";
+else if (d.estado === "En camino") faseActual = "pickup";
+else if (d.estado === "En viaje") faseActual = "viaje";
     
     setFase(faseActual);
    // --- BLOQUE CORREGIDO PARA LA RUTA AL DESTINO ---
@@ -297,19 +298,20 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
   )}
 
  <h3 style={{ margin: 0, fontSize: 18 }}>
+  {fase === "pendiente" && "🔍 Looking for a driver..."} {/* 👈 AÑADE ESTO */}
   {fase === "aceptado" && "✅ Your ride was accepted"}
   {fase === "pickup" && "🚗 Driver on the way"}
   {fase === "viaje" && "✨ Ride in progress"}
 </h3>
-  
- {/* Solo mostramos el ETA si ya está en camino o en viaje */}
-{fase !== "aceptado" ? (
-  <p style={{ fontSize: 22, fontWeight: "bold", color: "#1976FF", margin: "4px 0" }}>
-    {viajeData?.driverEta || "Calculating..."}
+
+{/* Ajuste de lógica de ETA */}
+{fase === "pendiente" || fase === "aceptado" ? (
+  <p style={{ fontSize: 16, color: "#666", margin: "8px 0" }}>
+    Waiting for driver to confirm...
   </p>
 ) : (
-  <p style={{ fontSize: 16, color: "#666", margin: "8px 0" }}>
-    Waiting for driver to start the route...
+  <p style={{ fontSize: 22, fontWeight: "bold", color: "#1976FF", margin: "4px 0" }}>
+    {viajeData?.driverEta || "Calculating..."}
   </p>
 )}
 
@@ -323,9 +325,12 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
     )}
   </div>
 
- {(fase === "aceptado" || fase === "pickup") && (
+ {/* Ahora incluimos 'pendiente' y 'espera' para que siempre pueda cancelar antes del viaje */}
+{(fase === "pendiente" || fase === "espera" || fase === "aceptado" || fase === "pickup") && (
   <button
     style={{ ...btn("#000"), marginTop: 20 }}
+    onMouseDown={press}
+    onMouseUp={release}
     onClick={() => { if(confirm("Do you wish to cancel this ride?")) cancelarViaje(); }}
   >
     Cancel Ride

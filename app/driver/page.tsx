@@ -12,11 +12,12 @@ import {
   onDisconnect,
   set
 } from "firebase/database";
-import { useEffect, useState, useRef } from "react";
+
 import { useJsApiLoader } from "@react-google-maps/api";
 import { googleMapsConfig } from "@/lib/googleMaps";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { useEffect, useState, useCallback, useRef } from "react";
 
 
 // 🔥 ETA
@@ -67,10 +68,11 @@ export default function DriverPage() {
   const [viajes, setViajes] = useState<any[]>([]);
   const [etas, setEtas] = useState<any>({});
   const { isLoaded } = useJsApiLoader(googleMapsConfig);
-const audioRef = useRef<HTMLAudioElement | null>(null);
+
 const viajesPrevRef = useRef<string[]>([]);
 const firstLoad = useRef(true);
-
+const ultimoViajeNotificadoRef = useRef<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null); // Para poder detener el sonido después
 const [sonidoActivo, setSonidoActivo] = useState(() => {
   if (typeof window !== "undefined") {
     return localStorage.getItem("sonido") !== "false";
@@ -146,6 +148,8 @@ useEffect(() => {
   };
 }, []);
 
+
+
 useEffect(() => {
   localStorage.setItem("sonido", sonidoActivo.toString());
 }, [sonidoActivo]);
@@ -172,9 +176,6 @@ useEffect(() => {
   return () => unsub();
 }, []);
 
-useEffect(() => {
-  audioRef.current = new Audio("/alert.mp3");
-}, []);
 // ///////////////////////////////////////////////////////////////📡 VIAJES
 // ///////////////////////////////////////////////////////////////📡 VIAJES
 useEffect(() => {
@@ -204,25 +205,6 @@ useEffect(() => {
         set(ref(db, "viajes/" + v.id + "/driversNotificados/" + uid), true);
       }
     });
-
-    // =========================================================
-    // 🔊 4. AUDIO
-    // =========================================================
-    const pendientes = lista.filter((v) => v.estado === "Pendiente");
-    const idsActuales = pendientes.map((v) => v.id);
-
-    if (firstLoad.current) {
-      firstLoad.current = false;
-      viajesPrevRef.current = idsActuales;
-    } else {
-      const nuevos = idsActuales.filter(id => !viajesPrevRef.current.includes(id));
-      if (nuevos.length > 0 && sonidoActivo) {
-        audioRef.current?.pause();
-        if (audioRef.current) audioRef.current.currentTime = 0;
-        audioRef.current?.play().catch(() => {});
-      }
-      viajesPrevRef.current = idsActuales;
-    }
 
     // =========================================================
     // 🔥 5. FILTRO DE VIAJES (Sincronizado con 'rechazos')
@@ -258,6 +240,7 @@ useEffect(() => {
   });
 
   return () => unsub();
+  
 }, [sonidoActivo, etas]); // Añadí dependencias necesarias
   useEffect(() => {
   if (!isLoaded) return;
@@ -310,7 +293,13 @@ setViajes((prev) => {
 
   ////////////////////////////////// 🚗 ACEPTAR RIDE/////////////////////////////////////////////////////////////////////////////
 const aceptarViaje = async (v: any) => {
+  
   const user = auth.currentUser;
+  // 🔊 DETENER AUDIO INMEDIATAMENTE
+  if (audioRef.current) {
+    audioRef.current.pause();
+    audioRef.current = null;
+  }
 
   if (!user) {
     alert("Error de usuario");
@@ -336,6 +325,7 @@ const aceptarViaje = async (v: any) => {
       alert(data.error || "❌ Otro driver tomó este viaje");
       return;
     }
+    
 
     // 🟢 SOLO ESTO SE QUEDA EN FRONTEND
     await update(ref(db, "drivers/" + user.uid), {
@@ -502,6 +492,12 @@ const rechazar = async (v: any) => {
   const confirmar = confirm("¿Seguro que quieres ignorar este viaje?");
   if (!confirmar) return;
 
+  // 🔊 DETENER AUDIO INMEDIATAMENTE
+  if (audioRef.current) {
+    audioRef.current.pause();
+    audioRef.current = null;
+  }
+
   try {
     const user = auth.currentUser;
     if (!user) {
@@ -623,6 +619,37 @@ const soltar = (e: any) => {
   e.currentTarget.style.transform = "translateY(0)";
   e.currentTarget.style.boxShadow = "0 5px 0 rgba(0,0,0,0.2)";
 };
+// =========================================================
+// 🔊 LÓGICA DE AUDIO INDEPENDIENTE (UBICACIÓN CORRECTA)
+// =========================================================
+useEffect(() => {
+  // Filtramos solo los pendientes de la lista que ya tenemos en el estado
+  const pendientes = viajes.filter((v: any) => v.estado === "Pendiente");
+
+  if (pendientes.length === 0) {
+    ultimoViajeNotificadoRef.current = null;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    return;
+  }
+
+  const viajeActualId = pendientes[0].id;
+
+  // Solo suena si el ID es nuevo y el switch de sonido está ON
+  if (viajeActualId !== ultimoViajeNotificadoRef.current && sonidoActivo) {
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+
+    const nuevoAudio = new Audio("/alert.mp3");
+    nuevoAudio.play().catch(() => console.log("Esperando click del driver..."));
+    
+    audioRef.current = nuevoAudio;
+    ultimoViajeNotificadoRef.current = viajeActualId;
+  }
+}, [viajes, sonidoActivo]);
 
   if (!isLoaded) return <div>Cargando...</div>;
 
@@ -750,6 +777,11 @@ const soltar = (e: any) => {
       <div
         key={v.id}
         onClick={() => {
+          // 🔊 Detener audio al tocar la tarjeta del viaje
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
           window.location.href = `/driver-tracking?id=${v.id}`;
         }}
         style={{
