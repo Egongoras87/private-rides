@@ -4,593 +4,334 @@ export const dynamic = "force-dynamic";
 import { useEffect, useRef, useState } from "react";
 import { db } from "@/lib/firebase";
 import { ref, onValue, update, get } from "firebase/database";
-import { useJsApiLoader } from "@react-google-maps/api";
+
+import { useJsApiLoader, GoogleMap, Marker, Polyline, DirectionsRenderer } from "@react-google-maps/api";
 import { googleMapsConfig } from "@/lib/googleMaps";
-import { GoogleMap, Marker, Polyline } from "@react-google-maps/api";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-
 
 export default function UserTrackingPage() {
   const { isLoaded } = useJsApiLoader(googleMapsConfig);
 
-  // 🔥 MAPA
+  // --- ESTADO DEL MAPA ---
   const [pos, setPos] = useState<any>(null);
-  const [path, setPath] = useState<any[]>([]);
-  const [destinoMarker, setDestinoMarker] = useState<any>(null);
-const [viajeData, setViajeData] = useState<any>(null);
-  const lastMapRef = useRef<any>(null);
-  const lastHeadingRef = useRef(0);
-  const mapRef = useRef<any>(null);
-  const lastRouteRef = useRef(0);
-
-  // 🔥 UI
-  const [eta, setEta] = useState(0);
+  const [remainingPath, setRemainingPath] = useState<any[]>([]);
+  const [completedPath, setCompletedPath] = useState<any[]>([]);
+  const [viajeData, setViajeData] = useState<any>(null);
+  
+  // --- UI & CONTROL ---
   const [fase, setFase] = useState("espera");
- 
   const [viajeCancelado, setViajeCancelado] = useState(false);
   const [viajeFinalizado, setViajeFinalizado] = useState(false);
-  const lastEtaUpdateRef = useRef(0);
-const handleLoad = (map: any) => {
-  if (!map) return;
+  const mapRef = useRef<any>(null);
+  const lastCameraMoveRef = useRef(0);
+  const [driverInfo, setDriverInfo] = useState<any>(null);
+  const [directionsResponse, setDirectionsResponse] = useState<google.maps.DirectionsResult | null>(null);
 
-  mapRef.current = map;
-};
-useEffect(() => {
-  const unsub = onAuthStateChanged(auth, (user) => {
-    if (!user) {
-      window.location.href = "/login-user";
-    }
-  });
-
-  return () => unsub();
-}, []);
-
-useEffect(() => {
-  if (!eta) return;
-
-  const interval = setInterval(() => {
-    setEta((prev) => {
-      if (prev <= 1) return 0;
-      return prev - 1;
-    });
-  }, 1000);
-
-  return () => clearInterval(interval);
-}, [eta]);
-  // 🔥 TRACKING
+  // Redirección si no hay sesión
   useEffect(() => {
-  const id = new URLSearchParams(window.location.search).get("id");
-  if (!id) return;
-
-  const viajeRef = ref(db, "viajes/" + id);
-
-  const unsubscribe = onValue(viajeRef, (snap) => {
-    const d = snap.val();
-
-    // 🔒 NO DATA → limpiar todo
-    if (!d) {
-      setViajeData(null);
-      setPos(null);
-      setPath([]);
-      setDestinoMarker(null);
-      return;
-    }
-
-    setViajeData(d);
-
-    // 🔴 1. FINALIZADO (PRIORIDAD MÁXIMA)
-    if (d.estado === "Finalizado") {
-      console.log("✅ VIAJE FINALIZADO (USER)");
-
-      localStorage.removeItem("viajeId");
-      localStorage.removeItem("viajeData");
-
-      setViajeFinalizado(true);
-      setViajeCancelado(false);
-
-      setPos(null);
-      setPath([]);
-      setDestinoMarker(null);
-
-      return; // 🚨 CRÍTICO
-    }
-
-    // 🔴 2. CANCELADO
-    if (d.estado === "Cancelado") {
-      console.log("❌ VIAJE CANCELADO (USER)");
-
-      setViajeCancelado(true);
-      setViajeFinalizado(false);
-
-      setPos(null);
-      setPath([]);
-      setDestinoMarker(null);
-
-      return; // 🚨 CRÍTICO
-    }
-
-    // 🟢 RESET estados UI
-    setViajeFinalizado(false);
-    setViajeCancelado(false);
-
-    // 🟢 FASE
-    if (d.estado === "En camino") setFase("pickup");
-    else if (d.estado === "En viaje") setFase("viaje");
-
-    // 🔒 VALIDACIÓN FUERTE DE COORDENADAS
-    const lat = Number(d.driverLat);
-    const lng = Number(d.driverLng);
-
-    if (!isFinite(lat) || !isFinite(lng)) return;
-
-    const nueva = { lat, lng };
-
-    // 🔥 SUAVIZADO
-    setPos((prev: any) => {
-      if (!prev) return nueva;
-      return {
-        lat: prev.lat + (nueva.lat - prev.lat) * 0.35,
-        lng: prev.lng + (nueva.lng - prev.lng) * 0.35
-      };
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (!user) window.location.href = "/login-user";
     });
+    return () => unsub();
+  }, []);
 
-    // 🔥 ROTACIÓN SEGURA
-    const prevPos = lastMapRef.current || nueva;
+  useEffect(() => {
+  if (!viajeData?.driverId) return;
 
-    const dx = nueva.lng - prevPos.lng;
-    const dy = nueva.lat - prevPos.lat;
-
-    let headingDeg = Math.atan2(dy, dx) * (180 / Math.PI);
-    if (headingDeg < 0) headingDeg += 360;
-
-    if (!isFinite(headingDeg)) headingDeg = 0;
-
-    const diff = headingDeg - lastHeadingRef.current;
-    const adjustedDiff = ((diff + 540) % 360) - 180;
-
-    lastHeadingRef.current += adjustedDiff * 0.35;
-
-    // 🔥 CÁMARA
-    if (mapRef.current) {
-      const speed = Math.hypot(dx, dy);
-      const zoom = speed > 0.0005 ? 15 : 17;
-
-      mapRef.current.moveCamera({
-        center: nueva,
-        heading: lastHeadingRef.current || 0,
-        tilt: 60,
-        zoom
-      });
-    }
-
-    lastMapRef.current = nueva;
-
-    // 🔥 RUTA (OPTIMIZADA)
-    const now = Date.now();
-
-    if (
-      d.destinoLat &&
-      d.destinoLng &&
-      (!lastRouteRef.current || now - lastRouteRef.current > 8000)
-    ) {
-      lastRouteRef.current = now;
-
-      const service = new window.google.maps.DirectionsService();
-
-      const destino =
-        d.estado === "En camino"
-          ? {
-              lat: Number(d.origenLat),
-              lng: Number(d.origenLng)
-            }
-          : {
-              lat: Number(d.destinoLat),
-              lng: Number(d.destinoLng)
-            };
-
-      // 🔒 VALIDACIÓN DESTINO
-      if (!isFinite(destino.lat) || !isFinite(destino.lng)) return;
-
-      service.route(
-        {
-          origin: nueva,
-          destination: destino,
-          travelMode: window.google.maps.TravelMode.DRIVING
-        },
-        (res: any, status: any) => {
-          if (status !== "OK") return;
-
-          const leg = res.routes[0].legs[0];
-
-          const points = res.routes[0].overview_path.map((p: any) => ({
-            lat: p.lat(),
-            lng: p.lng()
-          }));
-
-          setPath(points);
-
-          setDestinoMarker(destino);
-
-          // 🔥 ETA CONTROLADO
-          const now = Date.now();
-
-          if (!lastEtaUpdateRef.current || now - lastEtaUpdateRef.current > 5000) {
-            lastEtaUpdateRef.current = now;
-            setEta(leg.duration.value);
-          }
-        }
-      );
+  const driverRef = ref(db, "drivers/" + viajeData.driverId);
+  const unsubscribe = onValue(driverRef, (snap) => {
+    if (snap.exists()) {
+      setDriverInfo(snap.val());
     }
   });
 
   return () => unsubscribe();
-}, [isLoaded]);
+}, [viajeData?.driverId]);
+ // --- TRACKING PASIVO (BAJO CONSUMO) ---
+useEffect(() => {
+  const id = new URLSearchParams(window.location.search).get("id");
+  if (!id || !isLoaded) return;
 
-  // /////////////////////////////////////////////////////////////❌ CANCELAR////////////////////////////////////////////
-const cancelarViaje = async () => {
-  try {
-    // 🔥 obtener id de forma segura (mobile-proof)
-    const id =
-      new URLSearchParams(window.location.search).get("id") ||
-      localStorage.getItem("viajeId");
+  const viajeRef = ref(db, "viajes/" + id);
+  // Ref para no saturar la API de Google si ya calculamos el ETA local recientemente
+  let lastEtaRequest = 0;
 
-    if (!id) {
-      alert("No se encontró el viaje");
+  const unsubscribe = onValue(viajeRef, (snap) => {
+    const d = snap.val();
+    if (!d) return;
+
+    setViajeData(d);
+
+    // 1. Verificación de estados finales
+    if (d.estado === "Finalizado") {
+      setViajeFinalizado(true);
+      return;
+    }
+    if (d.estado === "Cancelado") {
+      setViajeCancelado(true);
       return;
     }
 
-    const user = auth.currentUser;
-    if (!user) {
-      alert("Debes iniciar sesión");
-      return;
+    // 2. Sincronización de Fase
+    // Usamos una variable local para la lógica inmediata antes de que el estado 'fase' actualice
+    let faseActual = "espera";
+    if (d.estado === "Asignado") faseActual = "aceptado";
+    else if (d.estado === "En camino") faseActual = "pickup";
+    else if (d.estado === "En viaje") faseActual = "viaje";
+    
+    setFase(faseActual);
+   // --- BLOQUE CORREGIDO PARA LA RUTA AL DESTINO ---
+if (faseActual === "viaje" && d.destinoLat && !d.remainingPath) {
+  const ds = new google.maps.DirectionsService();
+  ds.route({
+    origin: { lat: Number(d.driverLat), lng: Number(d.driverLng) },
+    destination: { lat: Number(d.destinoLat), lng: Number(d.destinoLng) },
+    travelMode: google.maps.TravelMode.DRIVING
+  }, (result: any, status: any) => { // Usamos any para evitar el conflicto de tipos
+    if (status === "OK") {
+      setDirectionsResponse(result);
     }
+  });
+}
 
-    const viajeRef = ref(db, "viajes/" + id);
+    // 3. NUEVO: Cálculo de ETA Local (Fallback)
+const ahora = Date.now();
 
-    // 🔥 obtener datos (estable en móvil)
-    const snap = await get(viajeRef);
+if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ahora - lastEtaRequest > 10000)) {
+  lastEtaRequest = ahora; 
+  const service = new window.google.maps.DirectionsService();
 
-    if (!snap.exists()) {
-      alert("Viaje no encontrado");
-      return;
+ service.route(
+  {
+    origin: { lat: Number(d.driverLat), lng: Number(d.driverLng) },
+    destination: { lat: Number(d.origenLat), lng: Number(d.origenLng) },
+    travelMode: window.google.maps.TravelMode.DRIVING,
+  },
+  (res: any, status: any) => { // Cambiado a any
+    if (status === "OK" && res?.routes?.[0]?.legs?.[0]) {
+      setViajeData((prev: any) => ({
+        ...prev,
+        driverEta: res.routes[0].legs[0].duration?.text || "Calculating...",
+      }));
     }
+  }
+);
+}
+    // 4. Lectura Directa de Rutas
+    if (Array.isArray(d.remainingPath)) setRemainingPath(d.remainingPath);
+    if (Array.isArray(d.completedPath)) setCompletedPath(d.completedPath);
 
-    const viaje = snap.val();
-
-    // 🔥 CALCULAR TIEMPO
-    const ahora = Date.now();
-    const tiempo = ahora - (viaje.timestamp || ahora);
-    const minutos = tiempo / 60000;
-
-    let porcentaje = 0;
-
-    if (minutos <= 2) porcentaje = 1;
-    else if (minutos <= 5) porcentaje = 0.5;
-    else porcentaje = 0;
-
-    // 🔥 ALERTA ANTES DE CANCELAR (IMPORTANTE UX)
-    if (viaje.metodoPago === "stripe") {
-      const confirmar = confirm(
-        porcentaje === 1
-          ? "Cancelar viaje\n💳 Reembolso completo"
-          : porcentaje === 0.5
-          ? "Cancelar viaje\n💳 Reembolso parcial (50%)"
-          : "Cancelar viaje\n❌ Sin reembolso"
-      );
-
-      if (!confirmar) return;
-    }
-
-    // 🔥 LIBERAR DRIVER + NOTIFICAR
-    if (viaje.driverId) {
-      await update(ref(db, "drivers/" + viaje.driverId), {
-        viajeActivo: null
+    // 5. Posición del Conductor con Suavizado
+    const lat = Number(d.driverLat);
+    const lng = Number(d.driverLng);
+    if (isFinite(lat) && isFinite(lng)) {
+      const nuevaPos = { lat, lng };
+      
+      setPos((prev: any) => {
+        if (!prev) return nuevaPos;
+        return {
+          lat: prev.lat + (nuevaPos.lat - prev.lat) * 0.25,
+          lng: prev.lng + (nuevaPos.lng - prev.lng) * 0.25
+        };
       });
 
-      // 🔥 enviar WhatsApp si existe
-      if (viaje.driverTelefono) {
-        const mensaje =
-          "❌ VIAJE CANCELADO\n\n" +
-          "El cliente canceló el viaje.\n\n" +
-          "📍 " + viaje.origen + "\n" +
-          "🏁 " + viaje.destino;
-
-        const url = `https://wa.me/1${viaje.driverTelefono}?text=${encodeURIComponent(mensaje)}`;
-
-        // ⚠️ en móvil NO bloquea si es dentro de interacción
-        window.open(url, "_blank");
+      // Throttle de cámara (Cada 2 segundos)
+      if (mapRef.current && ahora - lastCameraMoveRef.current > 2000) {
+        lastCameraMoveRef.current = ahora;
+        mapRef.current.panTo(nuevaPos);
       }
     }
-
-    // 🔥 CANCELAR VIAJE
-    await update(viajeRef, {
-      estado: "Cancelado",
-      driverId: null,
-      canceladoEn: Date.now()
-    });
-
-    // 🔥 REEMBOLSO
-    if (
-      viaje.metodoPago === "stripe" &&
-      viaje.paymentIntentId &&
-      porcentaje > 0
-    ) {
-      const token = await user.getIdToken(true);
-
-      await fetch("/api/refund-cancel", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          viajeId: id,
-          percent: porcentaje
-        }),
-      });
-    }
-
-    // 🔥 FINALIZAR TRACKING (IMPORTANTE)
-    localStorage.removeItem("viajeId");
-
-    alert("❌ Viaje cancelado");
-
-    // 🔥 REDIRECCIÓN SEGURA (MÓVIL)
-    setTimeout(() => {
-      window.location.href = "/";
-    }, 1500);
-
-  } catch (err) {
-    console.error("ERROR CANCELAR:", err);
-    alert("Error cancelando viaje");
-  }
-};
-  //////////////////////////////////////////////////////// 🎯 BOTONES///////////////////////////////////////
-  const btn = (bg: string) => ({
-    padding: 12,
-    borderRadius: 10,
-    border: "none",
-    background: bg,
-    color: "#fff",
-    cursor: "pointer",
-    boxShadow: "0 4px 0 rgba(0,0,0,0.2)",
-    transition: "0.15s"
   });
 
-  const press = (e: any) => {
-    e.target.style.transform = "scale(0.95)";
-    e.target.style.boxShadow = "0 2px 0 rgba(0,0,0,0.2)";
+  return () => unsubscribe();
+}, [isLoaded]); // Quitamos 'fase' de las dependencias para evitar re-suscripciones innecesarias
+
+  // --- LÓGICA DE CANCELACIÓN (Mantenida de tu código) ---
+  const cancelarViaje = async () => {
+    try {
+      const id = new URLSearchParams(window.location.search).get("id") || localStorage.getItem("viajeId");
+      if (!id) return alert("No se encontró el viaje");
+
+      const user = auth.currentUser;
+      if (!user) return alert("Debes iniciar sesión");
+
+      const viajeRef = ref(db, "viajes/" + id);
+      const snap = await get(viajeRef);
+      if (!snap.exists()) return;
+
+      const viaje = snap.val();
+      const tiempo = Date.now() - (viaje.timestamp || Date.now());
+      const minutos = tiempo / 60000;
+      let porcentaje = minutos <= 2 ? 1 : minutos <= 5 ? 0.5 : 0;
+
+      if (viaje.metodoPago === "stripe") {
+        const msg = porcentaje === 1 ? "Reembolso completo" : porcentaje === 0.5 ? "Reembolso parcial (50%)" : "Sin reembolso";
+        if (!confirm(`Cancelar viaje\n${msg}`)) return;
+      }
+
+      // Liberar Driver y actualizar estado
+      if (viaje.driverId) {
+        await update(ref(db, "drivers/" + viaje.driverId), { viajeActivo: null });
+      }
+
+      await update(viajeRef, {
+        estado: "Cancelado",
+        driverId: null,
+        canceladoEn: Date.now()
+      });
+
+      if (viaje.metodoPago === "stripe" && viaje.paymentIntentId && porcentaje > 0) {
+        const token = await user.getIdToken(true);
+        await fetch("/api/refund-cancel", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ viajeId: id, percent: porcentaje }),
+        });
+      }
+
+      localStorage.removeItem("viajeId");
+      window.location.href = "/";
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const release = (e: any) => {
-    e.target.style.transform = "scale(1)";
-    e.target.style.boxShadow = "0 4px 0 rgba(0,0,0,0.2)";
-  };
+  // --- RENDERIZADO DE UI ---
+  const btn = (bg: string) => ({
+    padding: 12, borderRadius: 10, border: "none", background: bg,
+    color: "#fff", cursor: "pointer", boxShadow: "0 4px 0 rgba(0,0,0,0.2)", transition: "0.15s", width: "100%"
+  });
 
-  if (!isLoaded) return <div>Loading...</div>;
+  const press = (e: any) => { e.target.style.transform = "scale(0.95)"; };
+  const release = (e: any) => { e.target.style.transform = "scale(1)"; };
 
-  if (viajeCancelado) {
-  return (
-    <div style={{
-      height: "100vh",
-      display: "flex",
-      flexDirection: "column",
-      justifyContent: "center",
-      alignItems: "center",
-      background: "#111",
-      color: "#fff",
-      gap: 20
-    }}>
-      <h2>❌ Ride canceled</h2>
+  if (!isLoaded) return <div style={{ background: "#111", color: "#fff", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>Cargando mapa...</div>;
 
-      <button
-        style={{
-          padding: 14,
-          borderRadius: 10,
-          border: "none",
-          background: "#dc3545",
-          color: "#fff",
-          fontSize: 16,
-          cursor: "pointer"
-        }}
-        onClick={() => {
-          window.location.href = "/";
-        }}
-      >
-        🔙 Back to Home
-      </button>
-    </div>
-  );
-}
-  if (viajeFinalizado) {
-  return (
-    <div style={{
-      height: "100vh",
-      display: "flex",
-      flexDirection: "column",
-      justifyContent: "center",
-      alignItems: "center",
-      background: "#111",
-      color: "#fff",
-      gap: 20
-    }}>
-      <h2>✅ Trip completed</h2>
-
-      <button
-        style={{
-          padding: 14,
-          borderRadius: 10,
-          border: "none",
-          background: "#28a745",
-          color: "#fff",
-          fontSize: 16,
-          cursor: "pointer"
-        }}
-        onClick={() => {
-          window.location.href = "/";
-        }}
-      >
-        🔙 Back to Home
-      </button>
-    </div>
-  );
-}
+  if (viajeCancelado || viajeFinalizado) {
+    return (
+      <div style={{ height: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", background: "#111", color: "#fff", gap: 20 }}>
+        <h2>{viajeCancelado ? "❌ Ride canceled" : "✅ Trip completed"}</h2>
+        <button style={{ ...btn(viajeCancelado ? "#dc3545" : "#28a745"), width: "auto", padding: "14px 30px" }} onClick={() => window.location.href = "/"}>🔙 Back to Home</button>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ height: "100vh", position: "relative" }}>
+    <div style={{ height: "100vh", position: "relative", background: "#111" }}>
       <GoogleMap
-  onLoad={handleLoad}
-  mapContainerStyle={{ width: "100%", height: "100%" }}
-  center={pos || { lat: 36.1699, lng: -115.1398 }}
-  zoom={17}
-  options={{
-    disableDefaultUI: true,
-    zoomControl: true,
-    gestureHandling: "greedy",
+        onLoad={(map) => { mapRef.current = map; }}
+        mapContainerStyle={{ width: "100%", height: "100%" }}
+        center={pos || { lat: Number(viajeData?.origenLat || 36.1699), lng: Number(viajeData?.origenLng || -115.1398) }}
+        zoom={17}
+        options={{
+          disableDefaultUI: true,
+          zoomControl: false,
+          gestureHandling: "greedy",
+          mapId: "c7f305f9e66d61eb57ab057d" // Tu ID de mapa de lujo
+        }}
+      >
+        {/* Polilínea Gris: Lo que ya se recorrió */}
+        {completedPath.length > 0 && (
+          <Polyline path={completedPath} options={{ strokeColor: "#888", strokeOpacity: 0.5, strokeWeight: 3 }} />
+        )}
 
-  }}
->
+        {/* Polilínea Azul: La ruta exacta que ve el driver */}
+        {remainingPath.length > 0 && (
+          <Polyline path={remainingPath} options={{ strokeColor: "#1976FF", strokeOpacity: 0.9, strokeWeight: 5 }} />
+        )}
 
-{path.length > 0 && (
-  <Polyline
-    path={path}
-    options={{
-      strokeColor: "#000",
-      strokeOpacity: 1,
-      strokeWeight: 5
-    }}
-  />
-)}
-
+        {/* Marcador Conductor (Círculo con Flecha) */}
 {pos && (
-  <>
-    {/* 🔵 CÍRCULO */}
-<Marker
-  position={pos}
-  icon={{
-    path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
-       fillColor: "#1494df",
-    fillOpacity: 0.15, // 🔥 efecto glow
-    strokeColor: "#1e87a1",
-    strokeWeight: 1
-  }}
-  zIndex={0}
-/>
-
-{/* núcleo sólido */}
-<Marker
-  position={pos}
-  icon={{
-    path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
-    scale: 17,
-    fillColor: "#0c0c0c",
-    fillOpacity: 1,
-    strokeColor: "#fff",
-    strokeWeight: 2
-  }}
-  zIndex={1}
-/>
-<Marker
-  position={pos}
-  icon={{
-    path: window.google?.maps?.SymbolPath?.FORWARD_CLOSED_ARROW || 0,
-    scale: 5,
-    fillColor: "#fff",
-    fillOpacity: 1,
-    strokeColor: "#000",
-    strokeWeight: 1,
-    rotation: lastHeadingRef.current || 0,
-    anchor: new window.google.maps.Point(0, 2)
-  }}
-  zIndex={2}
-/>
-{destinoMarker && (
-  <Marker
-    position={destinoMarker}
-   icon={{
-  path: `
-    M 0,0 m -4,0 a 4,4 0 1,0 8,0 a 4,4 0 1,0 -8,0
-    M 0,-20 L 0,0
-    M 0,-20 L 10,-16 L 0,-12 Z
-  `,
-  fillColor: "#ff0000",
-  fillOpacity: 1,
-  strokeColor: "#000",
-  strokeWeight: 2,
-  scale: 1.8
-}}
-    zIndex={3}
+  <Marker 
+    position={pos} 
+    icon={{
+      // Este path dibuja un círculo (M) y luego una flecha (L/Z) en el centro
+      path: "M 0, 0 m -10, 0 a 10,10 0 1,0 20,0 a 10,10 0 1,0 -20,0 M -4,3 L 0,-5 L 4,3 L 0,1 Z",
+      fillColor: "#1976FF",
+      fillOpacity: 1,
+      strokeColor: "#fff",
+      strokeWeight: 2,
+      scale: 2, // Ajusta el tamaño general aquí
+      rotation: viajeData?.heading || 0,
+      anchor: new window.google.maps.Point(0, 0), // Centra el icono en la coordenada
+    }} 
   />
 )}
-  </>
-)}
 
+        {/* Destino Final */}
+        {viajeData?.destinoLat && (
+          <Marker position={{ lat: Number(viajeData.destinoLat), lng: Number(viajeData.destinoLng) }} />
+        )}
+        {directionsResponse && (
+    <DirectionsRenderer 
+      directions={directionsResponse} 
+      options={{ 
+        preserveViewport: true, 
+        suppressMarkers: true, 
+        polylineOptions: { strokeColor: "#1976FF", strokeWeight: 5, strokeOpacity: 0.8 } 
+      }} 
+    />
+  )}
 </GoogleMap>
 
-       {/* PANEL */}
-    <div style={{
-      position: "absolute",
-      bottom: 0,
-      width: "100%",
-      background: "#fff",
-      padding: 20,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20
-    }}>
-
-      <h3>
- {fase === "espera"
-  ? "⏳ Waiting for driver"
-  : fase === "pickup"
-  ? "🚗 Driver on the way"
-  : "🚗 Ride in progress"}
-</h3>
-
-      <p>
-        {eta > 0
-          ? Math.ceil(eta / 60) + " min"
-          : "Arriving..."}
-      </p>
-
+      {/* PANEL DE INFORMACIÓN */}
+<div style={{ position: "absolute", bottom: 0, width: "100%", background: "#fff", padding: "24px 20px", borderTopLeftRadius: 24, borderTopRightRadius: 24, boxShadow: "0 -5px 20px rgba(0,0,0,0.1)" }}>
   
-     {/* 💵 INFO DE PAGO */}
-<div style={{ marginTop: 10 }}>
+  {/* NUEVA LÍNEA: DATOS DEL CONDUCTOR */}
+  {driverInfo && (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid #eee" }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: "bold", fontSize: 30 }}>
+          {driverInfo.nombre?.split('@')[0]} {/* Muestra el nombre antes del @ */}
+          <span style={{ marginLeft: 8, color: "#f1c40f" }}>★ {driverInfo.rating || "5.0"}</span>
+        </div>
+        <div style={{ fontSize: 13, color: "#666", marginTop: 2 }}>
+          {driverInfo.carro?.marca} {driverInfo.carro?.modelo} • <span style={{ color: "#000", fontWeight: "600" }}>{driverInfo.carro?.placa}</span>
+        </div>
+      </div>
+      <div style={{ textAlign: "right", fontSize: 12, color: driverInfo.carro?.color === "Blanco" ? "#999" : driverInfo.carro?.color }}>
+        {driverInfo.carro?.color}
+      </div>
+    </div>
+  )}
 
-{viajeData?.metodoPago === "stripe" ? (
-  <p style={{ color: "green", fontWeight: "bold" }}>
-    💳 Paid (${viajeData?.precio?.toFixed(2)})
+ <h3 style={{ margin: 0, fontSize: 18 }}>
+  {fase === "aceptado" && "✅ Your ride was accepted"}
+  {fase === "pickup" && "🚗 Driver on the way"}
+  {fase === "viaje" && "✨ Ride in progress"}
+</h3>
+  
+ {/* Solo mostramos el ETA si ya está en camino o en viaje */}
+{fase !== "aceptado" ? (
+  <p style={{ fontSize: 22, fontWeight: "bold", color: "#1976FF", margin: "4px 0" }}>
+    {viajeData?.driverEta || "Calculating..."}
   </p>
 ) : (
-  <p style={{ fontWeight: "bold", color: "#000" }}>
-    💵 Pay ${viajeData?.precio?.toFixed(2)} to driver
+  <p style={{ fontSize: 16, color: "#666", margin: "8px 0" }}>
+    Waiting for driver to start the route...
   </p>
 )}
 
-</div>
-
-{/* ⚠️ AVISO CANCELACIÓN */}
-<p style={{ fontSize: 12, color: "#686666", marginTop: 5 }}>
-  Cancellations after 2 minutes may incur charges.
-</p>
-
-      {/* ❌ CANCEL */}
-      <button
-  style={{ ...btn("red"), marginTop: 15, width: "100%" }}
-  onMouseDown={press}
-  onMouseUp={release}
-  onMouseLeave={release}
- onClick={() => {
-    const ok = confirm(
-      "Canceling may incur a fee, depending on the timing..\n\nDo you wish to continue"
-    );
-    if (ok) cancelarViaje();
-  }}
->
-  Cancel Ride
-</button>
-
-    </div>
+  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+    {viajeData?.metodoPago === "stripe" ? (
+      <span style={{ color: "#28a745", fontWeight: "600" }}>💳 Paid: ${viajeData?.precio?.toFixed(2)}</span>
+    ) : (
+      <span style={{ fontWeight: "700", fontSize: "22px" }}>
+  💵 Pay the Driver: <span style={{ color: "#f70909" }}>${viajeData?.precio?.toFixed(2)}</span>
+</span>
+    )}
   </div>
-);
+
+ {(fase === "aceptado" || fase === "pickup") && (
+  <button
+    style={{ ...btn("#000"), marginTop: 20 }}
+    onClick={() => { if(confirm("Do you wish to cancel this ride?")) cancelarViaje(); }}
+  >
+    Cancel Ride
+  </button>
+)}
+</div>
+    </div>
+  );
 }

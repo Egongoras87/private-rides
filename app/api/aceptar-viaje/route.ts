@@ -2,53 +2,136 @@ import { NextResponse } from "next/server";
 import { adminDb, adminAuth } from "@/lib/firebase-admin";
 
 export async function POST(req: Request) {
+
   try {
-    const token = req.headers.get("authorization")?.replace("Bearer ", "");
+
+    // 🔐 TOKEN
+    const token =
+      req.headers
+        .get("authorization")
+        ?.replace("Bearer ", "");
+
     if (!token) {
-      return NextResponse.json({ error: "No token" }, { status: 401 });
+      return NextResponse.json(
+        { error: "No token" },
+        { status: 401 }
+      );
     }
 
-    const decoded = await adminAuth.verifyIdToken(token);
+    // 🔐 VERIFY TOKEN
+    const decoded =
+      await adminAuth.verifyIdToken(token);
+
     const uid = decoded.uid;
 
-    const { viajeId } = await req.json();
+    // 📦 BODY
+    const { viajeId } =
+      await req.json();
 
     if (!viajeId) {
-      return NextResponse.json({ error: "viajeId requerido" }, { status: 400 });
+
+      return NextResponse.json(
+        { error: "viajeId requerido" },
+        { status: 400 }
+      );
     }
 
-    const refViaje = adminDb.ref("viajes/" + viajeId);
+    // 📍 REF
+    const viajeRef =
+      adminDb.ref("viajes/" + viajeId);
 
-    // 🔥 LECTURA REAL
-    const snap = await refViaje.once("value");
+    // 🔥 TRANSACTION SEGURA
+    const result =
+      await viajeRef.transaction((actual) => {
 
-    if (!snap.exists()) {
-      return NextResponse.json({ error: "No existe" }, { status: 404 });
+        // ❌ no existe
+        if (!actual) {
+          return actual;
+        }
+
+        // 🔒 YA TOMADO
+        if (
+          actual.driverId ||
+          actual.estado !== "Pendiente"
+        ) {
+          return;
+        }
+
+        // ✅ ASIGNAR VIAJE
+        return {
+
+          ...actual,
+
+          estado: "Asignado",
+
+          fase: "asignado",
+
+          driverId: uid,
+
+          trackingVisible: false,
+
+          asignadoAt: Date.now()
+        };
+      });
+
+    // ❌ SI OTRO DRIVER LO TOMÓ
+    if (!result.committed) {
+
+      return NextResponse.json(
+        {
+          error:
+            "Este viaje ya fue aceptado por otro conductor"
+        },
+        { status: 409 }
+      );
     }
 
-    const v = snap.val();
+    // ✅ VALIDAR RESULTADO
+    const viajeFinal =
+      result.snapshot.val();
 
-    // 🔒 VALIDACIONES FUERTES
-    if (v.driverId) {
-      return NextResponse.json({ error: "Ya tomado" }, { status: 409 });
+    if (
+      !viajeFinal ||
+      viajeFinal.driverId !== uid
+    ) {
+
+      return NextResponse.json(
+        {
+          error:
+            "No se pudo asignar el viaje"
+        },
+        { status: 409 }
+      );
     }
 
-    if (!v.estado || v.estado.trim().toLowerCase() !== "pendiente") {
-      return NextResponse.json({ error: "No disponible" }, { status: 409 });
-    }
+    // ✅ OPCIONAL:
+    // guardar último viaje aceptado
+    await adminDb
+      .ref("drivers/" + uid)
+      .update({
 
-    // 🔥 UPDATE DIRECTO
-    await refViaje.update({
-      estado: "Asignado",
-      driverId: uid,
-      asignadoAt: Date.now()
+        ultimoViajeAceptado: viajeId,
+
+        updatedAt: Date.now()
+      });
+
+    return NextResponse.json({
+      ok: true,
+      viajeId
     });
 
-    return NextResponse.json({ ok: true });
-
   } catch (err: any) {
+
+    console.error(
+      "ACEPTAR VIAJE ERROR:",
+      err
+    );
+
     return NextResponse.json(
-      { error: err.message || "Error" },
+      {
+        error:
+          err.message || "Error interno"
+      },
       { status: 500 }
     );
   }

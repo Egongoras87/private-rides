@@ -5,6 +5,11 @@ export const metadata = {
   title: "App Private Rides",
   description: "App tipo Uber",
 
+  // 🔥 VERIFICACIÓN GOOGLE
+  verification: {
+    google: "ABC123XYZ456"
+  }, // 👈 ESTA COMA FALTABA
+
   // 🔥 ICONO
   icons: {
     icon: [{ url: "/icon.png?v=2" }],

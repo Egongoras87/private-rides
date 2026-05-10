@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
-
+import { update } from "firebase/database";
 
 import {
   GoogleMap,
@@ -37,9 +37,11 @@ export default function Home() {
   );
 }
  function CheckoutContent() {
+  const [openConfig, setOpenConfig] = useState(false);
   const [mostrarCardModal, setMostrarCardModal] = useState(false);
   const [metodoPago, setMetodoPago] = useState<"stripe" | "cash">("stripe");
 const router = useRouter();
+const [email, setEmail] = useState("");
   const [directions, setDirections] = useState<any>(null);
   const { isLoaded } = useJsApiLoader(googleMapsConfig);
   const [distancia, setDistancia] = useState<number>(0);
@@ -66,50 +68,47 @@ const [lngOrigen, setLngOrigen] = useState(0);
     useState<{ lat: number; lng: number } | null>(null);
     const BASE_FARE = 8;        // tarifa base
 const PRICE_PER_MILE = 2.0; // por milla
-const PRICE_PER_MIN = 0.3;  // por minuto
+
 const MIN_FARE = 12;        // mínimo
 
   const origenRef = useRef<HTMLInputElement | null>(null);
   const destinoRef = useRef<HTMLInputElement | null>(null);
-  const estiloBoton = {
-  width: "100%",
-  padding: 10,
-  borderRadius: 10,
-  border: "none",
-  fontSize: 16,
-  cursor: "pointer",
-  transition: "all 0.15s ease",
-  boxShadow: "0 4px 0 rgba(0,0,0,0.2)"
-};
+   // ... (tus estados y otros useEffect)
+
+  // 🔥 UBICACIÓN DE LAS FUNCIONES DE HUNDIMIENTO
+  const press3D = (e: any) => { // 👈 Añadido : any
+    e.currentTarget.style.transform = "translateY(4px)";
+    e.currentTarget.style.boxShadow = "0 2px 0 rgba(0,0,0,0.5)";
+  };
+
+  const release3D = (e: any, colorShadow = "#000") => { // 👈 Añadido : any
+    e.currentTarget.style.transform = "translateY(0)";
+    e.currentTarget.style.boxShadow = `0 6px 0 ${colorShadow}, 0 12px 20px rgba(0,0,0,0.4)`;
+  };
+ 
+useEffect(() => {
+  if (user) {
+    // Referencia a la ubicación del perfil usando el UID del usuario logueado
+    const userProfileRef = ref(db, `usuarios/${user.uid}/perfil`);
+    
+    // onValue escucha cambios en tiempo real
+    const unsub = onValue(userProfileRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        // Rellenamos los estados con la info de la base de datos
+        if (data.nombre) setNombre(data.nombre);
+        if (data.telefono) setTelefono(data.telefono);
+      }
+    });
+
+    return () => unsub(); // Limpiamos la conexión al desmontar
+  }
+}, [user]); // Se ejecuta cada vez que el estado del usuario cambia
 useEffect(() => {
   if (!loading && !user) {
     router.push("/login-user");
   }
 }, [user, loading]);
-const [pressed, setPressed] = useState<string | null>(null);
-
-const handlePress = (id: string) => setPressed(id);
-const handleRelease = () => setPressed(null);
-
-const getButtonStyle = (id: string, base: any) => ({
-  ...base,
-  transform: pressed === id ? "scale(0.96)" : "scale(1)",
-  boxShadow:
-    pressed === id
-      ? "0 2px 4px rgba(0,0,0,0.3)"
-      : "0 6px 12px rgba(0,0,0,0.4)",
-  transition: "all 0.15s ease"
-});
-
-const presionarBoton = (e: any) => {
-  e.currentTarget.style.transform = "scale(0.96)";
-  e.currentTarget.style.boxShadow = "0 2px 0 rgba(0,0,0,0.2)";
-};
-
-const soltarBoton = (e: any) => {
-  e.currentTarget.style.transform = "scale(1)";
-  e.currentTarget.style.boxShadow = "0 4px 0 rgba(0,0,0,0.2)";
-};
 
   // 📍 Calcular ruta
   const calcularRuta = () => {
@@ -167,8 +166,8 @@ if (!window.google?.maps?.DirectionsService) return;
 
       const precioCalculado =
         BASE_FARE +
-        distanciaMillas * PRICE_PER_MILE +
-        duracionMin * PRICE_PER_MIN;
+        distanciaMillas * PRICE_PER_MILE 
+       
 
       const precioFinal = Math.max(precioCalculado, MIN_FARE);
 
@@ -221,6 +220,7 @@ if (!window.google?.maps?.DirectionsService) return;
 const reservar = async () => {
   if (loadingPago) return;
 
+  // --- VALIDACIONES PREVIAS ---
   if (!precio || precio <= 0) {
     alert("Calcula el precio primero");
     return;
@@ -250,24 +250,40 @@ const reservar = async () => {
     return;
   }
 
+  // =========================================================
+  // 🔥 PASO 1: GUARDAR PERFIL AL PEDIR EL VIAJE
+  // =========================================================
   try {
-    let paymentIntentId: string | null = null;
+    const userProfileRef = ref(db, `usuarios/${user.uid}/perfil`);
+   await update(userProfileRef, {
+  nombre,
+  telefono,
+  email,          // 🔥 NUEVO
+  metodoPago,     // 🔥 NUEVO
+  ultimaActualizacion: Date.now()
+});
+    console.log("✅ Perfil sincronizado con Firebase");
+  } catch (profileError) {
+    console.error("Error guardando el perfil:", profileError);
+  }
 
-// 🔒 VALIDAR TARJETA ANTES DE PAGAR
-if (metodoPago === "stripe" && !paymentMethodId) {
-  alert("Ingresa los datos de la tarjeta");
-  return;
-}
+  setLoadingPago(true);
+
+  try {
+    // 🔒 VALIDAR TARJETA ANTES DE PAGAR
+    if (metodoPago === "stripe" && !paymentMethodId) {
+      alert("Ingresa los datos de la tarjeta");
+      setLoadingPago(false);
+      return;
+    }
 
     const fechaISO = new Date(fechaHora).getTime();
     const ahora = Date.now();
-
     const esProgramado = fechaISO > ahora + 10 * 60 * 1000;
 
     const origen = origenRef.current.value;
     const destino = destinoRef.current.value;
 
-    // 🔐 TOKEN (ya validamos user arriba)
     const token = await user.getIdToken();
 
     // 🔥 CREAR VIAJE EN BACKEND
@@ -278,46 +294,35 @@ if (metodoPago === "stripe" && !paymentMethodId) {
         Authorization: "Bearer " + token
       },
       body: JSON.stringify({
-  nombre,
-  telefono,
-  origen,
-  destino,
-
-  origenLat: latOrigen,
-  origenLng: lngOrigen,
-  destinoLat: latDestino,
-  destinoLng: lngDestino,
-
-  distancia,
-  precio,
-  fecha: fechaISO,
-
-  esProgramado,
-
-  metodoPago,
-  pagado: metodoPago === "stripe",
-  estadoPago: metodoPago === "stripe" ? "pagado" : "pendiente",
-
-  // 👇 🔥 AQUÍ EXACTAMENTE
-  paymentMethodId: metodoPago === "stripe" ? paymentMethodId : null
-})
+        nombre,
+        telefono,
+        origen,
+        destino,
+        origenLat: latOrigen,
+        origenLng: lngOrigen,
+        destinoLat: latDestino,
+        destinoLng: lngDestino,
+        distancia: distancia,
+        precio,
+        fecha: fechaISO,
+        esProgramado,
+        metodoPago,
+        pagado: metodoPago === "stripe",
+        estadoPago: metodoPago === "stripe" ? "pagado" : "pendiente",
+        paymentMethodId: metodoPago === "stripe" ? paymentMethodId : null
+      })
     });
 
     const data = await res.json();
 
     if (!res.ok) {
       alert(data.error || "Error creando viaje");
+      setLoadingPago(false);
       return;
     }
 
     // 🔥 ID SOLO VIENE DEL BACKEND
     const viajeId = data.id;
-
-    if (esProgramado) {
-      console.log("🕓 Viaje programado");
-    } else {
-      console.log("🚗 Viaje inmediato");
-    }
 
     // 🔥 LOCAL STORAGE
     localStorage.setItem("viajeId", viajeId);
@@ -335,7 +340,6 @@ if (metodoPago === "stripe" && !paymentMethodId) {
     );
 
     const trackingUrl = `${window.location.origin}/tracking?id=${viajeId}`;
-
     const telefonoFinal = "1" + telefono.replace(/\D/g, "");
 
     const mensajeWhatsApp =
@@ -349,16 +353,20 @@ if (metodoPago === "stripe" && !paymentMethodId) {
 
     const url = `https://wa.me/${telefonoFinal}?text=${encodeURIComponent(mensajeWhatsApp)}`;
 
+    // Abrimos WhatsApp
     window.open(url, "_blank");
 
-    // 🚀 REDIRECCIÓN
+    // 🚀 REDIRECCIÓN FLUIDA (Next.js Way)
+    // Usamos router.push en lugar de window.location.href para no recargar la app
     setTimeout(() => {
-      window.location.href = `/tracking?id=${viajeId}`;
+      router.push(`/tracking?id=${viajeId}`);
     }, 800);
 
   } catch (error) {
     console.error("ERROR:", error);
     alert("❌ Error de conexión");
+  } finally {
+    setLoadingPago(false);
   }
 };
   // 📡 Leer ubicación del driver (simulación)
@@ -525,10 +533,7 @@ if (loading) {
   );
 }
 
-if (!user) {
-  window.location.href = "/login-user";
-  return null;
-}
+
 if (!isLoaded) {
   return (
     <div style={{
@@ -542,6 +547,8 @@ if (!isLoaded) {
     </div>
   );
 }
+
+ 
 ////////////////////////////////RETURN////////////////////////////////
 return (
 
@@ -573,14 +580,28 @@ return (
     }}
   />
     <div style={{ position: "relative", zIndex: 1, padding: 20 }}>
-    
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+  <h1 style={{ color: "#b19e36" }}>App Private Rides</h1>
+ 
+  <button
+    onClick={() => setOpenConfig(true)}
+    style={{
+      background: "transparent",
+      border: "none",
+      fontSize: 22,
+      cursor: "pointer",
+      color: "#fff"
+    }}
+  >
+    ⚙️
+  </button>
+</div>
   
-      <h1 style={{ color: "#b19e36" }}>App Private Rides</h1>
-
-     
-        {/* 👤 DATOS USUARIO */}
-       <input
+        
+       {/* 👤 INPUT PARA NOMBRE */}
+<input
   placeholder="Name"
+  value={nombre} // 👈 Crucial: Esto muestra el nombre cargado de Firebase
   onChange={(e) => setNombre(e.target.value)}
   style={{
     width: "100%",
@@ -592,8 +613,11 @@ return (
     color: "#fff"
   }}
 />
+
+{/* 👤 INPUT PARA TELÉFONO */}
 <input
   placeholder="Phone number"
+  value={telefono} // 👈 Crucial: Esto muestra el teléfono cargado de Firebase
   onChange={(e) => setTelefono(e.target.value)}
   style={{
     width: "100%",
@@ -652,38 +676,24 @@ return (
 </Autocomplete>
 
 
-  <button
-  onClick={obtenerUbicacion}
-  onMouseDown={presionarBoton}
-  onMouseUp={soltarBoton}
-  onMouseLeave={soltarBoton}
-  style={{
-    width: 30,
-    height: 40,
-    borderRadius: "30%",
-    background: "transparent",
-    color: "#ffffff",
-    border: "none",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    boxShadow: "0 4px 0 rgba(0,0,0,0.2)"
-  }}
+  <button 
+  style={btnGPS}
+  onMouseDown={press3D}
+  onMouseUp={(e) => release3D(e, "#000")}
+  onMouseLeave={(e) => release3D(e, "#000")}
+  onClick={obtenerUbicacion} // Asegúrate de que el nombre coincida con tu función (obtenerUbicacionActual)
 >
   <svg
     xmlns="http://www.w3.org/2000/svg"
-    width="20"
-    height="20"
-    fill="white"
+    width="24" // Aumentado un poco para mejor visibilidad
+    height="24"
+    fill="currentColor" // Usará el color definido en el estilo (azul por defecto)
     viewBox="0 0 24 24"
   >
-    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 
-    0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 
-    2.5 2.5S13.38 11.5 12 11.5z"/>
+    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/>
   </svg>
 </button>
 </div>
-
         
 
         {/* 📍 DESTINO */}
@@ -716,39 +726,34 @@ return (
 
        <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
   
-  <button
+  <button 
+  style={btnGetPrice}
+  onMouseDown={press3D}
+  onMouseUp={(e) => release3D(e, "#004494")} // Sombra azul oscura
+  onMouseLeave={(e) => release3D(e, "#004494")}
   onClick={calcularRuta}
-  onMouseDown={() => handlePress("calc")}
-  onMouseUp={handleRelease}
-  onMouseLeave={handleRelease}
-  onTouchStart={() => handlePress("ID")}
-onTouchEnd={handleRelease}
-  style={getButtonStyle("calc", {
-    flex: 1,
-    ...estiloBoton,
-    background: "#000",
-    color: "#fff"
-  })}
 >
   Get Price
 </button>
 
  <button
   onClick={reservar}
-  disabled={loadingPago}
-  onMouseDown={() => handlePress("ride")}
-  onMouseUp={handleRelease}
-  onMouseLeave={handleRelease}
-  onTouchStart={() => handlePress("ID")}
-onTouchEnd={handleRelease}
-  style={getButtonStyle("ride", {
-    flex: 1,
-    ...estiloBoton,
-    background: "#2ecc71",
-    color: "#fff"
-  })}
+  disabled={loadingPago} // Evita doble clic mientras procesa
+  onMouseDown={press3D}
+  onMouseUp={(e) => release3D(e, "#145524")}
+  onMouseLeave={(e) => release3D(e, "#145524")}
+  // Soporte para móviles
+  onTouchStart={press3D}
+  onTouchEnd={(e) => release3D(e, "#145524")}
+  style={{
+    ...btnRequest,
+    flex: 1, // Para que ocupe el ancho disponible si está en un contenedor flex
+    opacity: loadingPago ? 0.7 : 1, // Se vuelve opaco al cargar
+    cursor: loadingPago ? "not-allowed" : "pointer", // Cambia el cursor si está bloqueado
+    filter: loadingPago ? "grayscale(0.3)" : "none" // Opcional: un toque más oscuro al procesar
+  }}
 >
-  {loadingPago ? "PProcessing payment...." : "Request the Ride"}
+  {loadingPago ? "Processing payment..." : "Request the Ride"}
 </button>
 
 </div>
@@ -767,54 +772,39 @@ onTouchEnd={handleRelease}
   <div style={{ display: "flex", gap: 10 }}>
   
   {/* 💳 CARD (MAS GRANDE) */}
-  <div style={{ flex: 2 }}>
-    <button
-  onClick={() => {
-    setMetodoPago("stripe");
-    setMostrarCardModal(true);
-  }}
-  onMouseDown={() => handlePress("card")}
-  onMouseUp={handleRelease}
-  onMouseLeave={handleRelease}
-  onTouchStart={() => handlePress("ID")}
-onTouchEnd={handleRelease}
-  style={getButtonStyle("card", {
-    width: "100%",
-    padding: 10,
-    borderRadius: 6,
-    border: "none",
-    background: metodoPago === "stripe" ? "#2ecc71" : "#333",
-    color: "#fff",
-    fontSize: 16
-  })}
->
-  💳 Card
-</button>
+  <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
+  {/* 💳 BOTÓN CARD */}
+  <button 
+      style={{
+        ...btnPayment, 
+        background: metodoPago === "stripe" ? "linear-gradient(145deg, #007bff, #0056b3)" : "#1e1e1e",
+        border: metodoPago === "stripe" ? "1px solid #00c6ff" : "1px solid #333",
+      }}
+      onMouseDown={press3D}
+      onMouseUp={(e) => release3D(e, "#000")}
+      onMouseLeave={(e) => release3D(e, "#000")}
+      onClick={() => {
+        setMetodoPago("stripe");
+        setMostrarCardModal(true);
+      }}
+    >
+      💳 Card
+    </button>
 
-   
+    <button 
+      style={{
+        ...btnPayment, 
+        background: metodoPago === "cash" ? "linear-gradient(145deg, #f39c12, #d35400)" : "#1e1e1e",
+        border: metodoPago === "cash" ? "1px solid #f1c40f" : "1px solid #333",
+      }}
+      onMouseDown={press3D}
+      onMouseUp={(e) => release3D(e, "#000")}
+      onMouseLeave={(e) => release3D(e, "#000")}
+      onClick={() => setMetodoPago("cash")}
+    >
+      💵 Cash
+    </button>
   </div>
-
-  {/* 💵 CASH (MAS PEQUEÑO) */}
- <button
-  onClick={() => setMetodoPago("cash")}
-  onMouseDown={() => handlePress("cash")}
-  onMouseUp={handleRelease}
-  onMouseLeave={handleRelease}
-  onTouchStart={() => handlePress("ID")}
-onTouchEnd={handleRelease}
-  style={getButtonStyle("cash", {
-    flex: 1,
-    padding: 8,
-    borderRadius: 12,
-    border: "none",
-    background: metodoPago === "cash" ? "#f39c12" : "#333",
-    color: "#fff",
-    fontSize: 16
-  })}
->
-  💵 Cash
-</button>
-
 </div>
         </div>
 <button
@@ -857,8 +847,165 @@ onTouchEnd={handleRelease}
     {driverUbicacion && <Marker position={driverUbicacion} />}
   </GoogleMap>
 </div>
+<div
+  style={{
+    marginTop: 20,
+    marginBottom: 20,
+    display: "flex",
+    justifyContent: "center",
+    gap: 16,
+    fontSize: 14,
+  }}
+>
+  <a
+    href="/privacy"
+    style={{
+      color: "#fff",
+      textDecoration: "none"
+    }}
+  >
+    Privacy Policy
+  </a>
+
+  <a
+    href="/terms"
+    style={{
+      color: "#fff",
+      textDecoration: "none"
+    }}
+  >
+    Terms of Service
+  </a>
+</div>
+{openConfig && (
+  <div style={{
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "100%",
+    background: "rgba(0,0,0,0.9)",
+    zIndex: 9999,
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center"
+  }}>
+    <div style={{
+      width: "90%",
+      maxWidth: 400,
+      background: "#111",
+      borderRadius: 12,
+      padding: 20,
+      display: "flex",
+      flexDirection: "column",
+      gap: 12,
+      color: "#fff"
+    }}>
+      
+      <h3>⚙️ Settings</h3>
+
+      {/* 👤 Nombre */}
+      <input
+        value={nombre}
+        onChange={(e) => setNombre(e.target.value)}
+        placeholder="Name"
+        style={inputConfig}
+      />
+
+      {/* 📞 Teléfono */}
+      <input
+        value={telefono}
+        onChange={(e) => setTelefono(e.target.value)}
+        placeholder="Phone"
+        style={inputConfig}
+      />
+      {/* 📧 EMAIL */}
+<input
+  value={email}
+  onChange={(e) => setEmail(e.target.value)}
+  placeholder="Email"
+  style={inputConfig}
+/>
+
+      {/* 💳 Método de pago */}
+      <div style={{ display: "flex", gap: 10 }}>
+        <button
+  onMouseDown={press3D}
+  onMouseUp={(e) => release3D(e, "#004494")}
+  onMouseLeave={(e) => release3D(e, "#004494")}
+  onTouchStart={press3D}
+  onTouchEnd={(e) => release3D(e, "#004494")}
+  onClick={() => {
+    setMetodoPago("stripe");
+    setMostrarCardModal(true); // 🔥 ESTO FALTABA
+  }}
+  style={{
+    ...btnPayment,
+    background: metodoPago === "stripe"
+      ? "linear-gradient(145deg, #007bff, #0056b3)"
+      : "#1e1e1e",
+  }}
+>
+  💳 Card
+</button>
+      </div>
+
+      {/* 💾 Guardar */}
+      <button
+      onMouseDown={press3D}
+  onMouseUp={(e) => release3D(e, "#004494")}
+  onMouseLeave={(e) => release3D(e, "#004494")}
+  onTouchStart={press3D}
+  onTouchEnd={(e) => release3D(e, "#004494")}
+        onClick={async () => {
+          const user = auth.currentUser;
+          if (!user) return;
+
+         await set(ref(db, `usuarios/${user.uid}/perfil`), {
+  nombre,
+  telefono,
+  email, // 🔥 NUEVO
+  metodoPago,
+  updatedAt: Date.now()
+});
+          alert("✅ Saved");
+          setOpenConfig(false);
+        }}
+        style={{
+          padding: 12,
+          borderRadius: 8,
+          border: "none",
+          background: "#2ecc71",
+          color: "#fff"
+        }}
+      >
+        Save
+      </button>
+
+      {/* Cerrar */}
+      <button
+      onMouseDown={press3D}
+  onMouseUp={(e) => release3D(e, "#004494")}
+  onMouseLeave={(e) => release3D(e, "#004494")}
+  onTouchStart={press3D}
+  onTouchEnd={(e) => release3D(e, "#004494")}
+        onClick={() => setOpenConfig(false)}
+        style={{
+          padding: 10,
+          borderRadius: 8,
+          border: "none",
+          background: "#333",
+          color: "#fff"
+        }}
+      >
+        Close
+      </button>
+
+    </div>
+  </div>
+)}
 {mostrarCardModal && (
-  <div
+    <div
     style={{
       position: "fixed",
       top: 0,
@@ -968,4 +1115,69 @@ onTouchEnd={handleRelease}
 
 );
 }
+// 🎨 ESTILOS DE LUJO 3D
+const btn3D = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "9px 60px",
+  borderRadius: "16px",
+  border: "none",
+  fontWeight: "bold",
+  cursor: "pointer",
+  transition: "all 0.1s ease",
+  color: "#fff",
+  fontSize: "15px",
+  textTransform: "uppercase",
+  letterSpacing: "1px",
+};
+
+// Estilo específico para "Get Price"
+const btnGetPrice = {
+  ...btn3D,
+  background: "linear-gradient(145deg, #007bff, #0056b3)",
+  boxShadow: "0 6px 0 #004494, 0 12px 20px rgba(0,0,0,0.4)",
+};
+
+// Estilo específico para "Request Rider"
+const btnRequest = {
+  ...btn3D,
+  background: "linear-gradient(145deg, #28a745, #1e7e34)",
+  boxShadow: "0 6px 0 #145524, 0 12px 20px rgba(0,0,0,0.4)",
+};
+
+// Estilo para los botones de Pago (Cash/Card) y Saved Card
+const btnPayment = {
+  ...btn3D,
+  background: "#1e1e1e",
+  color: "#ccc",
+  boxShadow: "0 5px 0 #000, 0 10px 15px rgba(0,0,0,0.5)",
+  flex: 1,
+  margin: "0 5px",
+};
+
+// Estilo para el botón Circular de GPS
+const btnGPS = {
+  width: "30px",
+  height: "30px",
+  borderRadius: "30%",
+  border: "none",
+  background: "#1e1e1e",
+  color: "#007bff",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: "20px",
+  cursor: "pointer",
+  boxShadow: "0 5px 0 #000, 0 8px 15px rgba(0,0,0,0.4)",
+  transition: "all 0.1s ease",
+};
+const inputConfig = {
+  width: "100%",
+  padding: 10,
+  borderRadius: 10,
+  border: "1px solid #333",
+  background: "#1e1e1e",
+  color: "#fff"
+};
 // fix permissions.

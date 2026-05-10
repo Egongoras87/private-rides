@@ -3,52 +3,119 @@ import { adminDb } from "@/lib/firebase-admin";
 import { requireDriver } from "@/lib/auth-helpers";
 
 export async function POST(req: Request) {
-  try {
-    // 🔐 SOLO DRIVER AUTORIZADO
-    const { uid } = await requireDriver(req);
 
-    const { viajeId } = await req.json();
+  try {
+
+    // 🔐 DRIVER AUTH
+    const { uid } =
+      await requireDriver(req);
+
+    // 📦 BODY
+    const { viajeId } =
+      await req.json();
 
     if (!viajeId) {
-      return NextResponse.json({ error: "viajeId requerido" }, { status: 400 });
+
+      return NextResponse.json(
+        { error: "viajeId requerido" },
+        { status: 400 }
+      );
     }
 
-    const refViaje = adminDb.ref("viajes/" + viajeId);
-    const snap = await refViaje.once("value");
+    // 📍 REF
+    const viajeRef =
+      adminDb.ref("viajes/" + viajeId);
 
-    if (!snap.exists()) {
-      return NextResponse.json({ error: "No existe" }, { status: 404 });
+    // 🔥 TRANSACTION
+    const result =
+      await viajeRef.transaction((actual) => {
+
+        // ❌ no existe
+        if (!actual) {
+          return actual;
+        }
+
+        // 🔒 SOLO DRIVER DUEÑO
+        if (actual.driverId !== uid) {
+          return;
+        }
+
+        // 🔒 SOLO EN VIAJE
+        if (actual.estado !== "En viaje") {
+          return;
+        }
+
+        // 🔒 EVITAR DOBLE FINALIZACIÓN
+        if (actual.finalizadoAt) {
+          return;
+        }
+
+        // ✅ FINALIZAR
+        return {
+
+          ...actual,
+
+          estado: "Finalizado",
+
+          fase: "finalizado",
+
+          trackingVisible: false,
+
+          navigationMode: null,
+
+          navigationActive: false,
+
+          routeVersion:
+            (actual.routeVersion || 0) + 1,
+
+          driverLat: null,
+
+          driverLng: null,
+
+          finalizadoAt: Date.now()
+        };
+      });
+
+    // ❌ NO COMMIT
+    if (!result.committed) {
+
+      return NextResponse.json(
+        {
+          error:
+            "No se pudo finalizar el viaje"
+        },
+        { status: 409 }
+      );
     }
 
-    const v = snap.val();
+    // ✅ LIBERAR DRIVER
+    await adminDb
+      .ref("drivers/" + uid)
+      .update({
 
-    // 🔒 VALIDAR DRIVER
-    if (v.driverId !== uid) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 403 });
-    }
+        viajeActivo: null,
 
-    // 🔒 VALIDAR ESTADO (MUY IMPORTANTE)
-    if (v.estado !== "En viaje") {
-      return NextResponse.json({ error: "Estado inválido" }, { status: 400 });
-    }
+        navegando: false,
 
-    // 🔒 PROTEGER DOBLE FINALIZACIÓN
-    if (v.finalizadoAt) {
-      return NextResponse.json({ error: "Ya finalizado" }, { status: 400 });
-    }
+        updatedAt: Date.now()
+      });
 
-    await refViaje.update({
-  estado: "Finalizado",
-  finalizadoAt: Date.now(),
-  driverLat: null,
-  driverLng: null
-});
-
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true
+    });
 
   } catch (err: any) {
+
+    console.error(
+      "FINALIZAR ERROR:",
+      err
+    );
+
     return NextResponse.json(
-      { error: err.message || "Error" },
+      {
+        error:
+          err.message || "Error interno"
+      },
       { status: 500 }
     );
   }
