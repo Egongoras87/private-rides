@@ -17,7 +17,7 @@
       "purpose": "any"
     },
     {
-      "src": "/driver-icon.png",
+      "src": "/drivericon.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

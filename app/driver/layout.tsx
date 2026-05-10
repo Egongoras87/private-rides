@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   icons: {
     icon: "/drivericon.png?v=10",
     shortcut: "/drivericon.png?v=10",
-    apple: "/driver-icon.png?v=10",
+    apple: "/drivericon.png?v=10",
   },
 
   appleWebApp: {
