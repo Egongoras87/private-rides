@@ -12,7 +12,8 @@ export function middleware(request: NextRequest) {
   if (host === driverDomain) {
     // Si intenta entrar a la raíz, lo forzamos al login de driver
     if (url.pathname === '/') {
-      url.pathname = '/loguin-driver';
+      // ✅ CORREGIDO: Eliminamos la "u" para que coincida con tu carpeta "login-driver"
+      url.pathname = '/login-driver'; 
       return NextResponse.rewrite(url);
     }
   }
