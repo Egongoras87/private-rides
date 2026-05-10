@@ -1,32 +1,58 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-export function middleware(request: NextRequest) {
-  const url = request.nextUrl.clone();
-  const host = request.headers.get('host') || '';
+export function middleware(
+  request: NextRequest
+) {
 
-  // Tu subdominio de conductor
-  const driverDomain = 'driver.privaterideslasvegas.com';
+  const url =
+    request.nextUrl.clone();
 
-  // Verificamos si el host es el del driver
-  if (host === driverDomain) {
-    // Si intenta entrar a la raíz, lo forzamos al login de driver
-    if (url.pathname === '/') {
-      // ✅ CORREGIDO: Eliminamos la "u" para que coincida con tu carpeta "login-driver"
-      url.pathname = '/login-driver'; 
-      return NextResponse.rewrite(url);
+  const host =
+    request.headers.get(
+      "host"
+    ) || "";
+
+  // ---------------------------------------------------
+  // DRIVER DOMAIN
+  // ---------------------------------------------------
+
+  const driverDomain =
+    "driver.privaterideslasvegas.com";
+
+  // ---------------------------------------------------
+  // DRIVER SUBDOMAIN
+  // ---------------------------------------------------
+
+  if (
+    host.includes(driverDomain)
+  ) {
+
+    // abrir root driver
+    if (
+      url.pathname === "/"
+    ) {
+
+      url.pathname =
+        "/login-driver";
+
+      return NextResponse.redirect(
+        url
+      );
     }
   }
 
   return NextResponse.next();
 }
 
-// Este matcher es vital para que Vercel no ignore el subdominio
+// ---------------------------------------------------
+// MATCHER
+// ---------------------------------------------------
+
 export const config = {
+
   matcher: [
-    /*
-     * Captura todas las rutas excepto archivos de sistema y api
-     */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
-  ],
+
+    "/((?!api|_next/static|_next/image|favicon.ico).*)"
+  ]
 };

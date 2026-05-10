@@ -6,7 +6,14 @@ import { auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { loadStripe } from "@stripe/stripe-js";
-import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
+import {
+  Elements,
+  useStripe,
+  useElements,
+  CardNumberElement,
+  CardExpiryElement,
+  CardCvcElement
+} from "@stripe/react-stripe-js";
 import { update } from "firebase/database";
 
 import {
@@ -55,6 +62,8 @@ const [lngDestino, setLngDestino] = useState(0);
  const [telefono, setTelefono] = useState("");
 const [paymentMethodId, setPaymentMethodId] = useState<string | null>(null);
 const [cardGuardada, setCardGuardada] = useState(false);
+const [zipCode, setZipCode] =
+  useState("");
 const stripe = useStripe();
 const elements = useElements();
  const { user, loading } = useAuth();
@@ -1082,25 +1091,76 @@ return (
       }}
     >
       <h3 style={{ textAlign: "center" }}>💳 Enter Card</h3>
+<div style={cardBox}>
+  <label style={cardLabel}>Card Number</label>
 
-      <div
-        style={{
-          padding: 14,
-          border: "1px solid #ccc",
-          borderRadius: 8
-        }}
-      >
-        <CardElement
-          options={{
-            style: {
-              base: {
-                fontSize: "20px",
-                letterSpacing: "2px"
-              }
-            }
-          }}
-        />
-      </div>
+  <CardNumberElement
+    options={{
+      style: {
+        base: {
+          fontSize: "18px",
+          color: "#000"
+        }
+      }
+    }}
+  />
+</div>
+
+<div style={{ display: "flex", gap: 10 }}>
+
+  <div style={{ ...cardBox, flex: 1 }}>
+    <label style={cardLabel}>Expiration</label>
+
+    <CardExpiryElement
+      options={{
+        style: {
+          base: {
+            fontSize: "18px",
+            color: "#000"
+          }
+        }
+      }}
+    />
+  </div>
+
+  <div style={{ ...cardBox, flex: 1 }}>
+    <label style={cardLabel}>CVC</label>
+
+    <CardCvcElement
+      options={{
+        style: {
+          base: {
+            fontSize: "18px",
+            color: "#000"
+          }
+        }
+      }}
+    />
+  </div>
+
+</div>
+
+<div style={cardBox}>
+  <label style={cardLabel}>ZIP Code</label>
+
+  <input
+    value={zipCode}
+    onChange={(e) =>
+      setZipCode(e.target.value)
+    }
+
+    placeholder="89109"
+
+    style={{
+      width: "100%",
+      border: "none",
+      outline: "none",
+      fontSize: 18,
+      background: "transparent"
+    }}
+  />
+</div>
+      
 
       <button
   onClick={async () => {
@@ -1109,17 +1169,45 @@ return (
       return;
     }
 
-    const card = elements.getElement(CardElement);
+   const cardNumber =
+  elements.getElement(
+    CardNumberElement
+  );
 
-    if (!card) {
-      alert("Ingrese la tarjeta");
-      return;
+if (!cardNumber) {
+
+  alert(
+    "Ingrese la tarjeta"
+  );
+
+  return;
+}
+
+const {
+  error,
+  paymentMethod
+} =
+  await stripe.createPaymentMethod({
+
+    type: "card",
+
+    card: cardNumber,
+
+    billing_details: {
+
+      name: nombre,
+
+      phone: telefono,
+
+      email,
+
+      address: {
+
+        postal_code:
+          zipCode
+      }
     }
-
-    const { error, paymentMethod } = await stripe.createPaymentMethod({
-      type: "card",
-      card
-    });
+  });
 
     if (error) {
       alert(error.message);
@@ -1229,5 +1317,28 @@ const inputConfig = {
   border: "1px solid #333",
   background: "#1e1e1e",
   color: "#fff"
+};
+const cardBox = {
+
+  padding: 14,
+
+  border: "1px solid #ccc",
+
+  borderRadius: 10,
+
+  background: "#fff"
+};
+
+const cardLabel = {
+
+  display: "block",
+
+  fontSize: 13,
+
+  marginBottom: 8,
+
+  color: "#555",
+
+  fontWeight: "bold"
 };
 // fix permissions.
