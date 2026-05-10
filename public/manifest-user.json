@@ -1,38 +1,26 @@
 {
-  "id": "app-usuario-final",
-
+  "id": "private-rides-user-v1",
   "name": "Private Rides",
-
   "short_name": "Rides",
-
+  "description": "Premium Private Transportation Las Vegas",
   "start_url": "/",
-
   "scope": "/",
-
   "display": "standalone",
-
-  "background_color": "#000000",
-
-  "theme_color": "#000000",
-
+  "background_color": "#FFFFFF",
+  "theme_color": "#FFFFFF",
   "orientation": "portrait",
-
   "icons": [
-
     {
-      "src": "/icon.png",
-
+      "src": "/icon.png?v=1",
       "sizes": "192x192",
-
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
-
     {
-      "src": "/icon.png",
-
+      "src": "/icon.png?v=1",
       "sizes": "512x512",
-
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
