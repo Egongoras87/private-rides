@@ -8,7 +8,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 // 🔥 CONSTANTES DE TARIFA (Deben ser iguales a las de tu frontend)
 const BASE_FARE = 8;
-const PRICE_PER_MILE = 2.0;
+const PRICE_PER_MILE = 2.5;
 const MIN_FARE = 12;
 
 export async function POST(req: Request) {
@@ -33,38 +33,44 @@ export async function POST(req: Request) {
     const precioFinal = Math.max(precioCalculado, MIN_FARE);
     const precioFinalFijo = parseFloat(precioFinal.toFixed(2));
 
-    let paymentIntentId: string | null = null;
+   let paymentIntentId: string | null = null;
+let clientSecret: string | null = null;
 
-    // 💳 PROCESAR PAGO SOLO SI ES STRIPE
-    if (metodoPago === "stripe") {
-      if (!paymentMethodId) {
-        return NextResponse.json(
-          { error: "paymentMethodId requerido" },
-          { status: 400 }
-        );
+if (metodoPago === "stripe") {
+
+  if (!paymentMethodId) {
+    return NextResponse.json(
+      { error: "paymentMethodId requerido" },
+      { status: 400 }
+    );
+  }
+
+  if (!distancia || distancia <= 0) {
+    return NextResponse.json(
+      { error: "Distancia inválida para calcular precio" },
+      { status: 400 }
+    );
+  }
+
+  const paymentIntent =
+    await stripe.paymentIntents.create({
+
+      amount: Math.round(precioFinalFijo * 100),
+
+      currency: "usd",
+
+      payment_method: paymentMethodId,
+
+      automatic_payment_methods: {
+        enabled: true
       }
+    });
 
-      // Validamos que exista una distancia para calcular el cobro
-      if (!distancia || distancia <= 0) {
-        return NextResponse.json(
-          { error: "Distancia inválida para calcular precio" },
-          { status: 400 }
-        );
-      }
+  paymentIntentId = paymentIntent.id;
 
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(precioFinalFijo * 100), // Usamos el precio calculado en el servidor
-        currency: "usd",
-        payment_method: paymentMethodId,
-        confirm: true,
-        automatic_payment_methods: {
-          enabled: true,
-          allow_redirects: "never"
-        }
-      });
-
-      paymentIntentId = paymentIntent.id;
-    }
+  clientSecret =
+    paymentIntent.client_secret;
+}
 
     // 🔥 CREAR VIAJE (Estructura original mantenida)
     const id = Date.now().toString();
@@ -74,12 +80,17 @@ export async function POST(req: Request) {
       precio: precioFinalFijo, // 👈 SOBRESCRIBIMOS con el precio real del servidor
       id,
       userId: decoded.uid,
-      estado: "Pendiente",
+      estado:
+  metodoPago === "stripe"
+    ? "Procesando pago"
+    : "Pendiente",
       timestamp: Date.now(),
       
       // 🔥 ESTADO DE PAGO REAL
-      pagado: metodoPago === "stripe",
-      estadoPago: metodoPago === "stripe" ? "pagado" : "pendiente",
+     pagado: false,
+estadoPago: metodoPago === "stripe"
+  ? "procesando"
+  : "pendiente",
       paymentIntentId,
       
       // 🔥 NUEVO (OBLIGATORIO)
@@ -87,10 +98,11 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({
-      ok: true,
-      id,
-      paymentIntentId
-    });
+  ok: true,
+  id,
+  paymentIntentId,
+  clientSecret
+});
 
   } catch (err: any) {
     console.error("❌ ERROR CREATE VIAJE:", err);

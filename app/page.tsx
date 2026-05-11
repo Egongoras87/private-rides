@@ -26,8 +26,9 @@ import {
 
 import { googleMapsConfig } from "@/lib/googleMaps";
 
-const stripePromise = loadStripe("pk_test_51TSmPACMPktsmWMArlXTC4cnMCo7kSs93TdVklce4NmrIJkTdCEGfZsgbMCtvt1gFCnGPUDavnr8sTPpaGZtOBky00H4rQMTKl");
-// ✅ SOLUCIÓN TYPE
+const stripePromise = loadStripe(
+  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
+);
 declare global {
   interface Window {
     google: any;
@@ -76,7 +77,7 @@ const [lngOrigen, setLngOrigen] = useState(0);
   const [driverUbicacion, setDriverUbicacion] =
     useState<{ lat: number; lng: number } | null>(null);
     const BASE_FARE = 8;        // tarifa base
-const PRICE_PER_MILE = 2.0; // por milla
+const PRICE_PER_MILE = 2.5; // por milla
 
 const MIN_FARE = 12;        // mínimo
 
@@ -366,24 +367,87 @@ const reservar = async () => {
         fecha: fechaISO,
         esProgramado,
         metodoPago,
-        pagado: metodoPago === "stripe",
-        estadoPago: metodoPago === "stripe" ? "pagado" : "pendiente",
+       
         paymentMethodId: metodoPago === "stripe" ? paymentMethodId : null
       })
     });
 
-    const data = await res.json();
+  const data = await res.json();
 
-    if (!res.ok) {
-      alert(data.error || "Error creando viaje");
-      setLoadingPago(false);
-      return;
+if (!res.ok) {
+
+  alert(data.error || "Error creando viaje");
+
+  setLoadingPago(false);
+
+  return;
+}
+
+// ✅ ID DEL VIAJE
+const viajeId = data.id;
+
+// 💳 SOLO SI ES TARJETA
+if (metodoPago === "stripe") {
+
+  if (!stripe) {
+
+    alert("Stripe aún no está listo");
+
+    setLoadingPago(false);
+
+    return;
+  }
+
+  const { error, paymentIntent } =
+    await stripe.confirmCardPayment(
+      data.clientSecret,
+      {
+        payment_method: paymentMethodId!
+      }
+    );
+
+  if (error) {
+
+    console.error(error);
+
+    alert(error.message);
+
+    setLoadingPago(false);
+
+    return;
+  }
+   // ✅ ACTUALIZAR FIREBASE
+  await update(
+    ref(db, "viajes/" + viajeId),
+    {
+      pagado: true,
+      estadoPago: "pagado",
+      paymentIntentId: paymentIntent.id
     }
+  );
 
-    // 🔥 ID SOLO VIENE DEL BACKEND
-    const viajeId = data.id;
+  if (!paymentIntent) {
 
-    // 🔥 LOCAL STORAGE
+    alert("No se pudo procesar el pago");
+
+    setLoadingPago(false);
+
+    return;
+  }
+
+  if (paymentIntent.status !== "succeeded") {
+
+    alert("Pago no completado");
+
+    setLoadingPago(false);
+
+    return;
+  }
+
+ 
+}
+  
+       // 🔥 LOCAL STORAGE
     localStorage.setItem("viajeId", viajeId);
     localStorage.setItem(
       "viajeData",
