@@ -1,8 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { auth } from "@/lib/firebase";
-
+import {
+  auth,
+  db
+} from "@/lib/firebase";
+import {
+  ref,
+  get,
+  update
+} from "firebase/database";
 import {
   RecaptchaVerifier,
   signInWithPhoneNumber,
@@ -88,25 +95,49 @@ export default function LoginUser() {
   // ---------------------------------------------------
   // AUTO LOGIN
   // ---------------------------------------------------
+useEffect(() => {
 
-  useEffect(() => {
+  const unsub =
+    onAuthStateChanged(
+      auth,
+      async (user) => {
 
-    const unsub =
-      onAuthStateChanged(
-        auth,
-        (user) => {
+        if (!user) return;
 
-          if (user) {
+        // 🔥 VERIFICAR SI ES DRIVER
+        const driverSnap =
+          await get(
+            ref(
+              db,
+              "drivers/" + user.uid
+            )
+          );
 
-            router.replace("/");
-          }
+        const driverData =
+          driverSnap.val();
+
+        // 🚗 SI ES DRIVER
+        if (
+          driverData?.role ===
+          "driver"
+        ) {
+
+          router.replace(
+            "/driver"
+          );
+
+          return;
         }
-      );
 
-    return () => unsub();
+        // 👤 USER NORMAL
+        router.replace("/");
 
-  }, [router]);
+      }
+    );
 
+  return () => unsub();
+
+}, [router]);
   // ---------------------------------------------------
   // ENVIAR SMS
   // ---------------------------------------------------
@@ -226,42 +257,62 @@ export default function LoginUser() {
   // ---------------------------------------------------
 
   const verificarCodigo =
-    async () => {
+  async () => {
 
-      if (
-        !codigo ||
-        !confirm
-      ) {
+    if (
+      !codigo ||
+      !confirm
+    ) {
 
-        alert(
-          "Enter code"
-        );
+      alert(
+        "Enter code"
+      );
 
-        return;
-      }
+      return;
+    }
 
-      setLoading(true);
+    setLoading(true);
 
-      try {
+    try {
 
+      const result =
         await confirm.confirm(
           codigo
         );
 
-      } catch (err) {
+      const user =
+        result.user;
 
-        console.error(err);
+      // 👤 SAVE USER ROLE
+      await update(
+        ref(
+          db,
+          "usuarios/" + user.uid
+        ),
+        {
+          uid: user.uid,
+          telefono:
+            user.phoneNumber,
+          role: "user",
+          lastSeen: Date.now()
+        }
+      );
 
-        alert(
-          "Invalid code"
-        );
+      router.replace("/");
 
-      } finally {
+    } catch (err) {
 
-        setLoading(false);
-      }
-    };
+      console.error(err);
 
+      alert(
+        "Invalid code"
+      );
+
+    } finally {
+
+      setLoading(false);
+    }
+  };
   // ---------------------------------------------------
   // BUTTON FX
   // ---------------------------------------------------

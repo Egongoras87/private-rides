@@ -18,7 +18,8 @@ import { googleMapsConfig } from "@/lib/googleMaps";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useEffect, useState, useCallback, useRef } from "react";
-
+import { useAuth }
+from "@/components/AuthProvider";
 
 // 🔥 ETA
 const calcularETA = (o: any, d: any) =>
@@ -68,7 +69,7 @@ export default function DriverPage() {
   const [viajes, setViajes] = useState<any[]>([]);
   const [etas, setEtas] = useState<any>({});
   const { isLoaded } = useJsApiLoader(googleMapsConfig);
-
+const { user, loading } = useAuth();
 const ultimoViajeNotificadoRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null); // Para poder detener el sonido después
 const [sonidoActivo, setSonidoActivo] = useState(() => {
@@ -78,73 +79,111 @@ const [sonidoActivo, setSonidoActivo] = useState(() => {
   return true;
 });
  const [activo, setActivo] = useState(true);
+ const router = useRouter();
 
 useEffect(() => {
+
   let watchId: number | null = null;
 
-  const unsub = onAuthStateChanged(auth, (user) => {
-    if (!user || !activo) return;
+  if (!user || !activo) return;
 
-    if (!navigator.geolocation) return;
+  if (!navigator.geolocation) return;
 
-    watchId = navigator.geolocation.watchPosition((pos) => {
-      update(ref(db, "drivers/" + user.uid), {
-        lat: pos.coords.latitude,
-        lng: pos.coords.longitude,
-        lastSeen: Date.now(),
-        online: true
-      });
-    });
-  });
+  watchId =
+    navigator.geolocation.watchPosition(
+      (pos) => {
+
+        update(
+          ref(db, "drivers/" + user.uid),
+          {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            lastSeen: Date.now(),
+            online: true
+          }
+        );
+      }
+    );
 
   return () => {
-    unsub();
 
     if (watchId !== null) {
-      navigator.geolocation.clearWatch(watchId);
+
+      navigator.geolocation.clearWatch(
+        watchId
+      );
     }
   };
-}, [activo]);
+
+}, [user, activo]);
 // 🔐 AUTH
  useEffect(() => {
-  let off: any = null;
 
-  const unsub = onAuthStateChanged(auth, async (user) => {
-    
-    if (!user) {
-      window.location.href = "/login?redirect=/driver";
-      return;
-    }
+  if (loading) return;
 
-    const driverRef = ref(db, "drivers/" + user.uid);
+  if (!user) {
 
-    off = onValue(driverRef, async (snap) => {
-      const data = snap.val();
+    router.replace(
+      "/login?redirect=/driver"
+    );
 
-      if (!data?.viajeActivo) return;
+    return;
+  }
 
-      const viajeRef = ref(db, "viajes/" + data.viajeActivo);
-      const snapViaje = await get(viajeRef);
-      const v = snapViaje.val();
+  // 🔥 usuario autenticado aquí
 
-      if (!v) return;
+}, [user, loading, router]);
 
-      if (v.estado === "En camino" || v.estado === "En viaje") {
-        window.location.href = `/driver-tracking?id=${data.viajeActivo}`;
-      } else {
-        await update(ref(db, "drivers/" + user.uid), {
-          viajeActivo: null
-        });
+// 🔥 FIREBASE RECONNECT
+useEffect(() => {
+
+  const connectedRef =
+    ref(db, ".info/connected");
+
+  const unsub =
+    onValue(connectedRef, (snap) => {
+
+      if (snap.val() === true) {
+
+        console.log(
+          "🔥 Firebase reconectado"
+        );
       }
     });
-  });
+
+  return () => unsub();
+
+}, []);
+// 📱 APP FOREGROUND
+useEffect(() => {
+
+  const handleVisibility = () => {
+
+    if (
+      document.visibilityState ===
+      "visible"
+    ) {
+
+      console.log(
+        "📱 App volvió al foreground"
+      );
+    }
+  };
+
+  document.addEventListener(
+    "visibilitychange",
+    handleVisibility
+  );
 
   return () => {
-    unsub();
-    if (off) off();
-  };
-}, []);
 
+    document.removeEventListener(
+      "visibilitychange",
+      handleVisibility
+    );
+  };
+
+}, []);
 
 
 useEffect(() => {
@@ -152,26 +191,26 @@ useEffect(() => {
 }, [sonidoActivo]);
 
 useEffect(() => {
-  const unsub = onAuthStateChanged(auth, (user) => {   
-    if (!user) return;
 
-    const driverRef = ref(db, "drivers/" + user.uid);
+  if (!user) return;
 
-    // 🟢 ONLINE
-    update(driverRef, {
-  uid: user.uid,
-  lastSeen: Date.now()
-});
+  const driverRef =
+    ref(db, "drivers/" + user.uid);
 
-    // 🔴 OFFLINE automático
-    onDisconnect(driverRef).update({
-      online: false,
-      lastSeen: Date.now()
-    });
+  // 🟢 ONLINE
+  update(driverRef, {
+    uid: user.uid,
+    lastSeen: Date.now(),
+    online: true
   });
 
-  return () => unsub();
-}, []);
+  // 🔴 OFFLINE
+  onDisconnect(driverRef).update({
+    online: false,
+    lastSeen: Date.now()
+  });
+
+}, [user]);
 
 // ///////////////////////////////////////////////////////////////📡 VIAJES
 // ///////////////////////////////////////////////////////////////📡 VIAJES
@@ -535,7 +574,7 @@ const rechazar = async (v: any) => {
 };
 //////////////////////////////// ❌ CANCELAR VIAJE (YA TOMADO)///////////////////////////////////////////////////
 
-const router = useRouter();
+
 
 const cancelar = async (v: any) => {
   try {

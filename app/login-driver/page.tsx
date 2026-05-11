@@ -47,6 +47,8 @@ export default function Login() {
     };
   }, []);
 
+  
+
   const sendSMS = async () => {
     if (!phone || phone.length < 10) {
       alert("Ingresa un número válido de 10 dígitos");
@@ -89,12 +91,13 @@ export default function Login() {
       const driverRef = ref(db, `drivers/${user.uid}`);
       const snapshot = await get(driverRef);
 
-      const driverData = {
-        uid: user.uid,
-        telefono: user.phoneNumber,
-        lastSeen: Date.now(),
-        online: true,
-        activo: true,
+     const driverData = {
+  uid: user.uid,
+  telefono: user.phoneNumber,
+  role: "driver", // 🔥 NUEVO
+  lastSeen: Date.now(),
+  online: true,
+  activo: true,
         // Solo guardamos estos datos si es la primera vez (nuevo registro)
         ...(!snapshot.exists() && {
           nombre: "Nuevo Driver",
