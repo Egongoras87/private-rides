@@ -66,8 +66,11 @@ const calcularETA = (o: any, d: any) =>
 };
  
 export default function DriverPage() {
+  const restoringRef = useRef(false);
   const [viajes, setViajes] = useState<any[]>([]);
   const [etas, setEtas] = useState<any>({});
+  const [distanciasPickup, setDistanciasPickup] =
+  useState<any>({});
   const { isLoaded } = useJsApiLoader(googleMapsConfig);
 const { user, loading } = useAuth();
 const ultimoViajeNotificadoRef = useRef<string | null>(null);
@@ -134,6 +137,106 @@ useEffect(() => {
 
 }, [user, loading, router]);
 
+useEffect(() => {
+
+  if (!user) return;
+
+  // evitar doble ejecución
+  if (restoringRef.current) return;
+
+  restoringRef.current = true;
+
+  const restoreRide = async () => {
+
+    try {
+
+      // 🔥 buscar driver
+      const driverSnap = await get(
+        ref(db, "drivers/" + user.uid)
+      );
+
+      const driverData = driverSnap.val();
+
+      // 🔥 no hay viaje activo
+      if (!driverData?.viajeActivo) {
+
+        restoringRef.current = false;
+
+        return;
+      }
+
+      const viajeId =
+        driverData.viajeActivo;
+
+      // 🔥 buscar viaje
+      const viajeSnap = await get(
+        ref(db, "viajes/" + viajeId)
+      );
+
+      // 🔥 viaje no existe
+      if (!viajeSnap.exists()) {
+
+        await update(
+          ref(db, "drivers/" + user.uid),
+          {
+            viajeActivo: null
+          }
+        );
+
+        restoringRef.current = false;
+
+        return;
+      }
+
+      const viaje = viajeSnap.val();
+
+      // 🔥 estados que deben restaurar tracking
+      const estadosTracking = [
+
+        "Asignado",
+
+        "En camino",
+
+        "En viaje"
+
+      ];
+
+      // 🔥 restaurar tracking
+      if (
+        estadosTracking.includes(
+          viaje.estado
+        )
+      ) {
+
+        window.location.replace(
+          `/driver-tracking?id=${viajeId}`
+        );
+
+        return;
+      }
+
+      // 🔥 limpiar basura
+      await update(
+        ref(db, "drivers/" + user.uid),
+        {
+          viajeActivo: null
+        }
+      );
+
+    } catch (err) {
+
+      console.error(
+        "RESTORE ERROR",
+        err
+      );
+    }
+
+    restoringRef.current = false;
+  };
+
+  restoreRide();
+
+}, [user]);
 // 🔥 FIREBASE RECONNECT
 useEffect(() => {
 
@@ -278,12 +381,16 @@ useEffect(() => {
   return () => unsub();
   
 }, [sonidoActivo, etas]); // Añadí dependencias necesarias
-  useEffect(() => {
+ useEffect(() => {
+
   if (!isLoaded) return;
+
   if (!navigator.geolocation) return;
+
   if (viajes.length === 0) return;
 
   navigator.geolocation.getCurrentPosition(async (pos) => {
+
     const driverPos = {
       lat: pos.coords.latitude,
       lng: pos.coords.longitude
@@ -291,40 +398,106 @@ useEffect(() => {
 
     const nuevos: any = {};
 
+    const nuevasDistancias: any = {};
+
     await Promise.all(
-  viajes.map(async (v) => {
-    if (!v.origenLat || !v.origenLng) return;
 
-    const origen = {
-      lat: Number(v.origenLat),
-      lng: Number(v.origenLng)
-    };
+      viajes.map(async (v) => {
 
-    const eta = await calcularETA(driverPos, origen);
-    nuevos[v.id] = eta;
-  })
-);
+        if (!v.origenLat || !v.origenLng)
+          return;
 
+        const origen = {
+          lat: Number(v.origenLat),
+          lng: Number(v.origenLng)
+        };
+
+        // 🔥 ETA
+        const eta =
+          await calcularETA(
+            driverPos,
+            origen
+          );
+
+        nuevos[v.id] = eta;
+
+        // 🔥 DISTANCIA
+        const dist =
+          calcularDistancia(
+            driverPos,
+            origen
+          );
+
+        nuevasDistancias[v.id] =
+          dist;
+      })
+    );
+
+    // 🔥 guardar ETAS
     setEtas(nuevos);
-    // 🔥 ORDENAR POR TIEMPO + DISTANCIA
-setViajes((prev) => {
-  return [...prev].sort((a, b) => {
-    const ahora = Date.now();
 
-    const tiempoA = Math.abs((a.fecha || 0) - ahora);
-    const tiempoB = Math.abs((b.fecha || 0) - ahora);
+    // 🔥 guardar DISTANCIAS
+    setDistanciasPickup(
+      nuevasDistancias
+    );
 
-    const etaA = nuevos[a.id] || 999;
-    const etaB = nuevos[b.id] || 999;
+    // 🔥 ordenar viajes
+    setViajes((prev) => {
 
-    // 🔥 PESOS (puedes ajustar)
-    const scoreA = tiempoA * 0.001 + etaA * 60;
-    const scoreB = tiempoB * 0.001 + etaB * 60;
+      return [...prev].sort(
+        (a, b) => {
 
-    return scoreA - scoreB;
+          const ahora =
+            Date.now();
+
+          const tiempoA =
+            Math.abs(
+              (a.fecha || 0) -
+              ahora
+            );
+
+          const tiempoB =
+            Math.abs(
+              (b.fecha || 0) -
+              ahora
+            );
+
+          const etaA =
+            nuevos[a.id] || 999;
+
+          const etaB =
+            nuevos[b.id] || 999;
+
+          const distA =
+            nuevasDistancias[a.id] || 999;
+
+          const distB =
+            nuevasDistancias[b.id] || 999;
+
+          // 🔥 score inteligente
+          const scoreA =
+
+            tiempoA * 0.001 +
+
+            etaA * 60 +
+
+            distA * 10;
+
+          const scoreB =
+
+            tiempoB * 0.001 +
+
+            etaB * 60 +
+
+            distB * 10;
+
+          return scoreA - scoreB;
+        }
+      );
+    });
+
   });
-});
-  });
+
 }, [viajes, isLoaded]);
 
   ////////////////////////////////// 🚗 ACEPTAR RIDE/////////////////////////////////////////////////////////////////////////////
@@ -745,20 +918,7 @@ useEffect(() => {
     >
       {sonidoActivo ? "🔊" : "🔇"}
     </button>
-    <button
-  onClick={() => (window.location.href = "/driver/profile")}
-  style={{
-    background: "#333",
-    border: "none",
-    padding: "8px 12px",
-    borderRadius: 8,
-    color: "#fff",
-    cursor: "pointer"
-  }}
->
-  👤 Perfil
-</button>
-
+   
 <button
   onClick={async () => {
     const uid = auth.currentUser?.uid;
@@ -849,7 +1009,21 @@ useEffect(() => {
 
         {etas[v.id] && (
           <>
-            <p>⏱ Pickup: {etas[v.id].toFixed(1)} min</p>
+           <p
+  style={{
+    color: "#00d4ff",
+    fontWeight: "bold"
+  }}
+>
+  🚗 Pickup:
+  {" "}
+  {etas[v.id]?.toFixed(1)}
+  min
+  •
+  {" "}
+  {distanciasPickup[v.id]?.toFixed(1)}
+  mi away
+</p>
           </>
         )}
 

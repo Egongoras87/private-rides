@@ -24,6 +24,8 @@ export default function UserTrackingPage() {
   const [viajeCancelado, setViajeCancelado] = useState(false);
   const [viajeFinalizado, setViajeFinalizado] = useState(false);
   const mapRef = useRef<any>(null);
+  const refundCheckRef =
+  useRef<any>(null);
   const lastCameraMoveRef = useRef(0);
   const [driverInfo, setDriverInfo] = useState<any>(null);
   const [directionsResponse, setDirectionsResponse] = useState<google.maps.DirectionsResult | null>(null);
@@ -133,11 +135,152 @@ useEffect(() => {
   // Ref para no saturar la API de Google si ya calculamos el ETA local recientemente
   let lastEtaRequest = 0;
 
-  const unsubscribe = onValue(viajeRef, (snap) => {
+  const unsubscribe = onValue(
+  viajeRef,
+  async (snap) => {
     const d = snap.val();
     if (!d) return;
 
     setViajeData(d);
+// ===================================================
+// 🔥 AUTO REFUND SI NADIE ACEPTA
+// ===================================================
+
+if (
+  d.estado === "Pendiente" &&
+  d.metodoPago === "stripe" &&
+  d.paymentIntentId &&
+  !d.refundProcesado
+) {
+
+  // 🔒 evitar múltiples timers
+  if (!refundCheckRef.current) {
+
+    refundCheckRef.current =
+      setInterval(async () => {
+
+        const expirado =
+
+          Date.now() -
+          d.timestamp >
+
+          5 * 60 * 1000;
+
+        // ⏳ aún no expira
+        if (!expirado) return;
+
+        try {
+
+          console.log(
+            "💸 REEMBOLSO AUTOMÁTICO"
+          );
+
+          // ===================================================
+          // 💳 HACER REFUND
+          // ===================================================
+
+          const refundRes =
+            await fetch(
+              "/api/refund",
+              {
+                method: "POST",
+
+                headers: {
+                  "Content-Type":
+                    "application/json"
+                },
+
+                body: JSON.stringify({
+                  paymentIntentId:
+                    d.paymentIntentId
+                })
+              }
+            );
+
+          const refundData =
+            await refundRes.json();
+
+          // ❌ FALLÓ REFUND
+          if (!refundData.success) {
+
+            console.error(
+              "Refund failed"
+            );
+
+            return;
+          }
+
+          // ===================================================
+          // ❌ CANCELAR VIAJE
+          // ===================================================
+
+          await update(
+            ref(
+              db,
+              "viajes/" + d.id
+            ),
+            {
+              estado:
+                "Cancelado",
+
+              estadoPago:
+                "reembolsado",
+
+              pagado: false,
+
+              refundProcesado:
+                true,
+
+              canceladoAt:
+                Date.now()
+            }
+          );
+
+          // ===================================================
+          // 🧹 LIMPIEZA
+          // ===================================================
+
+          clearInterval(
+            refundCheckRef.current
+          );
+
+          refundCheckRef.current =
+            null;
+
+          localStorage.removeItem(
+            "viajeId"
+          );
+
+          localStorage.removeItem(
+            "viajeData"
+          );
+
+          // ===================================================
+          // 🔔 ALERTA
+          // ===================================================
+
+          alert(
+            "No drivers available.\nYour payment was refunded."
+          );
+
+          // ===================================================
+          // 🏠 HOME
+          // ===================================================
+
+          window.location.href =
+            "/";
+
+        } catch (err) {
+
+          console.error(
+            "AUTO REFUND ERROR:",
+            err
+          );
+        }
+
+      }, 15000); // revisar cada 15 segundos
+  }
+}
 
     // 1. Verificación de estados finales
     if (d.estado === "Finalizado") {
@@ -159,18 +302,6 @@ else if (d.estado === "En viaje") faseActual = "viaje";
     
     setFase(faseActual);
    // --- BLOQUE CORREGIDO PARA LA RUTA AL DESTINO ---
-if (faseActual === "viaje" && d.destinoLat && !d.remainingPath) {
-  const ds = new google.maps.DirectionsService();
-  ds.route({
-    origin: { lat: Number(d.driverLat), lng: Number(d.driverLng) },
-    destination: { lat: Number(d.destinoLat), lng: Number(d.destinoLng) },
-    travelMode: google.maps.TravelMode.DRIVING
-  }, (result: any, status: any) => { // Usamos any para evitar el conflicto de tipos
-    if (status === "OK") {
-      setDirectionsResponse(result);
-    }
-  });
-}
 
     // 3. NUEVO: Cálculo de ETA Local (Fallback)
 const ahora = Date.now();
@@ -221,7 +352,20 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
     }
   });
 
-  return () => unsubscribe();
+  return () => {
+
+  unsubscribe();
+
+  if (refundCheckRef.current) {
+
+    clearInterval(
+      refundCheckRef.current
+    );
+
+    refundCheckRef.current =
+      null;
+  }
+};
 }, [isLoaded]); // Quitamos 'fase' de las dependencias para evitar re-suscripciones innecesarias
 
   // --- LÓGICA DE CANCELACIÓN (Mantenida de tu código) ---
@@ -294,63 +438,126 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
     );
   }
 
-  return (
-    <div style={{ height: "100vh", position: "relative", background: "#111" }}>
-      <GoogleMap
-        onLoad={(map) => { mapRef.current = map; }}
-        mapContainerStyle={{ width: "100%", height: "100%" }}
-        center={pos || { lat: Number(viajeData?.origenLat || 36.1699), lng: Number(viajeData?.origenLng || -115.1398) }}
-        zoom={17}
-        options={{
-          disableDefaultUI: true,
-          zoomControl: false,
-          gestureHandling: "greedy",
-          mapId: "c7f305f9e66d61eb57ab057d" // Tu ID de mapa de lujo
-        }}
-      >
-        {/* Polilínea Gris: Lo que ya se recorrió */}
-        {completedPath.length > 0 && (
-          <Polyline path={completedPath} options={{ strokeColor: "#888", strokeOpacity: 0.5, strokeWeight: 3 }} />
-        )}
+ return (
+  <div
+    style={{
+      height: "100vh",
+      position: "relative",
+      background: "#111"
+    }}
+  >
 
-        {/* Polilínea Azul: La ruta exacta que ve el driver */}
-        {remainingPath.length > 0 && (
-          <Polyline path={remainingPath} options={{ strokeColor: "#1976FF", strokeOpacity: 0.9, strokeWeight: 5 }} />
-        )}
+    <GoogleMap
+      onLoad={(map) => {
+        mapRef.current = map;
+      }}
 
-        {/* Marcador Conductor (Círculo con Flecha) */}
-{pos && (
-  <Marker 
-    position={pos} 
-    icon={{
-      // Este path dibuja un círculo (M) y luego una flecha (L/Z) en el centro
-      path: "M 0, 0 m -10, 0 a 10,10 0 1,0 20,0 a 10,10 0 1,0 -20,0 M -4,3 L 0,-5 L 4,3 L 0,1 Z",
-      fillColor: "#1976FF",
-      fillOpacity: 1,
-      strokeColor: "#fff",
-      strokeWeight: 2,
-      scale: 2, // Ajusta el tamaño general aquí
-      rotation: viajeData?.heading || 0,
-      anchor: new window.google.maps.Point(0, 0), // Centra el icono en la coordenada
-    }} 
-  />
-)}
+      mapContainerStyle={{
+        width: "100%",
+        height: "100%"
+      }}
 
-        {/* Destino Final */}
-        {viajeData?.destinoLat && (
-          <Marker position={{ lat: Number(viajeData.destinoLat), lng: Number(viajeData.destinoLng) }} />
-        )}
-        {directionsResponse && (
-    <DirectionsRenderer 
-      directions={directionsResponse} 
-      options={{ 
-        preserveViewport: true, 
-        suppressMarkers: true, 
-        polylineOptions: { strokeColor: "#1976FF", strokeWeight: 5, strokeOpacity: 0.8 } 
-      }} 
-    />
-  )}
-</GoogleMap>
+      center={
+        pos || {
+          lat: Number(
+            viajeData?.origenLat || 36.1699
+          ),
+
+          lng: Number(
+            viajeData?.origenLng || -115.1398
+          )
+        }
+      }
+
+      zoom={17}
+
+      options={{
+        disableDefaultUI: true,
+        zoomControl: false,
+        gestureHandling: "greedy",
+        mapId: "c7f305f9e66d61eb57ab057d"
+      }}
+    >
+
+      {/* Ruta completada */}
+      {completedPath.length > 0 && (
+
+        <Polyline
+          path={completedPath}
+
+          options={{
+            strokeColor: "#888",
+            strokeOpacity: 0.5,
+            strokeWeight: 3
+          }}
+        />
+      )}
+
+      {/* Ruta restante */}
+      {remainingPath.length > 0 && (
+
+        <Polyline
+          path={remainingPath}
+
+          options={{
+            strokeColor: "#1976FF",
+            strokeOpacity: 0.9,
+            strokeWeight: 5
+          }}
+        />
+      )}
+
+      {/* Driver marker */}
+      {pos && (
+
+        <Marker
+          position={pos}
+
+          icon={{
+
+            path:
+              "M 0, 0 m -10, 0 a 10,10 0 1,0 20,0 a 10,10 0 1,0 -20,0 M -4,3 L 0,-5 L 4,3 L 0,1 Z",
+
+            fillColor: "#1976FF",
+
+            fillOpacity: 1,
+
+            strokeColor: "#fff",
+
+            strokeWeight: 2,
+
+            scale: 2,
+
+            rotation:
+              viajeData?.heading || 0,
+
+            anchor:
+              new window.google.maps.Point(
+                0,
+                0
+              )
+          }}
+        />
+      )}
+
+      {/* Destino */}
+      {viajeData?.destinoLat && (
+
+        <Marker
+          position={{
+            lat: Number(
+              viajeData.destinoLat
+            ),
+
+            lng: Number(
+              viajeData.destinoLng
+            )
+          }}
+        />
+      )}
+
+    </GoogleMap>
+
 
       {/* PANEL DE INFORMACIÓN */}
 <div style={{ position: "absolute", bottom: 0, width: "100%", background: "#fff", padding: "24px 20px", borderTopLeftRadius: 24, borderTopRightRadius: 24, boxShadow: "0 -5px 20px rgba(0,0,0,0.1)" }}>

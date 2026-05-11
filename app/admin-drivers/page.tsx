@@ -2,8 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { db, auth } from "@/lib/firebase";
-import { ref, onValue, update } from "firebase/database";
-import { onAuthStateChanged } from "firebase/auth";
+import {
+  ref,
+  onValue,
+  update,
+  get
+} from "firebase/database";
+import {
+  onAuthStateChanged,
+  signOut
+} from "firebase/auth";
 
 import {
   GoogleMap,
@@ -29,19 +37,52 @@ export default function AdminDrivers() {
         return;
       }
 
-      const admins = [
-        "7HVD6dUadPVv95Jx9BGBz25OKdY2",
-        "s9fR7ez8w0eFS7KPvv5kNA93Beh2"
-      ];
+      const checkAdmin = async () => {
 
-      if (!admins.includes(u.uid)) {
-        setUser(null);
-        setLoadingAuth(false);
-        return;
-      }
+  try {
 
-      setUser(u);
+    const adminSnap = await get(
+      ref(db, "admins/" + u.uid)
+    );
+
+    // ❌ no es admin
+    if (!adminSnap.exists()) {
+
+      setUser(null);
+
       setLoadingAuth(false);
+
+      return;
+    }
+
+    // ❌ admin desactivado
+    if (
+      adminSnap.val()?.active !== true
+    ) {
+
+      setUser(null);
+
+      setLoadingAuth(false);
+
+      return;
+    }
+
+    // ✅ admin válido
+    setUser(u);
+
+    setLoadingAuth(false);
+
+  } catch (err) {
+
+    console.error(err);
+
+    setUser(null);
+
+    setLoadingAuth(false);
+  }
+};
+
+checkAdmin();
     });
 
     return () => unsub();
@@ -116,6 +157,21 @@ export default function AdminDrivers() {
     e.currentTarget.style.boxShadow = "0 6px 0 #000";
   };
 
+  const logout = async () => {
+
+  try {
+
+    await signOut(auth);
+
+    window.location.href =
+      "/login-admin";
+
+  } catch (err) {
+
+    console.error(err);
+  }
+};
+
   // 🔐 BLOQUEO DE ACCESO
   if (loadingAuth) {
     return (
@@ -126,7 +182,8 @@ export default function AdminDrivers() {
   }
 
   if (!user) {
-    window.location.href = "/login-user?redirect=/admin-driver";
+    window.location.href =
+  "/login-admin";
     return null;
   }
 
@@ -161,23 +218,27 @@ export default function AdminDrivers() {
         <h2 style={{ margin: 0 }}>🚗 Admin Panel</h2>
 
         <button
-          onClick={() => (window.location.href = "/driver")}
-          style={{
-            background: "#007bff",
-            border: "none",
-            padding: "10px 14px",
-            borderRadius: 10,
-            color: "#fff",
-            fontWeight: "bold",
-            cursor: "pointer",
-            boxShadow: "0 5px 0 rgba(0,0,0,0.4)"
-          }}
-          onMouseDown={press}
-          onMouseUp={release}
-          onMouseLeave={release}
-        >
-          ← Driver
-        </button>
+  onClick={logout}
+
+  style={{
+    background: "#ff4444",
+    border: "none",
+    padding: "10px 16px",
+    borderRadius: 10,
+    color: "#fff",
+    fontWeight: "bold",
+    cursor: "pointer",
+    boxShadow: "0 5px 0 rgba(0,0,0,0.4)"
+  }}
+
+  onMouseDown={press}
+
+  onMouseUp={release}
+
+  onMouseLeave={release}
+>
+  🚪 Sign Out
+</button>
       </div>
 
       {/* MAPA */}
@@ -231,6 +292,32 @@ export default function AdminDrivers() {
           }}
         >
           <p><b>ID:</b> {d.id}</p>
+          <p>
+  <b>Nombre:</b>{" "}
+  {d.nombre || "N/A"}
+</p>
+
+<p>
+  <b>Teléfono:</b>{" "}
+  {d.telefono || "N/A"}
+</p>
+
+<p>
+  <b>Vehículo:</b>{" "}
+  {d.carro?.marca || "N/A"}
+  {" "}
+  {d.carro?.modelo || ""}
+</p>
+
+<p>
+  <b>Placa:</b>{" "}
+  {d.carro?.placa || "N/A"}
+</p>
+
+<p>
+  <b>Color:</b>{" "}
+  {d.carro?.color || "N/A"}
+</p>
 
           <p>
             <b>Estado:</b>{" "}

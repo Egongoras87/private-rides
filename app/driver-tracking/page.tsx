@@ -106,6 +106,15 @@ const [completedPath, setCompletedPath] =
   const [etaPickup, setEtaPickup] = useState(0);
 
   const [etaDestino, setEtaDestino] = useState(0);
+  const [
+  distanciaPickup,
+  setDistanciaPickup
+] = useState(0);
+
+const [
+  distanciaDestino,
+  setDistanciaDestino
+] = useState(0);
 
   const [loadingCancel, setLoadingCancel] = useState(false);
 
@@ -267,18 +276,41 @@ useEffect(() => {
     });
 
     // 3. Manejo de fin de viaje
-    if (d.estado === "Finalizado" || d.estado === "Cancelado") {
-      setViajeFinalizado(true);
+    if (
+  d.estado === "Finalizado" ||
+  d.estado === "Cancelado"
+) {
 
-      if (watchRef.current) {
-        navigator.geolocation.clearWatch(watchRef.current);
-      }
+  setViajeFinalizado(true);
 
-      if (d.estado === "Cancelado") {
-        alert("Viaje cancelado");
-        window.location.replace("/driver");
+  if (watchRef.current) {
+
+    navigator.geolocation.clearWatch(
+      watchRef.current
+    );
+  }
+
+  const uid = auth.currentUser?.uid;
+
+  if (uid) {
+
+    update(
+      ref(db, "drivers/" + uid),
+      {
+        viajeActivo: null
       }
-    }
+    ).catch(console.error);
+  }
+
+  if (d.estado === "Cancelado") {
+
+    alert("Viaje cancelado");
+
+    window.location.replace(
+      "/driver"
+    );
+  }
+}
   });
 
   return () => unsub();
@@ -362,9 +394,28 @@ const solicitarRuta = useCallback((
       // --- CÁLCULO DE ETA (Siempre basado en la principal) ---
       const durationValue = leg.duration_in_traffic?.value || leg.duration?.value || 0;
       const durationText = leg.duration_in_traffic?.text || leg.duration?.text || "Arriving...";
+      const distanceValue =
+       leg.distance?.value || 0;
+     if (fase === "pickup") {
 
-      if (fase === "pickup") setEtaPickup(durationValue);
-      else setEtaDestino(durationValue);
+  setEtaPickup(
+    durationValue
+  );
+
+  setDistanciaPickup(
+    distanceValue
+  );
+
+} else {
+
+  setEtaDestino(
+    durationValue
+  );
+
+  setDistanciaDestino(
+    distanceValue
+  );
+}
 
       // 🔥 Escribir ETA en Firebase para el usuario
       if (viajeData?.id) {
@@ -769,9 +820,22 @@ setCompletedPath([]);
         }
       );
 
-      if (res.ok) {
-        window.location.href = "/driver";
+     if (res.ok) {
+
+  const uid = auth.currentUser?.uid;
+
+  if (uid) {
+
+    await update(
+      ref(db, "drivers/" + uid),
+      {
+        viajeActivo: null
       }
+    );
+  }
+
+  window.location.href = "/driver";
+}
 
     } catch (err) {
       console.error(err);
@@ -813,9 +877,22 @@ setCompletedPath([]);
         }
       );
 
-      if (res.ok) {
-        window.location.replace("/driver");
+     if (res.ok) {
+
+  const uid = auth.currentUser?.uid;
+
+  if (uid) {
+
+    await update(
+      ref(db, "drivers/" + uid),
+      {
+        viajeActivo: null
       }
+    );
+  }
+
+  window.location.replace("/driver");
+}
 
     } finally {
       setLoadingCancel(false);
@@ -833,6 +910,19 @@ setCompletedPath([]);
       : etaDestino;
 
   }, [fase, etaPickup, etaDestino]);
+  const distanciaActual = useMemo(() => {
+
+  return fase === "pickup"
+
+    ? distanciaPickup
+
+    : distanciaDestino;
+
+}, [
+  fase,
+  distanciaPickup,
+  distanciaDestino
+]);
 
   // ---------------------------------------------------
   // LOAD
@@ -986,9 +1076,50 @@ setCompletedPath([]);
             <h2 style={{ fontSize: "22px", margin: "2px 0", fontWeight: "bold", textTransform: "capitalize" }}>
               {viajeData?.nombre || "Loading..." }
             </h2>
-            <div style={{ fontSize: "15px", color: "#1976FF", fontWeight: "600" }}>
-              ⏱️ {etaActual > 0 ? `${Math.ceil(etaActual / 60)} min away` : "Calculating ETA..."}
-            </div>
+           <div
+  style={{
+    fontSize: "15px",
+    color: "#1976FF",
+    fontWeight: "600",
+    display: "flex",
+    alignItems: "center",
+    gap: 8
+  }}
+>
+
+  <span>
+    ⏱️
+    {" "}
+    {etaActual > 0
+
+      ? `${Math.ceil(
+          etaActual / 60
+        )} min`
+
+      : "Calculating..."}
+  </span>
+
+  <span
+    style={{
+      opacity: 0.7
+    }}
+  >
+    •
+  </span>
+
+  <span>
+    🚗
+    {" "}
+
+    {(
+      distanciaActual /
+      1609.34
+    ).toFixed(1)}
+
+    {" "}mi
+  </span>
+
+</div>
           </div>
           
           {viajeData?.telefono && (

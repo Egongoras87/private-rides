@@ -1,8 +1,0 @@
-{
-  "crons": [
-    {
-      "path": "/api/expire-unaccepted-rides",
-      "schedule": "*/1 * * * *"
-    }
-  ]
-}

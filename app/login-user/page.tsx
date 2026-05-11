@@ -18,6 +18,8 @@ import {
 } from "firebase/auth";
 
 import { useRouter } from "next/navigation";
+import { remove } from "firebase/database";
+
 
 export default function LoginUser() {
 
@@ -285,20 +287,24 @@ useEffect(() => {
 
       // 👤 SAVE USER ROLE
       await update(
-        ref(
-          db,
-          "usuarios/" + user.uid
-        ),
-        {
-          uid: user.uid,
-          telefono:
-            user.phoneNumber,
-          role: "user",
-          lastSeen: Date.now()
-        }
-      );
+  ref(
+    db,
+    "usuarios/" + user.uid
+  ),
+  {
+    uid: user.uid,
+    telefono: user.phoneNumber,
+    role: "user",
+    lastSeen: Date.now()
+  }
+);
 
-      router.replace("/");
+// 🔥 ELIMINAR DRIVER
+await remove(
+  ref(db, "drivers/" + user.uid)
+);
+
+router.replace("/");
 
     } catch (err) {
 

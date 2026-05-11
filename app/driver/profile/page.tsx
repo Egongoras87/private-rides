@@ -92,16 +92,23 @@ export default function DriverProfile() {
           >
             {/* HEADER */}
             <header style={header}>
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => (window.location.href = "/driver")}
-                style={backBtn}
-              >
-                ←
-              </motion.button>
-              <h2 style={title}>Editar Perfil</h2>
-              <div style={avatar}>{perfil?.nombre?.charAt(0).toUpperCase()}</div>
+            <motion.button
+  whileHover={{ scale: 1.1 }}
+  whileTap={{ scale: 0.9 }}
+  onClick={() => (window.location.href = "/driver")}
+  style={backBtn}
+>
+  <span
+    style={{
+      fontSize: 40,
+      fontWeight: "bold",
+      lineHeight: 1
+    }}
+  >
+    ←
+  </span>
+</motion.button>
+             
             </header>
 
             <div style={content}>

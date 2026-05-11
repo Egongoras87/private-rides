@@ -16,6 +16,7 @@ import {
 } from "@stripe/react-stripe-js";
 import { update } from "firebase/database";
 
+
 import {
   GoogleMap,
   DirectionsRenderer,
@@ -97,74 +98,91 @@ const MIN_FARE = 12;        // mínimo
   };
  
 useEffect(() => {
-  if (user) {
-    // Referencia a la ubicación del perfil usando el UID del usuario logueado
-    const userProfileRef = ref(db, `usuarios/${user.uid}/perfil`);
-    
-    // onValue escucha cambios en tiempo real
-    const unsub = onValue(userProfileRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        // Rellenamos los estados con la info de la base de datos
-        if (data.nombre) setNombre(data.nombre);
-        if (data.telefono) setTelefono(data.telefono);
-      }
-    });
 
-    return () => unsub(); // Limpiamos la conexión al desmontar
-  }
-}, [user]); // Se ejecuta cada vez que el estado del usuario cambia
-useEffect(() => {
+  if (!user) return;
 
-  if (loading) {
-    return;
-  }
+  // 🔥 PERFIL USUARIO
+  const userProfileRef =
+    ref(
+      db,
+      `usuarios/${user.uid}/perfil`
+    );
 
-  const verificarRol =
-    async () => {
+  // 🔥 ESCUCHAR CAMBIOS
+  const unsub =
+    onValue(
+      userProfileRef,
+      (snapshot) => {
 
-      try {
+        const data =
+          snapshot.val();
 
-        // ❌ NO LOGIN
-        if (!user) {
+        if (!data) return;
 
-          router.push(
-            "/login-user"
-          );
-
-          return;
+        // 👤 DATOS USUARIO
+        if (data.nombre) {
+          setNombre(data.nombre);
         }
 
-        // 🔥 VERIFICAR DRIVER
-        const driverSnap =
-          await get(
-
-            ref(
-              db,
-              "drivers/" +
-                user.uid
-            )
+        if (data.telefono) {
+          setTelefono(
+            data.telefono
           );
+        }
 
-        // ✅ SI ES DRIVER
+        if (data.email) {
+          setEmail(data.email);
+        }
+
+        // 💳 TARJETA GUARDADA
         if (
-          driverSnap.exists()
+          data.paymentMethodId
         ) {
 
-          window.location.href =
-            "/driver";
+          setPaymentMethodId(
+            data.paymentMethodId
+          );
 
-          return;
+          setCardGuardada(true);
         }
-
-      } catch (err) {
-
-        console.error(
-          "ROLE ERROR:",
-          err
-        );
       }
-    };
+    );
+
+  // 🔥 LIMPIAR LISTENER
+  return () => unsub();
+
+}, [user]);
+useEffect(() => {
+
+  if (loading) return;
+
+  const verificarRol = async () => {
+
+    try {
+
+      if (!user) {
+        router.replace("/login-user");
+        return;
+      }
+
+      const driverSnap = await get(
+        ref(db, "drivers/" + user.uid)
+      );
+
+      const driverData = driverSnap.val();
+
+      if (driverData?.role === "driver") {
+
+        router.replace("/driver");
+
+        return;
+      }
+
+    } catch (err) {
+
+      console.error("ROLE ERROR:", err);
+    }
+  };
 
   verificarRol();
 
@@ -1226,66 +1244,115 @@ return (
 </div>
       
 
-      <button
+     <button
   onClick={async () => {
+
     if (!stripe || !elements) {
+
       alert("Stripe no cargado");
+
       return;
     }
 
-   const cardNumber =
-  elements.getElement(
-    CardNumberElement
-  );
+    const cardNumber =
+      elements.getElement(
+        CardNumberElement
+      );
 
-if (!cardNumber) {
+    if (!cardNumber) {
 
-  alert(
-    "Ingrese la tarjeta"
-  );
+      alert(
+        "Ingrese la tarjeta"
+      );
 
-  return;
-}
-
-const {
-  error,
-  paymentMethod
-} =
-  await stripe.createPaymentMethod({
-
-    type: "card",
-
-    card: cardNumber,
-
-    billing_details: {
-
-      name: nombre,
-
-      phone: telefono,
-
-      email,
-
-      address: {
-
-        postal_code:
-          zipCode
-      }
+      return;
     }
-  });
+
+    const {
+      error,
+      paymentMethod
+    } =
+      await stripe.createPaymentMethod({
+
+        type: "card",
+
+        card: cardNumber,
+
+        billing_details: {
+
+          name: nombre,
+
+          phone: telefono,
+
+          email,
+
+          address: {
+
+            postal_code:
+              zipCode
+          }
+        }
+      });
 
     if (error) {
+
       alert(error.message);
+
       return;
     }
 
-    // ✅ GUARDAR
-    setPaymentMethodId(paymentMethod.id);
+    // 🔥 USUARIO ACTUAL
+    const user =
+      auth.currentUser;
+
+    // ✅ GUARDAR EN ESTADOS
+    setPaymentMethodId(
+      paymentMethod.id
+    );
+
     setCardGuardada(true);
 
-    console.log("💳 Guardada:", paymentMethod.id);
+    // ✅ GUARDAR EN FIREBASE
+    if (user) {
+
+      await update(
+        ref(
+          db,
+          `usuarios/${user.uid}/perfil`
+        ),
+        {
+          paymentMethodId:
+            paymentMethod.id,
+
+          cardLast4:
+            paymentMethod.card?.last4,
+
+          cardBrand:
+            paymentMethod.card?.brand,
+
+          expMonth:
+            paymentMethod.card?.exp_month,
+
+          expYear:
+            paymentMethod.card?.exp_year,
+
+          updatedAt:
+            Date.now()
+        }
+      );
+    }
+
+    console.log(
+      "💳 Guardada:",
+      paymentMethod.id
+    );
+
+    alert("✅ Card saved");
 
     setMostrarCardModal(false);
+
   }}
+
   style={{
     padding: 12,
     borderRadius: 8,
