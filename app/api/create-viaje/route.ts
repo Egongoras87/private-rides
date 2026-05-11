@@ -2,112 +2,241 @@ import { NextResponse } from "next/server";
 import { adminDb, adminAuth } from "@/lib/firebase-admin";
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-04-10" as any // Versión estable de Stripe
-});
+const stripe = new Stripe(
+  process.env.STRIPE_SECRET_KEY!,
+  {
+    apiVersion: "2024-04-10" as any
+  }
+);
 
-// 🔥 CONSTANTES DE TARIFA (Deben ser iguales a las de tu frontend)
+// 🔥 TARIFAS
 const BASE_FARE = 8;
 const PRICE_PER_MILE = 2.5;
 const MIN_FARE = 12;
 
-export async function POST(req: Request) {
+export async function POST(
+  req: Request
+) {
+
   try {
+
+    // =====================================================
     // 🔐 AUTH
-    const token = req.headers.get("authorization")?.replace("Bearer ", "");
+    // =====================================================
+
+    const token =
+      req.headers
+        .get("authorization")
+        ?.replace("Bearer ", "");
+
     if (!token) {
-      return NextResponse.json({ error: "No token" }, { status: 401 });
+
+      return NextResponse.json(
+        { error: "No token" },
+        { status: 401 }
+      );
     }
 
-    const decoded = await adminAuth.verifyIdToken(token);
-    const data = await req.json();
+    const decoded =
+      await adminAuth.verifyIdToken(
+        token
+      );
+
+    // =====================================================
+    // 📦 BODY
+    // =====================================================
+
+    const data =
+      await req.json();
 
     const {
+
       metodoPago,
-      distancia, // 👈 Ahora dependemos de la distancia enviada
+
+      distancia,
+
       paymentMethodId
+
     } = data;
 
-    // 🛡️ RECALCULO DE SEGURIDAD (Ignoramos el 'precio' que venga del cliente)
-    const precioCalculado = BASE_FARE + (distancia * PRICE_PER_MILE);
-    const precioFinal = Math.max(precioCalculado, MIN_FARE);
-    const precioFinalFijo = parseFloat(precioFinal.toFixed(2));
+    // =====================================================
+    // 🛡️ VALIDAR DISTANCIA
+    // =====================================================
 
-   let paymentIntentId: string | null = null;
-let clientSecret: string | null = null;
+    if (
+      !distancia ||
+      distancia <= 0
+    ) {
 
-if (metodoPago === "stripe") {
+      return NextResponse.json(
+        {
+          error:
+            "Distancia inválida"
+        },
+        { status: 400 }
+      );
+    }
 
-  if (!paymentMethodId) {
-    return NextResponse.json(
-      { error: "paymentMethodId requerido" },
-      { status: 400 }
-    );
-  }
+    // =====================================================
+    // 💰 RECALCULAR PRECIO
+    // =====================================================
 
-  if (!distancia || distancia <= 0) {
-    return NextResponse.json(
-      { error: "Distancia inválida para calcular precio" },
-      { status: 400 }
-    );
-  }
+    const precioCalculado =
 
-  const paymentIntent =
-    await stripe.paymentIntents.create({
+      BASE_FARE +
 
-      amount: Math.round(precioFinalFijo * 100),
+      (
+        distancia *
+        PRICE_PER_MILE
+      );
 
-      currency: "usd",
+    const precioFinal =
 
-      payment_method: paymentMethodId,
+      Math.max(
+        precioCalculado,
+        MIN_FARE
+      );
 
-      automatic_payment_methods: {
-        enabled: true
+    const precioFinalFijo =
+
+      parseFloat(
+        precioFinal.toFixed(2)
+      );
+
+    // =====================================================
+    // 💳 STRIPE
+    // =====================================================
+
+    let paymentIntentId:
+      string | null = null;
+
+    let clientSecret:
+      string | null = null;
+
+    if (
+      metodoPago === "stripe"
+    ) {
+
+      if (!paymentMethodId) {
+
+        return NextResponse.json(
+          {
+            error:
+              "paymentMethodId requerido"
+          },
+          { status: 400 }
+        );
       }
-    });
 
-  paymentIntentId = paymentIntent.id;
+      const paymentIntent =
 
-  clientSecret =
-    paymentIntent.client_secret;
-}
+        await stripe
+          .paymentIntents
+          .create({
 
-    // 🔥 CREAR VIAJE (Estructura original mantenida)
-    const id = Date.now().toString();
+            amount:
+              Math.round(
+                precioFinalFijo * 100
+              ),
 
-    await adminDb.ref("viajes/" + id).set({
-      ...data, // Mantiene origen, destino, fechas, etc.
-      precio: precioFinalFijo, // 👈 SOBRESCRIBIMOS con el precio real del servidor
-      id,
-      userId: decoded.uid,
-      estado:
-  metodoPago === "stripe"
-    ? "Procesando pago"
-    : "Pendiente",
-      timestamp: Date.now(),
-      
-      // 🔥 ESTADO DE PAGO REAL
-     pagado: false,
-estadoPago: metodoPago === "stripe"
-  ? "procesando"
-  : "pendiente",
-      paymentIntentId,
-      
-      // 🔥 NUEVO (OBLIGATORIO)
-      driversNotificados: {}
-    });
+            currency: "usd",
+
+            payment_method:
+              paymentMethodId,
+
+            automatic_payment_methods: {
+              enabled: true
+            }
+          });
+
+      paymentIntentId =
+        paymentIntent.id;
+
+      clientSecret =
+        paymentIntent.client_secret;
+    }
+
+    // =====================================================
+    // 🚗 CREAR VIAJE
+    // =====================================================
+
+    const id =
+      Date.now().toString();
+
+    await adminDb
+      .ref("viajes/" + id)
+      .set({
+
+        // 🔥 DATA ORIGINAL
+        ...data,
+
+        // 🔒 PRECIO REAL
+        precio:
+          precioFinalFijo,
+
+        // 🔥 IDS
+        id,
+
+        userId:
+          decoded.uid,
+
+        // 🚗 DRIVER RECONOCE
+        estado:
+          "Pendiente",
+
+        // ⏱️ TIMESTAMP
+        timestamp:
+          Date.now(),
+
+        // 💳 PAGO
+        pagado: false,
+
+        estadoPago:
+
+          metodoPago === "stripe"
+
+            ? "procesando"
+
+            : "pendiente",
+
+        // 💳 STRIPE
+        paymentIntentId:
+          paymentIntentId || null,
+
+        // 🔥 OBLIGATORIO
+        driversNotificados: {}
+      });
+
+    // =====================================================
+    // ✅ RESPONSE
+    // =====================================================
 
     return NextResponse.json({
-  ok: true,
-  id,
-  paymentIntentId,
-  clientSecret
-});
+
+      ok: true,
+
+      id,
+
+      clientSecret:
+        clientSecret || null,
+
+      paymentIntentId:
+        paymentIntentId || null
+    });
 
   } catch (err: any) {
-    console.error("❌ ERROR CREATE VIAJE:", err);
+
+    console.error(
+      "❌ ERROR CREATE VIAJE:",
+      err
+    );
+
     return NextResponse.json(
-      { error: err.message || "Error creando viaje" },
+      {
+        error:
+          err.message ||
+          "Error creando viaje"
+      },
       { status: 500 }
     );
   }

@@ -29,12 +29,88 @@ export default function UserTrackingPage() {
   const [directionsResponse, setDirectionsResponse] = useState<google.maps.DirectionsResult | null>(null);
 
   // Redirección si no hay sesión
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if (!user) window.location.href = "/login-user";
-    });
-    return () => unsub();
-  }, []);
+ useEffect(() => {
+
+  const unsub =
+    onAuthStateChanged(
+      auth,
+      async (user) => {
+
+        if (!user) {
+
+          window.location.href =
+            "/login-user";
+
+          return;
+        }
+
+        // 🔥 SI NO HAY ID EN URL
+        let id =
+          new URLSearchParams(
+            window.location.search
+          ).get("id");
+
+        // 🔥 BUSCAR EN LOCALSTORAGE
+        if (!id) {
+
+          id =
+            localStorage.getItem(
+              "viajeId"
+            );
+        }
+
+        // 🔥 SI TODAVÍA NO HAY ID
+        // BUSCAR VIAJE ACTIVO
+        if (!id) {
+
+          const snap =
+            await get(
+              ref(db, "viajes")
+            );
+
+          if (!snap.exists()) return;
+
+          const viajes =
+            snap.val();
+
+          for (const key in viajes) {
+
+            const v = viajes[key];
+
+            if (
+
+              v.userId === user.uid &&
+
+              (
+                v.estado === "Pendiente" ||
+                v.estado === "Asignado" ||
+                v.estado === "En camino" ||
+                v.estado === "En viaje"
+              )
+            ) {
+
+              localStorage.setItem(
+                "viajeId",
+                key
+              );
+
+              window.location.href =
+                `/tracking?id=${key}`;
+
+              return;
+            }
+          }
+
+          // ❌ NO HAY VIAJE ACTIVO
+          window.location.href = "/";
+        }
+      }
+    );
+
+  return () => unsub();
+
+}, []);
+
 
   useEffect(() => {
   if (!viajeData?.driverId) return;

@@ -67,7 +67,7 @@ export default function AdminDrivers() {
       }
 
       const ahora = Date.now();
-      const LIMITE = 2 * 60 * 1000;
+      const LIMITE = 5 * 60 * 1000;
 
       const lista = Object.entries(data).map(([id, d]: any) => ({
         id,
