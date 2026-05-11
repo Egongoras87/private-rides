@@ -280,91 +280,181 @@ checkAdmin();
         <p style={{ color: "#888" }}>No hay drivers activos</p>
       )}
 
-      {drivers.map((d) => (
-        <div
-          key={d.id}
+      {drivers.map((d) => {
+
+  const isOnline =
+
+    Date.now() -
+
+    (d.lastSeen || 0)
+
+    < 15000;
+
+  return (
+
+    <div
+      key={d.id}
+
+      style={{
+        background: "#1c1c1c",
+        padding: 15,
+        borderRadius: 16,
+        marginBottom: 15,
+        boxShadow:
+          "0 10px 30px rgba(0,0,0,0.6)"
+      }}
+    >
+
+      <p>
+        <b>ID:</b> {d.id}
+      </p>
+
+      <p>
+        <b>Nombre:</b>{" "}
+        {d.nombre || "N/A"}
+      </p>
+
+      <p>
+        <b>Teléfono:</b>{" "}
+        {d.telefono || "N/A"}
+      </p>
+
+      <p>
+        <b>Vehículo:</b>{" "}
+
+        {d.carro?.marca || "N/A"}
+
+        {" "}
+
+        {d.carro?.modelo || ""}
+      </p>
+
+      <p>
+        <b>Placa:</b>{" "}
+
+        {d.carro?.placa || "N/A"}
+      </p>
+
+      <p>
+        <b>Color:</b>{" "}
+
+        {d.carro?.color || "N/A"}
+      </p>
+
+      <p>
+        <b>Estado:</b>{" "}
+
+        {d.activo
+
+          ? "🟢 Activo"
+
+          : "🔴 Inactivo"}
+      </p>
+
+      <p>
+        <b>Online:</b>{" "}
+
+        <span
           style={{
-            background: "#1c1c1c",
-            padding: 15,
-            borderRadius: 16,
-            marginBottom: 15,
-            boxShadow: "0 10px 30px rgba(0,0,0,0.6)"
+            color: isOnline
+
+              ? "#00ff99"
+
+              : "#ff5555",
+
+            fontWeight: "bold"
           }}
         >
-          <p><b>ID:</b> {d.id}</p>
-          <p>
-  <b>Nombre:</b>{" "}
-  {d.nombre || "N/A"}
-</p>
 
-<p>
-  <b>Teléfono:</b>{" "}
-  {d.telefono || "N/A"}
-</p>
+          {isOnline
 
-<p>
-  <b>Vehículo:</b>{" "}
-  {d.carro?.marca || "N/A"}
-  {" "}
-  {d.carro?.modelo || ""}
-</p>
+            ? "🟢 Online"
 
-<p>
-  <b>Placa:</b>{" "}
-  {d.carro?.placa || "N/A"}
-</p>
+            : "🔴 Offline"}
 
-<p>
-  <b>Color:</b>{" "}
-  {d.carro?.color || "N/A"}
-</p>
+        </span>
+      </p>
 
-          <p>
-            <b>Estado:</b>{" "}
-            {d.activo ? "🟢 Activo" : "🔴 Inactivo"}
-          </p>
+      <p>
+        <b>Última señal:</b>{" "}
 
-          <p>
-            <b>Online:</b>{" "}
-            <span style={{ color: "#00ff99" }}>
-              {tiempoOnline(d.lastSeen)}
-            </span>
-          </p>
+        <span style={{ color: "#00ff99" }}>
+          {tiempoOnline(d.lastSeen)}
+        </span>
+      </p>
 
-          <p>
-            <b>Viaje:</b>{" "}
-            {d.viajeActivo ? "🚗 En viaje" : "🟢 Libre"}
-          </p>
+      <p>
+        <b>Viaje:</b>{" "}
 
-          <p>
-            <b>Ubicación:</b>{" "}
-            {d.lat && d.lng
-              ? `${Number(d.lat).toFixed(4)}, ${Number(d.lng).toFixed(4)}`
-              : "Sin ubicación"}
-          </p>
+        {d.viajeActivo
 
-          <button
-            onClick={() => toggleActivo(d.id, d.activo)}
-            onMouseDown={press}
-            onMouseUp={release}
-            onMouseLeave={release}
-            style={{
-              width: "100%",
-              marginTop: 10,
-              padding: 12,
-              borderRadius: 10,
-              border: "none",
-              background: d.activo ? "#ff4d4d" : "#2ecc71",
-              color: "#fff",
-              fontWeight: "bold",
-              cursor: "pointer",
-              boxShadow: "0 6px 0 #000"
-            }}
-          >
-            {d.activo ? "🔴 Desactivar" : "🟢 Activar"}
-          </button>
-        </div>
-      ))}
+          ? "🚗 En viaje"
+
+          : "🟢 Libre"}
+      </p>
+
+      <p>
+        <b>Ubicación:</b>{" "}
+
+        {d.lat && d.lng
+
+          ? `${Number(d.lat)
+              .toFixed(4)},
+             ${Number(d.lng)
+              .toFixed(4)}`
+
+          : "Sin ubicación"}
+      </p>
+
+      <button
+        onClick={() =>
+          toggleActivo(
+            d.id,
+            d.activo
+          )
+        }
+
+        onMouseDown={press}
+
+        onMouseUp={release}
+
+        onMouseLeave={release}
+
+        style={{
+          width: "100%",
+          marginTop: 10,
+          padding: 12,
+          borderRadius: 10,
+          border: "none",
+
+          background: d.activo
+
+            ? "#ff4d4d"
+
+            : "#2ecc71",
+
+          color: "#fff",
+
+          fontWeight: "bold",
+
+          cursor: "pointer",
+
+          boxShadow:
+            "0 6px 0 #000"
+        }}
+      >
+
+        {d.activo
+
+          ? "🔴 Desactivar"
+
+          : "🟢 Activar"}
+
+      </button>
+
+    </div>
+  );
+})}
     </div>
   );
 }

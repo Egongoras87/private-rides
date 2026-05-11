@@ -307,12 +307,6 @@ useEffect(() => {
     online: true
   });
 
-  // 🔴 OFFLINE
-  onDisconnect(driverRef).update({
-    online: false,
-    lastSeen: Date.now()
-  });
-
 }, [user]);
 
 // ///////////////////////////////////////////////////////////////📡 VIAJES
@@ -1005,7 +999,15 @@ useEffect(() => {
           }).format(v.precio || 0)}
         </p>
 
-        <p><b>Distancia:</b> {Number(v.distancia || 0).toFixed(2)} mi</p>
+       <p>
+  <b>Pickup Distance:</b>
+  {" "}
+
+  {distanciasPickup[v.id]
+    ?.toFixed(1)}
+
+  {" "}mi away
+</p>
 
         {etas[v.id] && (
           <>

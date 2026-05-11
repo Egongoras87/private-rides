@@ -130,7 +130,17 @@ const [rutasAlternativas, setRutasAlternativas] = useState<any[][]>([]);
   const fullPathRef = useRef<any[]>([]);
 
   const lastInstructionRef = useRef("");
+const [steps, setSteps] =
+  useState<any[]>([]);
 
+const currentStepIndexRef =
+  useRef(0);
+
+const reroutingRef =
+  useRef(false);
+
+const lastVoiceTimeRef =
+  useRef(0);
   const lastRouteTimeRef = useRef(0);
 const lastFirebaseUpdateRef =
   useRef(0);
@@ -154,7 +164,7 @@ const lastPositionRef =
 
     const msg = new SpeechSynthesisUtterance(text);
 
-    msg.lang = "es-US";
+    msg.lang = "es-ES";
 
     msg.rate = 1;
 
@@ -376,6 +386,9 @@ const solicitarRuta = useCallback((
 
       // --- RUTA PRINCIPAL (Índice 0) ---
       const leg = res.routes[0].legs[0];
+      setSteps(leg.steps || []);
+
+currentStepIndexRef.current = 0;
       const points = res.routes[0].overview_path.map((p) => ({ 
         lat: p.lat(), 
         lng: p.lng() 
@@ -384,6 +397,23 @@ const solicitarRuta = useCallback((
       fullPathRef.current = points;
       setRemainingPath(points);
       setCompletedPath([]);
+
+      // 🔥 SINCRONIZAR RUTA AL CLIENTE
+if (viajeData?.id) {
+
+  update(
+    ref(
+      db,
+      "viajes/" + viajeData.id
+    ),
+    {
+
+      remainingPath: points,
+
+      completedPath: []
+    }
+  ).catch(console.error);
+}
 
       // --- RUTAS ALTERNATIVAS (Las demás) ---
       const alternativas = res.routes.slice(1).map(ruta => 
@@ -424,37 +454,10 @@ const solicitarRuta = useCallback((
           updatedAt: Date.now()
         }).catch(console.error);
       }
+} // ← cierre callback route
 
-      // --- VOZ INTELIGENTE (Solo para la principal) ---
-      const nextStep = leg.steps.find((step) => {
-        const start = {
-          lat: step.start_location.lat(),
-          lng: step.start_location.lng()
-        };
-        const dist = calcularDistancia(origin, start);
-        return dist < 120;
-      }) || leg.steps[0];
-
-      if (!nextStep) return;
-
-      const instruction = limpiarTexto(nextStep.instructions);
-      const important =
-        instruction.includes("derecha") ||
-        instruction.includes("izquierda") ||
-        instruction.includes("carril") ||
-        instruction.includes("sal") ||
-        instruction.includes("rotonda");
-
-      if (
-        important &&
-        instruction !== lastInstructionRef.current &&
-        (nextStep.distance?.value || 0) < 140
-      ) {
-        lastInstructionRef.current = instruction;
-        speak(instruction);
-      }
-    }
   );
+    
 }, [fase, speak, viajeData?.id]);
 
   // ---------------------------------------------------
@@ -495,6 +498,8 @@ const solicitarRuta = useCallback((
 // IGNORAR MICRO MOVIMIENTOS GPS
 // ---------------------------------------------------
 
+let gpsNoise = false;
+
 if (lastPositionRef.current) {
 
   const movement =
@@ -504,9 +509,8 @@ if (lastPositionRef.current) {
     );
 
   // 🔥 ignorar ruido GPS
-  if (movement < 8) {
-    return;
-  }
+  gpsNoise =
+    movement < 8;
 }
 
 // ---------------------------------------------------
@@ -525,7 +529,7 @@ const now = Date.now();
 
 if (
   uid &&
-  now - lastFirebaseUpdateRef.current > 8000
+  now - lastFirebaseUpdateRef.current > 3000
 ) {
 
   lastFirebaseUpdateRef.current =
@@ -534,13 +538,21 @@ if (
   Promise.all([
 
     // 🔥 DRIVER STATUS
-    update(
-      ref(db, "drivers/" + uid),
-      {
-        ...nuevaPos,
-        lastSeen: now
-      }
-    ),
+   update(
+  ref(db, "drivers/" + uid),
+  {
+
+    ...nuevaPos,
+
+    lastSeen: now,
+
+    activo: true,
+
+    online: true,
+
+    tracking: true
+  }
+),
 
     // 🔥 VIAJE TRACKING
     viajeData?.id
@@ -631,9 +643,109 @@ if (mapRef.current) {
 
 lastPositionRef.current =
   nuevaPos;
+  // ---------------------------------------------------
+// 🔥 TURN BY TURN VOICE
+// ---------------------------------------------------
+
+const currentStep =
+
+  steps[
+    currentStepIndexRef.current
+  ];
+
+if (currentStep) {
+
+  const start = {
+
+    lat:
+      currentStep
+        .start_location.lat(),
+
+    lng:
+      currentStep
+        .start_location.lng()
+  };
+
+  const distanceToStep =
+
+    calcularDistancia(
+      nuevaPos,
+      start
+    );
+
+  const instruction =
+
+    limpiarTexto(
+      currentStep.instructions
+    );
+
+  const nowVoice =
+    Date.now();
+
+  // ---------------------------------------------------
+  // 🔥 AVISO PREVIO
+  // ---------------------------------------------------
+
+  if (
+
+    distanceToStep < 120 &&
+
+    distanceToStep > 40 &&
+
+    nowVoice -
+      lastVoiceTimeRef.current >
+      8000 &&
+
+    instruction !==
+      lastInstructionRef.current
+
+  ) {
+
+    lastVoiceTimeRef.current =
+      nowVoice;
+
+    lastInstructionRef.current =
+      instruction;
+
+    speak(
+      "En breve, " +
+      instruction
+    );
+  }
+
+  // ---------------------------------------------------
+  // 🔥 GIRO INMEDIATO
+  // ---------------------------------------------------
+
+  if (
+
+    distanceToStep <= 40 &&
+
+    nowVoice -
+      lastVoiceTimeRef.current >
+      4000
+
+  ) {
+
+    lastVoiceTimeRef.current =
+      nowVoice;
+
+    speak(instruction);
+
+    // 🔥 avanzar step
+    currentStepIndexRef.current += 1;
+  }
+}
 // ---------------------------------------------------
 // PRIMERA RUTA
 // ---------------------------------------------------
+// 🔥 evitar rerender pesado
+if (gpsNoise) {
+
+  // PERO sí actualizar Firebase
+  // y presencia online
+
+} else {
 
 if (!fullPathRef.current.length) {
 
@@ -697,14 +809,31 @@ if (viajeData?.id) {
   // SE DESVIÓ DE LA RUTA
   if (desviacion > 180) {
 
-    solicitarRuta(
-      nuevaPos,
-      target,
-      true
+  if (!reroutingRef.current) {
+
+    reroutingRef.current =
+      true;
+
+    speak(
+      "Recalculando ruta"
     );
   }
-}
 
+  solicitarRuta(
+    nuevaPos,
+    target,
+    true
+  );
+
+  setTimeout(() => {
+
+    reroutingRef.current =
+      false;
+
+  }, 8000);
+}
+}
+}
         },
 
         (err) => console.error(err),
@@ -716,7 +845,25 @@ if (viajeData?.id) {
         }
       );
 
+     
+
     return () => {
+
+      const uid =
+  auth.currentUser?.uid;
+
+if (uid) {
+
+  update(
+    ref(db, "drivers/" + uid),
+    {
+
+      tracking: false,
+
+      lastSeen: Date.now()
+    }
+  ).catch(console.error);
+}
 
   // detener GPS
   if (watchRef.current) {
@@ -792,6 +939,9 @@ setCompletedPath([]);
             lng: Number(viajeData.destinoLng)
           }
         );
+        speak(
+  "Has llegado al destino"
+);
 
         if (
           dist > 200 &&
@@ -1168,8 +1318,10 @@ setCompletedPath([]);
 
       if (!res.ok) return alert("Error en el servidor");
 
-      // --- EL SECRETO PARA NO REFRESCAR ---
       
+      speak(
+  "Pasajero recogido. Iniciando viaje."
+);
       // A. Cambiamos la fase inmediatamente
       setFase("viaje");
 
@@ -1178,6 +1330,23 @@ setCompletedPath([]);
       setRemainingPath([]);
       setCompletedPath([]);
       setRutasAlternativas([]);
+if (viajeData?.id) {
+
+  update(
+    ref(
+      db,
+      "viajes/" + viajeData.id
+    ),
+    {
+
+      remainingPath: [],
+
+      completedPath: []
+    }
+  ).catch(console.error);
+}
+
+
       lastRouteTimeRef.current = 0; // Reseteamos el tiempo para que solicitarRuta no ignore la llamada
 
       // C. Pedimos la nueva ruta al DESTINO de inmediato
