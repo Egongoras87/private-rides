@@ -1,14 +1,23 @@
+"use client";
+
 import "./globals.css";
 import { Metadata, Viewport } from "next";
-import { headers } from "next/headers"; // Asegúrate de que esta importación esté así
+import { headers } from "next/headers";
 import AuthProvider from "@/components/AuthProvider";
+import { useEffect } from "react";
 
 // 1. VIEWPORT DINÁMICO
 export async function generateViewport(): Promise<Viewport> {
-  // ✅ CORREGIDO: Añadido 'await' antes de headers()
-  const headersList = await headers(); 
-  const host = headersList.get("host") || "";
-  const isDriver = host.includes("driver.privaterideslasvegas.com");
+
+  const headersList = await headers();
+
+  const host =
+    headersList.get("host") || "";
+
+  const isDriver =
+    host.includes(
+      "driver.privaterideslasvegas.com"
+    );
 
   return {
     width: "device-width",
@@ -16,48 +25,85 @@ export async function generateViewport(): Promise<Viewport> {
     maximumScale: 1,
     userScalable: false,
     viewportFit: "cover",
-    themeColor: isDriver ? "#000000" : "#FFFFFF", 
+    themeColor: isDriver
+      ? "#000000"
+      : "#FFFFFF",
   };
 }
 
 // 2. METADATA DINÁMICA
 export async function generateMetadata(): Promise<Metadata> {
-  // ✅ CORREGIDO: Añadido 'await' antes de headers()
-  const headersList = await headers();
-  const host = headersList.get("host") || "";
-  const isDriver = host.includes("driver.privaterideslasvegas.com");
+
+  const headersList =
+    await headers();
+
+  const host =
+    headersList.get("host") || "";
+
+  const isDriver =
+    host.includes(
+      "driver.privaterideslasvegas.com"
+    );
 
   if (isDriver) {
+
     return {
       title: "PR Driver",
-      description: "Acceso exclusivo para conductores - Private Rides",
-      applicationName: "PR Driver",
-      manifest: "/manifest-driver.json",
+      description:
+        "Acceso exclusivo para conductores - Private Rides",
+
+      applicationName:
+        "PR Driver",
+
+      manifest:
+        "/manifest-driver.json",
+
       icons: {
-        icon: "/drivericon.png?v=11",
-        apple: "/drivericon.png?v=11",
+        icon:
+          "/drivericon.png?v=11",
+
+        apple:
+          "/drivericon.png?v=11",
       },
+
       appleWebApp: {
         capable: true,
-        statusBarStyle: "black-translucent",
-        title: "PR Driver",
+        statusBarStyle:
+          "black-translucent",
+
+        title:
+          "PR Driver",
       },
     };
   }
 
   return {
     title: "Private Rides",
-    description: "Premium Transportation Service in Las Vegas",
-    applicationName: "Private Rides",
-    manifest: "/manifest-user.json",
+
+    description:
+      "Premium Transportation Service in Las Vegas",
+
+    applicationName:
+      "Private Rides",
+
+    manifest:
+      "/manifest-user.json",
+
     icons: {
-      icon: "/icon.png?v=11",
-      apple: "/icon.png?v=11",
+      icon:
+        "/icon.png?v=11",
+
+      apple:
+        "/icon.png?v=11",
     },
+
     appleWebApp: {
       capable: true,
-      statusBarStyle: "default",
-      title: "Private Rides",
+      statusBarStyle:
+        "default",
+
+      title:
+        "Private Rides",
     },
   };
 }
@@ -67,13 +113,51 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+
+  // 🔥 SERVICE WORKER
+  useEffect(() => {
+
+    if (
+      typeof window !== "undefined" &&
+      "serviceWorker" in navigator
+    ) {
+
+      navigator.serviceWorker
+        .register("/sw.js")
+        .then(() => {
+
+          console.log(
+            "SW Registered"
+          );
+
+        })
+        .catch((err) => {
+
+          console.error(
+            "SW ERROR:",
+            err
+          );
+
+        });
+    }
+
+  }, []);
+
   return (
-    <html lang="en" suppressHydrationWarning>
+
+    <html
+      lang="en"
+      suppressHydrationWarning
+    >
+
       <body className="antialiased">
+
         <AuthProvider>
           {children}
         </AuthProvider>
+
       </body>
+
     </html>
   );
 }

@@ -36,6 +36,18 @@ export default function LoginUser() {
 
   const [loading, setLoading] =
     useState(false);
+const [showInstallModal, setShowInstallModal] =
+  useState(false);
+
+const [installPrompt, setInstallPrompt] =
+  useState<any>(null);
+
+const [appInstalada, setAppInstalada] =
+  useState(false);
+
+const [iosDevice, setIosDevice] =
+  useState(false);
+
 
   const [segundosRestantes, setSegundosRestantes] =
     useState(0);
@@ -138,8 +150,85 @@ useEffect(() => {
     );
 
   return () => unsub();
-
+/////////////////////////////////////////// DETECTAR PWA INSTALADA/////////////////////////
 }, [router]);
+useEffect(() => {
+
+  // 📱 Detectar iPhone
+  const isIos =
+    /iphone|ipad|ipod/i.test(
+      window.navigator.userAgent
+    );
+
+  setIosDevice(isIos);
+
+  // ✅ Detectar app instalada
+  const standalone =
+    window.matchMedia(
+      "(display-mode: standalone)"
+    ).matches ||
+    (window.navigator as any)
+      .standalone;
+
+  if (standalone) {
+
+    setAppInstalada(true);
+  }
+
+  // 📲 Capturar install prompt
+  const handler = (e: any) => {
+
+    e.preventDefault();
+
+    setInstallPrompt(e);
+  };
+
+  window.addEventListener(
+    "beforeinstallprompt",
+    handler
+  );
+
+  // ✅ Detectar instalación completada
+  window.addEventListener(
+    "appinstalled",
+    () => {
+
+      setAppInstalada(true);
+
+      setShowInstallModal(false);
+    }
+  );
+
+  return () => {
+
+    window.removeEventListener(
+      "beforeinstallprompt",
+      handler
+    );
+  };
+
+}, []);
+
+const continuarApp = () => {
+
+  // 📩 Abrir SMS con link app
+  const mensaje =
+`Welcome to Private Rides 🚗
+
+Save this link:
+https://private-rides.vercel.app
+
+Install the app for faster future access.`;
+
+  const smsUrl =
+    `sms:?&body=${encodeURIComponent(mensaje)}`;
+
+  window.open(smsUrl);
+
+  // 🚀 Entrar app
+  router.replace("/");
+};
+
   // ---------------------------------------------------
   // ENVIAR SMS
   // ---------------------------------------------------
@@ -254,6 +343,27 @@ useEffect(() => {
       }
     };
 
+    ///////////////////////////////////////////INSTALAR APP/////////////////////////
+const instalarApp = async () => {
+
+  if (!installPrompt) return;
+
+  installPrompt.prompt();
+
+  const choice =
+    await installPrompt.userChoice;
+
+  if (
+    choice.outcome === "accepted"
+  ) {
+
+    setAppInstalada(true);
+
+    setShowInstallModal(false);
+
+    continuarApp();
+  }
+};
   // ---------------------------------------------------
   // VERIFY CODE
   // ---------------------------------------------------
@@ -304,7 +414,7 @@ await remove(
   ref(db, "drivers/" + user.uid)
 );
 
-router.replace("/");
+setShowInstallModal(true);
 
     } catch (err) {
 
