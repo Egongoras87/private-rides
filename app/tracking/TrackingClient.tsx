@@ -438,6 +438,24 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
     );
   }
 
+const vehicleChip = {
+
+  background:
+    "#f4f4f4",
+
+  color: "#444",
+
+  padding: "7px 12px",
+
+  borderRadius: 12,
+
+  fontSize: 13,
+
+  fontWeight: 600,
+
+  border:
+    "1px solid rgba(0,0,0,0.05)"
+};
  return (
   <div
     style={{
@@ -557,69 +575,519 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
       )}
 
     </GoogleMap>
+{/* PANEL PRINCIPAL */}
+<div
+  style={{
+    position: "absolute",
+    bottom: 0,
+    width: "100%",
 
+    background:
+      "linear-gradient(180deg,#ffffff,#f7f7f7)",
 
-      {/* PANEL DE INFORMACIÓN */}
-<div style={{ position: "absolute", bottom: 0, width: "100%", background: "#fff", padding: "24px 20px", borderTopLeftRadius: 24, borderTopRightRadius: 24, boxShadow: "0 -5px 20px rgba(0,0,0,0.1)" }}>
-  
-  {/* NUEVA LÍNEA: DATOS DEL CONDUCTOR */}
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+
+    padding: "14px 16px 24px",
+
+    boxShadow:
+      "0 -12px 35px rgba(0,0,0,0.12)",
+
+    borderTop:
+      "1px solid rgba(255,255,255,0.9)",
+
+    backdropFilter: "blur(14px)"
+  }}
+>
+
+  {/* HANDLE */}
+  <div
+    style={{
+      width: 42,
+      height: 5,
+      borderRadius: 999,
+      background: "#d7d7d7",
+      margin: "0 auto 16px"
+    }}
+  />
+
+  {/* DRIVER + PHONE */}
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+
+      background: "#fff",
+
+      borderRadius: 24,
+
+      padding: "14px 14px",
+
+      boxShadow:
+        "0 8px 22px rgba(0,0,0,0.06)",
+
+      border:
+        "1px solid rgba(0,0,0,0.04)"
+    }}
+  >
+
+    {/* LEFT */}
+    <div
+      style={{
+        flex: 1
+      }}
+    >
+
+     
+      {/* NAME */}
+      <div
+        style={{
+          fontSize: 24,
+          fontWeight: 700,
+          color: "#111",
+          lineHeight: 1
+        }}
+      >
+        {driverInfo?.nombre?.split("@")[0] ||
+          "Driver"}
+      </div>
+
+      {/* SUB */}
+      <div
+        style={{
+          marginTop: 6,
+
+          display: "flex",
+
+          alignItems: "center",
+
+          gap: 12,
+
+          fontSize: 13,
+
+          color: "#666"
+        }}
+      >
+
+        <span>
+          Premium Service
+        </span>
+
+        <span
+          style={{
+            color: "#f1c40f",
+            fontWeight: 700
+          }}
+        >
+          ★ {driverInfo?.rating || "5.0"}
+        </span>
+
+      </div>
+
+    </div>
+
+    {/* PHONE BUTTON */}
+   {fase === "pickup" && (
+      <button
+
+        onMouseDown={press}
+
+        onMouseUp={release}
+
+        onMouseLeave={release}
+
+        onClick={() => {
+
+          if (
+            driverInfo?.telefono
+          ) {
+
+            window.location.href =
+              `tel:${driverInfo.telefono}`;
+          }
+        }}
+
+        style={{
+          width: 58,
+          height: 58,
+
+          borderRadius: 18,
+
+          border: "none",
+
+          background:
+            "linear-gradient(145deg,#ffffff,#ececec)",
+
+          color: "#111",
+
+          fontSize: 24,
+
+          cursor: "pointer",
+
+          boxShadow:
+            "0 8px 18px rgba(0,0,0,0.12)",
+
+          transition:
+            "all 0.15s ease"
+        }}
+      >
+        📞
+      </button>
+    )}
+
+  </div>
+
+  {/* VEHICLE */}
   {driverInfo && (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid #eee" }}>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: "bold", fontSize: 30 }}>
-          {driverInfo.nombre?.split('@')[0]} {/* Muestra el nombre antes del @ */}
-          <span style={{ marginLeft: 8, color: "#f1c40f" }}>★ {driverInfo.rating || "5.0"}</span>
-        </div>
-        <div style={{ fontSize: 13, color: "#666", marginTop: 2 }}>
-          {driverInfo.carro?.marca} {driverInfo.carro?.modelo} • <span style={{ color: "#000", fontWeight: "600" }}>{driverInfo.carro?.placa}</span>
-        </div>
+
+    <div
+      style={{
+        marginTop: 12,
+
+        background: "#fff",
+
+        borderRadius: 22,
+
+        padding: "14px",
+
+        boxShadow:
+          "0 8px 20px rgba(0,0,0,0.05)",
+
+        border:
+          "1px solid rgba(0,0,0,0.04)"
+      }}
+    >
+
+      {/* LABEL */}
+      <div
+        style={{
+          fontSize: 11,
+
+          fontWeight: 800,
+
+          color: "#888",
+
+          letterSpacing: 1,
+
+          marginBottom: 10
+        }}
+      >
+        VEHICLE
       </div>
-      <div style={{ textAlign: "right", fontSize: 12, color: driverInfo.carro?.color === "Blanco" ? "#999" : driverInfo.carro?.color }}>
-        {driverInfo.carro?.color}
+
+      {/* CHIPS */}
+      <div
+        style={{
+          display: "flex",
+
+          flexWrap: "wrap",
+
+          gap: 8
+        }}
+      >
+
+        <div style={vehicleChip}>
+          {driverInfo.carro?.marca}
+        </div>
+
+        <div style={vehicleChip}>
+          {driverInfo.carro?.modelo}
+        </div>
+
+        <div style={vehicleChip}>
+          {driverInfo.carro?.color}
+        </div>
+
+        <div
+          style={{
+            ...vehicleChip,
+
+            background: "#111",
+
+            color: "#fff",
+
+            fontWeight: 800,
+
+            letterSpacing: 1
+          }}
+        >
+          {driverInfo.carro?.placa}
+        </div>
+
       </div>
+
     </div>
   )}
 
- <h3 style={{ margin: 0, fontSize: 18 }}>
-  {fase === "pendiente" && "🔍 Looking for a driver..."} {/* 👈 AÑADE ESTO */}
-  {fase === "aceptado" && "✅ Your ride was accepted"}
-  {fase === "pickup" && "🚗 Driver on the way"}
-  {fase === "viaje" && "✨ Ride in progress"}
-</h3>
+  {/* TRIP INFO */}
+  <div
+    style={{
+      marginTop: 12,
 
-{/* Ajuste de lógica de ETA */}
-{fase === "pendiente" || fase === "aceptado" ? (
-  <p style={{ fontSize: 16, color: "#666", margin: "8px 0" }}>
-    Waiting for driver to confirm...
-  </p>
-) : (
-  <p style={{ fontSize: 22, fontWeight: "bold", color: "#1976FF", margin: "4px 0" }}>
-    {viajeData?.driverEta || "Calculating..."}
-  </p>
-)}
+      display: "flex",
 
-  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
-    {viajeData?.metodoPago === "stripe" ? (
-      <span style={{ color: "#28a745", fontWeight: "600" }}>💳 Paid: ${viajeData?.precio?.toFixed(2)}</span>
-    ) : (
-      <span style={{ fontWeight: "700", fontSize: "22px" }}>
-  💵 Pay the Driver: <span style={{ color: "#f70909" }}>${viajeData?.precio?.toFixed(2)}</span>
-</span>
-    )}
+      gap: 10
+    }}
+  >
+{/* RIDE STATUS */}
+<div
+  style={{
+    marginTop: 12,
+
+    background:
+      fase === "viaje"
+        ? "linear-gradient(145deg,#eefaf2,#f8fff9)"
+        : "linear-gradient(145deg,#edf5ff,#f7fbff)",
+
+    borderRadius: 20,
+
+    padding: "12px 14px",
+
+    border:
+      fase === "viaje"
+        ? "1px solid rgba(69,212,131,0.12)"
+        : "1px solid rgba(25,118,255,0.10)",
+
+    boxShadow:
+      fase === "viaje"
+        ? "0 8px 18px rgba(69,212,131,0.08)"
+        : "0 8px 18px rgba(25,118,255,0.08)"
+  }}
+>
+
+  <div
+    style={{
+      fontSize: 11,
+
+      fontWeight: 800,
+
+      letterSpacing: 1,
+
+      marginBottom: 6,
+
+      color:
+        fase === "viaje"
+          ? "#28a745"
+          : "#1976FF"
+    }}
+  >
+    STATUS
   </div>
 
- {/* Ahora incluimos 'pendiente' y 'espera' para que siempre pueda cancelar antes del viaje */}
-{(fase === "pendiente" || fase === "espera" || fase === "aceptado" || fase === "pickup") && (
-  <button
-    style={{ ...btn("#000"), marginTop: 20 }}
-    onMouseDown={press}
-    onMouseUp={release}
-    onClick={() => { if(confirm("Do you wish to cancel this ride?")) cancelarViaje(); }}
+  <div
+    style={{
+      fontSize: 20,
+
+      fontWeight: 700,
+
+      color: "#111"
+    }}
   >
-    Cancel Ride
-  </button>
-)}
+
+    {fase === "pickup" &&
+      "Driver Arriving"}
+
+    {fase === "viaje" &&
+      "Ride In Progress"}
+
+  </div>
+
 </div>
+    {/* ETA */}
+    <div
+      style={{
+        flex: 1,
+
+        background:
+          "linear-gradient(145deg,#edf5ff,#f7fbff)",
+
+        borderRadius: 22,
+
+        padding: "14px",
+
+        border:
+          "1px solid rgba(25,118,255,0.10)",
+
+        boxShadow:
+          "0 8px 18px rgba(25,118,255,0.08)"
+      }}
+    >
+
+      <div
+        style={{
+          fontSize: 11,
+
+          fontWeight: 800,
+
+          color: "#1976FF",
+
+          letterSpacing: 1,
+
+          marginBottom: 6
+        }}
+      >
+        ETA
+      </div>
+
+      <div
+        style={{
+          fontSize: 24,
+
+          fontWeight: 700,
+
+          color: "#111"
+        }}
+      >
+        {viajeData?.driverEta ||
+          "1 min"}
+      </div>
+
     </div>
+
+    {/* PAYMENT */}
+    <div
+      style={{
+        flex: 1,
+
+        background:
+          viajeData?.metodoPago ===
+          "stripe"
+
+            ? "linear-gradient(145deg,#eefbf2,#f7fff9)"
+
+            : "linear-gradient(145deg,#fff3f3,#fff9f9)",
+
+        borderRadius: 22,
+
+        padding: "14px",
+
+        border:
+          viajeData?.metodoPago ===
+          "stripe"
+
+            ? "1px solid rgba(69,212,131,0.12)"
+
+            : "1px solid rgba(255,90,90,0.12)",
+
+        boxShadow:
+          viajeData?.metodoPago ===
+          "stripe"
+
+            ? "0 8px 18px rgba(69,212,131,0.08)"
+
+            : "0 8px 18px rgba(255,90,90,0.08)"
+      }}
+    >
+
+      <div
+        style={{
+          fontSize: 11,
+
+          fontWeight: 800,
+
+          letterSpacing: 1,
+
+          marginBottom: 6,
+
+          color:
+            viajeData?.metodoPago ===
+            "stripe"
+
+              ? "#28a745"
+
+              : "#ff4d4d"
+        }}
+      >
+
+        {viajeData?.metodoPago ===
+        "stripe"
+
+          ? "CARD"
+
+          : "CASH"}
+      </div>
+
+      <div
+        style={{
+          fontSize: 24,
+
+          fontWeight: 700,
+
+          color: "#111"
+        }}
+      >
+        $
+        {viajeData?.precio?.toFixed(
+          2
+        )}
+      </div>
+
+    </div>
+
+  </div>
+
+  {/* CANCEL */}
+  {(fase === "pendiente" ||
+    fase === "espera" ||
+    fase === "aceptado" ||
+    fase === "pickup") && (
+
+    <button
+
+      onMouseDown={press}
+
+      onMouseUp={release}
+
+      onMouseLeave={release}
+
+      onClick={() => {
+
+        if (
+          confirm(
+            "Do you want to cancel this ride?"
+          )
+        ) {
+
+          cancelarViaje();
+        }
+      }}
+
+      style={{
+        width: "100%",
+
+        marginTop: 16,
+
+        padding: "15px",
+
+        border: "none",
+
+        borderRadius: 22,
+
+        background:
+          "linear-gradient(145deg,#ff5c5c,#ff2e2e)",
+
+        color: "#fff",
+
+        fontSize: 16,
+
+        fontWeight: 700,
+
+        cursor: "pointer",
+
+        boxShadow:
+          "0 10px 22px rgba(255,92,92,0.22)",
+
+        transition:
+          "all 0.15s ease"
+      }}
+    >
+      Cancel Ride
+    </button>
+  )}
+
+</div>
+</div>
+  
   );
 }
