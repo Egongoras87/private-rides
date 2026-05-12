@@ -216,19 +216,33 @@ useEffect(() => {
   setIosDevice(isIos);
 
   // ✅ Detectar instalada
-  const standalone =
-    window.matchMedia(
-      "(display-mode: standalone)"
-    ).matches ||
-    (window.navigator as any)
-      .standalone;
+ const standalone =
 
-  if (standalone) {
+  window.matchMedia(
+    "(display-mode: standalone)"
+  ).matches ||
 
-    setAppInstalada(true);
+  window.matchMedia(
+    "(display-mode: fullscreen)"
+  ).matches ||
 
-    return;
-  }
+  (window.navigator as any)
+    .standalone;
+
+  const instaladaGuardada =
+  localStorage.getItem(
+    "pwa_installed"
+  ) === "true";
+
+if (
+  standalone ||
+  instaladaGuardada
+) {
+
+  setAppInstalada(true);
+
+  return;
+}
 
   // 📲 Capturar prompt
   const handler = (e: any) => {
@@ -245,12 +259,17 @@ useEffect(() => {
 
   // ✅ Detectar instalación
   window.addEventListener(
-    "appinstalled",
-    () => {
+  "appinstalled",
+  () => {
 
-      setAppInstalada(true);
-    }
-  );
+    setAppInstalada(true);
+
+    localStorage.setItem(
+      "pwa_installed",
+      "true"
+    );
+  }
+);
 
   return () => {
 
