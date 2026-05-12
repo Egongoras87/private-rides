@@ -84,6 +84,17 @@ const [latOrigen, setLatOrigen] = useState(0);
 const [lngOrigen, setLngOrigen] = useState(0);
   const [driverUbicacion, setDriverUbicacion] =
     useState<{ lat: number; lng: number } | null>(null);
+    const [installPrompt, setInstallPrompt] =
+  useState<any>(null);
+
+const [appInstalada, setAppInstalada] =
+  useState(false);
+
+const [iosDevice, setIosDevice] =
+  useState(false);
+
+const [cerrarInstall, setCerrarInstall] =
+  useState(false);
     const BASE_FARE = 8;        // tarifa base
 const PRICE_PER_MILE = 2.5; // por milla
 
@@ -193,7 +204,91 @@ useEffect(() => {
   verificarSesion();
 
 }, [user, loading, router]);
+/////////////////////////////////////////// DETECTAR PWA INSTALADA/////////////////////////
+useEffect(() => {
 
+  // 📱 Detectar iPhone
+  const isIos =
+    /iphone|ipad|ipod/i.test(
+      window.navigator.userAgent
+    );
+
+  setIosDevice(isIos);
+
+  // ✅ Detectar instalada
+  const standalone =
+    window.matchMedia(
+      "(display-mode: standalone)"
+    ).matches ||
+    (window.navigator as any)
+      .standalone;
+
+  if (standalone) {
+
+    setAppInstalada(true);
+
+    return;
+  }
+
+  // 📲 Capturar prompt
+  const handler = (e: any) => {
+
+    e.preventDefault();
+
+    setInstallPrompt(e);
+  };
+
+  window.addEventListener(
+    "beforeinstallprompt",
+    handler
+  );
+
+  // ✅ Detectar instalación
+  window.addEventListener(
+    "appinstalled",
+    () => {
+
+      setAppInstalada(true);
+    }
+  );
+
+  return () => {
+
+    window.removeEventListener(
+      "beforeinstallprompt",
+      handler
+    );
+  };
+
+}, []);
+const instalarApp = async () => {
+
+  // ANDROID
+  if (installPrompt) {
+
+    installPrompt.prompt();
+
+    const choice =
+      await installPrompt.userChoice;
+
+    if (
+      choice.outcome === "accepted"
+    ) {
+
+      setAppInstalada(true);
+    }
+
+    return;
+  }
+
+  // IOS fallback
+  alert(
+    "On iPhone tap Share then Add to Home Screen"
+  );
+};
+
+
+//////////////////////////////////////////////////////📍 Calcular ruta
   // 📍 Calcular ruta
   const calcularRuta = () => {
   if (!origenRef.current || !destinoRef.current) return;
@@ -700,8 +795,140 @@ if (!isLoaded) {
 
 //////////////////////////////// RETURN ////////////////////////////////
 return (
-<div>
 
+
+
+<div>
+{/* INSTALL APP */}
+
+{!appInstalada &&
+ !cerrarInstall && (
+
+  <div
+    style={{
+      width: "100%",
+
+      padding: 16,
+
+      borderRadius: 22,
+
+      marginBottom: 18,
+
+      background:
+        "linear-gradient(145deg,#ffffff,#f5f5f5)",
+
+      boxShadow:
+        "0 10px 30px rgba(0,0,0,0.12)",
+
+      border:
+        "1px solid rgba(0,0,0,0.06)"
+    }}
+  >
+
+    <div
+      style={{
+        display: "flex",
+        justifyContent:
+          "space-between",
+
+        alignItems: "center"
+      }}
+    >
+
+      <div>
+
+        <div
+          style={{
+            fontSize: 18,
+            fontWeight: "bold",
+            color: "#111"
+          }}
+        >
+          📲 Install App
+        </div>
+
+        <div
+          style={{
+            fontSize: 13,
+            color: "#666",
+            marginTop: 4
+          }}
+        >
+          One tap future access to
+          Private Rides
+        </div>
+
+      </div>
+
+      <button
+        onClick={() =>
+          setCerrarInstall(true)
+        }
+        style={{
+          border: "none",
+          background: "transparent",
+          fontSize: 20,
+          cursor: "pointer",
+          color: "#999"
+        }}
+      >
+        ×
+      </button>
+
+    </div>
+
+    <button
+      onClick={instalarApp}
+      style={{
+        width: "100%",
+
+        marginTop: 16,
+
+        padding: 14,
+
+        borderRadius: 16,
+
+        border: "none",
+
+        background:
+          "linear-gradient(145deg,#b19e36,#8f7d2d)",
+
+        color: "#fff",
+
+        fontWeight: "bold",
+
+        fontSize: 15,
+
+        cursor: "pointer"
+      }}
+    >
+
+      Install Private Rides
+
+    </button>
+
+    {iosDevice && (
+
+      <div
+        style={{
+          marginTop: 10,
+          fontSize: 12,
+          color: "#777",
+          lineHeight: 1.5
+        }}
+      >
+
+        iPhone:
+        tap Share →
+        Add to Home Screen
+
+      </div>
+    )}
+
+  </div>
+)}
+
+///////////////////////////////////////////////panel de arriba 
   {/* BACKGROUND */}
   <div style={{ position:"fixed", top:0, left:0, width:"100%", height:"100%", backgroundImage:"url('/bg.png?v=2')", backgroundSize:"cover", backgroundPosition:"center", zIndex:-2 }} />
 
@@ -1327,11 +1554,13 @@ return (
     </div>
 
   </div>
+  
 )}
 
   </div>
 
 </div>
+
 );
 
 }
