@@ -4,7 +4,8 @@ import "./globals.css";
 import { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import AuthProvider from "@/components/AuthProvider";
-import { useEffect } from "react";
+import RegisterSW from "@/components/RegisterSW";
+
 
 // 1. VIEWPORT DINÁMICO
 export async function generateViewport(): Promise<Viewport> {
@@ -114,36 +115,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
 
-  // 🔥 SERVICE WORKER
-  useEffect(() => {
-
-    if (
-      typeof window !== "undefined" &&
-      "serviceWorker" in navigator
-    ) {
-
-      navigator.serviceWorker
-        .register("/sw.js")
-        .then(() => {
-
-          console.log(
-            "SW Registered"
-          );
-
-        })
-        .catch((err) => {
-
-          console.error(
-            "SW ERROR:",
-            err
-          );
-
-        });
-    }
-
-  }, []);
-
-  return (
+   return (
 
     <html
       lang="en"
@@ -153,6 +125,7 @@ export default function RootLayout({
       <body className="antialiased">
 
         <AuthProvider>
+          <RegisterSW />
           {children}
         </AuthProvider>
 
