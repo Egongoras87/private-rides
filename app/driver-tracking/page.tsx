@@ -128,7 +128,8 @@ const [
   const directionsRef = useRef<google.maps.DirectionsService | null>(null);
 const [rutasAlternativas, setRutasAlternativas] = useState<any[][]>([]);
   const fullPathRef = useRef<any[]>([]);
-
+const lastRouteIndexRef =
+  useRef(0);
   const lastInstructionRef = useRef("");
 const [steps, setSteps] =
   useState<any[]>([]);
@@ -156,21 +157,34 @@ const lastPositionRef =
   // UTILIDADES
   // ---------------------------------------------------
 
-  const speak = useCallback((text: string) => {
+  const speak = useCallback((
+  text: string
+) => {
 
-    if (!window.speechSynthesis) return;
+  if (
+    !window.speechSynthesis
+  ) return;
 
-    window.speechSynthesis.cancel();
+  if (
+    window.speechSynthesis.speaking
+  ) return;
 
-    const msg = new SpeechSynthesisUtterance(text);
+  const msg =
+    new SpeechSynthesisUtterance(
+      text
+    );
 
-    msg.lang = "es-ES";
+  msg.lang = "es-ES";
 
-    msg.rate = 1;
+  msg.rate = 0.95;
 
-    window.speechSynthesis.speak(msg);
+  msg.pitch = 1;
 
-  }, []);
+  window.speechSynthesis.speak(
+    msg
+  );
+
+}, []);
 
   const toRad = (x: number) => x * Math.PI / 180;
 
@@ -353,7 +367,76 @@ useEffect(() => {
     return index;
 
   }, []);
+// ---------------------------------------------------
+// RECALCULAR ETA INMEDIATAMENTE
+// ---------------------------------------------------
 
+const recalcularETA = useCallback(async (
+  origin: any,
+  destination: any
+) => {
+
+  if (!directionsRef.current) return;
+
+  directionsRef.current.route(
+    {
+      origin,
+      destination,
+
+      travelMode:
+        google.maps.TravelMode.DRIVING,
+
+      drivingOptions: {
+        departureTime: new Date(),
+        trafficModel:
+          google.maps.TrafficModel.BEST_GUESS
+      }
+    },
+
+    (res, status) => {
+
+      if (
+        status !== "OK" ||
+        !res
+      ) return;
+
+      const leg =
+        res.routes[0].legs[0];
+
+      const durationValue =
+        leg.duration_in_traffic?.value ||
+
+        leg.duration?.value ||
+
+        0;
+
+      const distanceValue =
+        leg.distance?.value || 0;
+
+      if (fase === "pickup") {
+
+        setEtaPickup(
+          durationValue
+        );
+
+        setDistanciaPickup(
+          distanceValue
+        );
+
+      } else {
+
+        setEtaDestino(
+          durationValue
+        );
+
+        setDistanciaDestino(
+          distanceValue
+        );
+      }
+    }
+  );
+
+}, [fase]);
   // ---------------------------------------------------
 // SOLICITAR RUTA (Con Alternativas)
 // ---------------------------------------------------
@@ -395,6 +478,7 @@ currentStepIndexRef.current = 0;
       }));
 
       fullPathRef.current = points;
+      lastRouteIndexRef.current = 0;
       setRemainingPath(points);
       setCompletedPath([]);
 
@@ -514,11 +598,32 @@ if (lastPositionRef.current) {
 }
 
 // ---------------------------------------------------
-// ACTUALIZAR POSICIÓN
+// ACTUALIZAR POSICIÓN SUAVE
 // ---------------------------------------------------
 
-setDriverPos(nuevaPos);
+setDriverPos((prev: any) => {
 
+  if (!prev) {
+    return nuevaPos;
+  }
+
+  return {
+
+    lat:
+      prev.lat +
+      (
+        nuevaPos.lat -
+        prev.lat
+      ) * 0.22,
+
+    lng:
+      prev.lng +
+      (
+        nuevaPos.lng -
+        prev.lng
+      ) * 0.22
+  };
+});
 // ---------------------------------------------------
 // FIREBASE THROTTLE
 // ---------------------------------------------------
@@ -529,7 +634,7 @@ const now = Date.now();
 
 if (
   uid &&
-  now - lastFirebaseUpdateRef.current > 3000
+  now - lastFirebaseUpdateRef.current > 5000
 ) {
 
   lastFirebaseUpdateRef.current =
@@ -581,7 +686,10 @@ if (
 // CÁMARA SUAVE UBER STYLE
 // ---------------------------------------------------
 
-if (mapRef.current) {
+if (
+  mapRef.current &&
+  mapReady
+) {
 
   let heading =
     lastHeadingRef.current;
@@ -617,7 +725,7 @@ if (mapRef.current) {
 
   if (
     nowCamera -
-    lastCameraMoveRef.current > 1200
+    lastCameraMoveRef.current > 2500
   ) {
 
     lastCameraMoveRef.current =
@@ -749,6 +857,13 @@ if (gpsNoise) {
 
 if (!fullPathRef.current.length) {
 
+  // 🔥 ETA inmediata
+  recalcularETA(
+    nuevaPos,
+    target
+  );
+
+  // 🔥 ruta completa
   solicitarRuta(
     nuevaPos,
     target,
@@ -762,19 +877,42 @@ if (!fullPathRef.current.length) {
 
 if (fullPathRef.current.length > 0) {
 
-  const index =
-    getClosestPointIndex(
-      nuevaPos,
-      fullPathRef.current
-    );
+  // ---------------------------------------------------
+// AVANCE REAL SOBRE LA RUTA
+// ---------------------------------------------------
 
-  // 🔥 ruta restante
+const closestIndex =
+  getClosestPointIndex(
+    nuevaPos,
+    fullPathRef.current
+  );
+
+// 🔥 NUNCA RETROCEDER
+const index = Math.max(
+  lastRouteIndexRef.current,
+  closestIndex
+);
+
+// 🔥 guardar progreso
+lastRouteIndexRef.current =
+  index;
+
+// ---------------------------------------------------
+// RUTA RESTANTE
+// ---------------------------------------------------
+
 const remaining =
   fullPathRef.current.slice(index);
 
-// 🔥 ruta completada
+// ---------------------------------------------------
+// RUTA COMPLETADA
+// ---------------------------------------------------
+
 const completed =
-  fullPathRef.current.slice(0, index);
+  fullPathRef.current.slice(
+    0,
+    Math.max(0, index)
+  );
 
 setRemainingPath(remaining);
 
@@ -805,9 +943,23 @@ if (viajeData?.id) {
       fullPathRef.current[index]
     );
 
-  // 🔥 SOLO RECALCULAR SI REALMENTE
-  // SE DESVIÓ DE LA RUTA
-  if (desviacion > 180) {
+ // ---------------------------------------------------
+// REROUTE INTELIGENTE
+// ---------------------------------------------------
+
+const nowReroute =
+  Date.now();
+
+if (
+
+  desviacion > 180 &&
+
+  nowReroute -
+    lastRouteTimeRef.current >
+
+  15000
+
+) {
 
   if (!reroutingRef.current) {
 
@@ -830,7 +982,7 @@ if (viajeData?.id) {
     reroutingRef.current =
       false;
 
-  }, 8000);
+  }, 10000);
 }
 }
 }
@@ -1048,6 +1200,48 @@ setCompletedPath([]);
       setLoadingCancel(false);
     }
   };
+
+  useEffect(() => {
+
+  if (
+    !driverPos ||
+    !viajeData
+  ) return;
+
+  const target =
+    fase === "pickup"
+
+      ? {
+          lat: Number(
+            viajeData.origenLat
+          ),
+
+          lng: Number(
+            viajeData.origenLng
+          )
+        }
+
+      : {
+          lat: Number(
+            viajeData.destinoLat
+          ),
+
+          lng: Number(
+            viajeData.destinoLng
+          )
+        };
+
+  recalcularETA(
+    driverPos,
+    target
+  );
+
+}, [
+  fase,
+  driverPos,
+  viajeData,
+  recalcularETA
+]);
 
   // ---------------------------------------------------
   // ETA
@@ -1327,6 +1521,7 @@ setCompletedPath([]);
 
       // B. Limpiamos TODAS las referencias de ruta
       fullPathRef.current = []; // Esto gatilla la lógica de "PRIMERA RUTA" en tu useEffect
+      lastRouteIndexRef.current = 0;
       setRemainingPath([]);
       setCompletedPath([]);
       setRutasAlternativas([]);
@@ -1350,13 +1545,35 @@ if (viajeData?.id) {
       lastRouteTimeRef.current = 0; // Reseteamos el tiempo para que solicitarRuta no ignore la llamada
 
       // C. Pedimos la nueva ruta al DESTINO de inmediato
-      if (driverPos && viajeData?.destinoLat) {
-        solicitarRuta(
-          driverPos, 
-          { lat: Number(viajeData.destinoLat), lng: Number(viajeData.destinoLng) }, 
-          true // 'true' fuerza el bypass del throttle de 15 seg
-        );
-      }
+     if (driverPos && viajeData?.destinoLat) {
+
+  recalcularETA(
+    driverPos,
+    {
+      lat: Number(
+        viajeData.destinoLat
+      ),
+
+      lng: Number(
+        viajeData.destinoLng
+      )
+    }
+  );
+
+  solicitarRuta(
+    driverPos,
+    {
+      lat: Number(
+        viajeData.destinoLat
+      ),
+
+      lng: Number(
+        viajeData.destinoLng
+      )
+    },
+    true
+  );
+}
 
     } catch (err) {
       console.error(err);

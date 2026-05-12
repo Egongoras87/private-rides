@@ -63,6 +63,13 @@ const [lngDestino, setLngDestino] = useState(0);
   const [nombre, setNombre] = useState("");
  const [telefono, setTelefono] = useState("");
 const [paymentMethodId, setPaymentMethodId] = useState<string | null>(null);
+const [cardLast4, setCardLast4] =
+  useState("");
+
+const [cardBrand, setCardBrand] =
+  useState("");
+
+
 const [cardGuardada, setCardGuardada] = useState(false);
 const [zipCode, setZipCode] =
   useState("");
@@ -101,90 +108,89 @@ useEffect(() => {
 
   if (!user) return;
 
-  // 🔥 PERFIL USUARIO
-  const userProfileRef =
-    ref(
-      db,
-      `usuarios/${user.uid}/perfil`
-    );
+  const cargarPerfil = async () => {
 
-  // 🔥 ESCUCHAR CAMBIOS
-  const unsub =
-    onValue(
-      userProfileRef,
-      (snapshot) => {
+    try {
 
-        const data =
-          snapshot.val();
+      const snap = await get(
+        ref(db, "usuarios/" + user.uid)
+      );
 
-        if (!data) return;
+      if (!snap.exists()) return;
 
-        // 👤 DATOS USUARIO
-        if (data.nombre) {
-          setNombre(data.nombre);
-        }
+      const data = snap.val();
 
-        if (data.telefono) {
-          setTelefono(
-            data.telefono
-          );
-        }
+      setNombre(data.nombre || "");
 
-        if (data.email) {
-          setEmail(data.email);
-        }
+      setTelefono(data.telefono || "");
 
-        // 💳 TARJETA GUARDADA
-        if (
+      // 🔥 tarjeta guardada
+      if (data.paymentMethodId) {
+
+        setPaymentMethodId(
           data.paymentMethodId
-        ) {
-
-          setPaymentMethodId(
-            data.paymentMethodId
-          );
-
-          setCardGuardada(true);
-        }
+        );
       }
-    );
 
-  // 🔥 LIMPIAR LISTENER
-  return () => unsub();
+      if (data.cardLast4) {
+
+        setCardLast4(
+          data.cardLast4
+        );
+      }
+
+      if (data.cardBrand) {
+
+        setCardBrand(
+          data.cardBrand
+        );
+      }
+
+    } catch (err) {
+
+      console.error(
+        "LOAD PROFILE ERROR:",
+        err
+      );
+    }
+  };
+
+  cargarPerfil();
 
 }, [user]);
 useEffect(() => {
 
   if (loading) return;
 
-  const verificarRol = async () => {
+  const verificarSesion = async () => {
 
     try {
 
+      // 🔥 NO LOGIN
       if (!user) {
+
         router.replace("/login-user");
+
         return;
       }
 
-      const driverSnap = await get(
-        ref(db, "drivers/" + user.uid)
+      // 🔥 SOLO validar sesión
+      // NO redirigir automáticamente
+      console.log(
+        "Usuario autenticado:",
+        user.uid
       );
-
-      const driverData = driverSnap.val();
-
-      if (driverData?.role === "driver") {
-
-        router.replace("/driver");
-
-        return;
-      }
 
     } catch (err) {
 
-      console.error("ROLE ERROR:", err);
+      console.error(
+        "SESSION ERROR:",
+        err
+      );
     }
   };
 
-  verificarRol();
+  verificarSesion();
 
 }, [user, loading, router]);
 
@@ -332,7 +338,10 @@ const reservar = async () => {
   // 🔥 PASO 1: GUARDAR PERFIL AL PEDIR EL VIAJE
   // =========================================================
   try {
-    const userProfileRef = ref(db, `usuarios/${user.uid}/perfil`);
+   const userProfileRef = ref(
+  db,
+  `usuarios/${user.uid}`
+);
    await update(userProfileRef, {
   nombre,
   telefono,
@@ -689,266 +698,248 @@ if (!isLoaded) {
   );
 }
 
- 
-////////////////////////////////RETURN////////////////////////////////
+//////////////////////////////// RETURN ////////////////////////////////
 return (
+<div>
 
-  <div>
-  {/* FONDO */}
-  <div
-    style={{
-      position: "fixed",
-      top: 0,
-      left: 0,
-      width: "100%",
-      height: "100%",
-      backgroundImage: "url('/bg.png?v=2')",
-      backgroundSize: "cover",
-      backgroundPosition: "center",
-      zIndex: -2
-    }}
-  />
-  {/* CAPA OSCURA */}
-  <div
-    style={{
-      position: "fixed",
-      top: 0,
-      left: 0,
-      width: "100%",
-      height: "100%",
-      backgroundColor: "rgba(12, 3, 3, 0.5)",
-      zIndex: -1
-    }}
-  />
-    <div style={{ position: "relative", zIndex: 1, padding: 20 }}>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-  <h1 style={{ color: "#b19e36" }}>App Private Rides</h1>
- 
-  <button
-    onClick={() => setOpenConfig(true)}
-    style={{
-      background: "transparent",
-      border: "none",
-      fontSize: 22,
-      cursor: "pointer",
-      color: "#fff"
-    }}
-  >
-    ⚙️
-  </button>
-</div>
-  
-        
-       {/* 👤 INPUT PARA NOMBRE */}
-<input
-  placeholder="Name"
-  value={nombre} // 👈 Crucial: Esto muestra el nombre cargado de Firebase
-  onChange={(e) => setNombre(e.target.value)}
-  style={{
-    width: "100%",
-    padding: 8,
-    background: "transparent",
-    borderRadius: 10,
-    border: "1px solid #ccc",
-    fontSize: 16,
-    color: "#fff"
-  }}
-/>
+  {/* BACKGROUND */}
+  <div style={{ position:"fixed", top:0, left:0, width:"100%", height:"100%", backgroundImage:"url('/bg.png?v=2')", backgroundSize:"cover", backgroundPosition:"center", zIndex:-2 }} />
 
-{/* 👤 INPUT PARA TELÉFONO */}
-<input
-  placeholder="Phone number"
-  value={telefono} // 👈 Crucial: Esto muestra el teléfono cargado de Firebase
-  onChange={(e) => setTelefono(e.target.value)}
-  style={{
-    width: "100%",
-    padding: 8,
-    background: "transparent",
-    borderRadius: 10,
-    border: "1px solid #ccc",
-    fontSize: 16,
-    color: "#fff",
-    marginTop: 8
-  }}
-/>
-      
-        
-        <label style={{ color: "#fff" }}>Date & Time</label>
+  {/* DARK OVERLAY */}
+  <div style={{ position:"fixed", top:0, left:0, width:"100%", height:"100%", background:"rgba(12,3,3,0.5)", zIndex:-1 }} />
 
-<input
-  type="datetime-local"
-  value={fechaHora}
-  onChange={(e) => setFechaHora(e.target.value)}
-  style={{
-    width: "100%",
-    padding: 8,
-    background: "transparent",
-    borderRadius: 10,
-    border: "1px solid #ccc",
-    fontSize: 16,
-    color: "#fff"
-  }}
-/>
+  {/* MAIN */}
+  <div style={{ position:"relative", zIndex:1, padding:20 }}>
 
-        {/* 📍 ORIGEN */}
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-  <Autocomplete
-  onLoad={(ref) => (origenAutoRef.current = ref)}
-  onPlaceChanged={() => {
-    const place = origenAutoRef.current.getPlace();
-    if (!place.geometry) return;
+    {/* HEADER */}
+    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+      <h1 style={{ color:"#b19e36" }}>App Private Rides</h1>
 
-    setLatOrigen(place.geometry.location.lat());
-    setLngOrigen(place.geometry.location.lng());
-  }}
->
-  <input
-    ref={origenRef}
-    placeholder="Pickup location"
-    style={{
-      width: "100%",
-      padding: 8,
-      borderRadius: 10,
-      border: "1px solid #ccc",
-      background: "transparent",
-      color: "#fff"
-    }}
-  />
-</Autocomplete>
+      <button onClick={() => setOpenConfig(true)} style={{ background:"transparent", border:"none", fontSize:22, cursor:"pointer", color:"#fff" }}>
+        ⚙️
+      </button>
+    </div>
 
+    {/* NAME */}
+    <input
+      placeholder="Name"
+      value={nombre}
+      onChange={(e) => setNombre(e.target.value)}
+      style={{ width:"100%", padding:8, background:"transparent", borderRadius:10, border:"1px solid #ccc", fontSize:16, color:"#fff" }}
+    />
 
-  <button 
-  style={btnGPS}
-  onMouseDown={press3D}
-  onMouseUp={(e) => release3D(e, "#000")}
-  onMouseLeave={(e) => release3D(e, "#000")}
-  onClick={obtenerUbicacion} // Asegúrate de que el nombre coincida con tu función (obtenerUbicacionActual)
->
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24" // Aumentado un poco para mejor visibilidad
-    height="24"
-    fill="currentColor" // Usará el color definido en el estilo (azul por defecto)
-    viewBox="0 0 24 24"
-  >
-    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/>
-  </svg>
-</button>
-</div>
-        
+    {/* PHONE */}
+    <input
+      placeholder="Phone number"
+      value={telefono}
+      onChange={(e) => setTelefono(e.target.value)}
+      style={{ width:"100%", padding:8, background:"transparent", borderRadius:10, border:"1px solid #ccc", fontSize:16, color:"#fff", marginTop:8 }}
+    />
 
-        {/* 📍 DESTINO */}
-       <Autocomplete
-  onLoad={(ref) => (destinoAutoRef.current = ref)}
-  onPlaceChanged={() => {
-    const place = destinoAutoRef.current.getPlace();
-    if (!place.geometry) return;
+    {/* DATE */}
+    <label style={{ color:"#fff" }}>Date & Time</label>
 
-    setLatDestino(place.geometry.location.lat());
-    setLngDestino(place.geometry.location.lng());
-  }}
->
-  <input
-    ref={destinoRef}
-    placeholder="Drop-off location"
-    style={{
-      width: "100%",
-      padding: 8,
-      borderRadius: 10,
-      border: "1px solid #ccc",
-      background: "transparent",
-      marginTop: 6,
-      color: "#fff"
-    }}
-  />
-</Autocomplete>
+    <input
+      type="datetime-local"
+      value={fechaHora}
+      onChange={(e) => setFechaHora(e.target.value)}
+      style={{ width:"100%", padding:8, background:"transparent", borderRadius:10, border:"1px solid #ccc", fontSize:16, color:"#fff" }}
+    />
 
-        
+    {/* PICKUP */}
+    <div style={{ display:"flex", gap:10, alignItems:"center", marginTop:8 }}>
 
-       <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-  
-  <button 
-  style={btnGetPrice}
-  onMouseDown={press3D}
-  onMouseUp={(e) => release3D(e, "#004494")} // Sombra azul oscura
-  onMouseLeave={(e) => release3D(e, "#004494")}
-  onClick={calcularRuta}
->
-  Get Price
-</button>
+      <Autocomplete
+        onLoad={(ref) => (origenAutoRef.current = ref)}
+        onPlaceChanged={() => {
 
- <button
-  onClick={reservar}
-  disabled={loadingPago} // Evita doble clic mientras procesa
-  onMouseDown={press3D}
-  onMouseUp={(e) => release3D(e, "#145524")}
-  onMouseLeave={(e) => release3D(e, "#145524")}
-  // Soporte para móviles
-  onTouchStart={press3D}
-  onTouchEnd={(e) => release3D(e, "#145524")}
-  style={{
-    ...btnRequest,
-    flex: 1, // Para que ocupe el ancho disponible si está en un contenedor flex
-    opacity: loadingPago ? 0.7 : 1, // Se vuelve opaco al cargar
-    cursor: loadingPago ? "not-allowed" : "pointer", // Cambia el cursor si está bloqueado
-    filter: loadingPago ? "grayscale(0.3)" : "none" // Opcional: un toque más oscuro al procesar
-  }}
->
-  {loadingPago ? "Processing payment..." : "Request the Ride"}
-</button>
+          const place = origenAutoRef.current.getPlace();
 
-</div>
-<div style={{ marginTop: 8 }}>
-  <p style={{ color: "#00ff99" }}>
-  Distance: {distancia.toFixed(2)} miles
-</p>
+          if (!place.geometry) return;
 
-<p style={{ color: "#00ff99", fontWeight: "bold" }}>
-  Price: ${precio.toFixed(2)}
-</p>
-</div>
-<div style={{ marginTop: 10 }}>
-  <p style={{ color: "#fff" }}>Choose a Payment Method.</p>
+          setLatOrigen(place.geometry.location.lat());
+          setLngOrigen(place.geometry.location.lng());
 
-  <div style={{ display: "flex", gap: 10 }}>
-  
-  {/* 💳 CARD (MAS GRANDE) */}
-  <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
-  {/* 💳 BOTÓN CARD */}
-  <button 
-      style={{
-        ...btnPayment, 
-        background: metodoPago === "stripe" ? "linear-gradient(145deg, #007bff, #0056b3)" : "#1e1e1e",
-        border: metodoPago === "stripe" ? "1px solid #00c6ff" : "1px solid #333",
-      }}
-      onMouseDown={press3D}
-      onMouseUp={(e) => release3D(e, "#000")}
-      onMouseLeave={(e) => release3D(e, "#000")}
-      onClick={() => {
-        setMetodoPago("stripe");
-        setMostrarCardModal(true);
+          setTimeout(() => {
+
+            if (origenRef.current?.value && destinoRef.current?.value) {
+              calcularRuta();
+            }
+
+          }, 300);
+        }}
+      >
+
+        <input
+          ref={origenRef}
+          placeholder="Pickup location"
+          style={{ width:"100%", padding:8, borderRadius:10, border:"1px solid #ccc", background:"transparent", color:"#fff" }}
+        />
+
+      </Autocomplete>
+
+      <button
+        style={btnGPS}
+        onMouseDown={press3D}
+        onMouseUp={(e) => release3D(e, "#000")}
+        onMouseLeave={(e) => release3D(e, "#000")}
+        onClick={obtenerUbicacion}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/>
+        </svg>
+      </button>
+
+    </div>
+
+    {/* DESTINATION */}
+    <Autocomplete
+      onLoad={(ref) => (destinoAutoRef.current = ref)}
+      onPlaceChanged={() => {
+
+        const place = destinoAutoRef.current.getPlace();
+
+        if (!place.geometry) return;
+
+        setLatDestino(place.geometry.location.lat());
+        setLngDestino(place.geometry.location.lng());
+
+        setTimeout(() => {
+
+          if (origenRef.current?.value && destinoRef.current?.value) {
+            calcularRuta();
+          }
+
+        }, 300);
       }}
     >
-      💳 Card
-    </button>
 
-    <button 
-      style={{
-        ...btnPayment, 
-        background: metodoPago === "cash" ? "linear-gradient(145deg, #f39c12, #d35400)" : "#1e1e1e",
-        border: metodoPago === "cash" ? "1px solid #f1c40f" : "1px solid #333",
-      }}
-      onMouseDown={press3D}
-      onMouseUp={(e) => release3D(e, "#000")}
-      onMouseLeave={(e) => release3D(e, "#000")}
-      onClick={() => setMetodoPago("cash")}
-    >
-      💵 Cash
-    </button>
-  </div>
-</div>
-        </div>
+      <input
+        ref={destinoRef}
+        placeholder="Drop-off location"
+        style={{ width:"100%", padding:8, borderRadius:10, border:"1px solid #ccc", background:"transparent", marginTop:6, color:"#fff" }}
+      />
+
+    </Autocomplete>
+
+    {/* PRICE */}
+    <div style={{ marginTop:10 }}>
+      <p style={{ color:"#00ff99", margin:0 }}>Distance: {distancia.toFixed(2)} miles</p>
+      <p style={{ color:"#00ff99", fontWeight:"bold", marginTop:4 }}>Price: ${precio.toFixed(2)}</p>
+    </div>
+
+    {/* ACTION BUTTONS */}
+    <div style={{ display:"flex", gap:8, marginTop:12 }}>
+
+    {/* CARD */}
 <button
+
+  onClick={() => {
+
+    // 🔥 PRIMER TOQUE
+    if (metodoPago !== "stripe") {
+
+      setMetodoPago("stripe");
+
+      return;
+    }
+
+    // 🔥 SEGUNDO TOQUE
+    setMostrarCardModal(true);
+  }}
+
+  onMouseDown={press3D}
+
+  onMouseUp={(e) =>
+    release3D(e, "#000")
+  }
+
+  onMouseLeave={(e) =>
+    release3D(e, "#000")
+  }
+
+  style={{
+    ...btnPayment,
+
+    flex: 1,
+
+    margin: 0,
+
+    padding: "10px 12px",
+
+    background:
+      metodoPago === "stripe"
+        ? "linear-gradient(145deg,#007bff,#0056b3)"
+        : "#1e1e1e",
+
+    border:
+      metodoPago === "stripe"
+        ? "2px solid #00c6ff"
+        : "1px solid #333",
+
+    boxShadow:
+      metodoPago === "stripe"
+        ? "0 0 15px rgba(0,198,255,0.5)"
+        : "0 5px 0 #000"
+  }}
+>
+
+  {cardLast4
+    ? `Card •••• ${cardLast4}`
+    : "Card"}
+
+</button>
+      {/* CASH */}
+      <button
+        onClick={() => setMetodoPago("cash")}
+
+        onMouseDown={press3D}
+        onMouseUp={(e) => release3D(e, "#000")}
+        onMouseLeave={(e) => release3D(e, "#000")}
+
+        style={{
+          ...btnPayment,
+          flex:1,
+          margin:0,
+          padding:"10px 12px",
+          background: metodoPago === "cash"
+            ? "linear-gradient(145deg,#f39c12,#d35400)"
+            : "#1e1e1e",
+          border: metodoPago === "cash"
+            ? "1px solid #f1c40f"
+            : "1px solid #333"
+        }}
+      >
+        Cash
+      </button>
+
+      {/* REQUEST */}
+      <button
+        onClick={reservar}
+        disabled={loadingPago}
+
+        onMouseDown={press3D}
+        onMouseUp={(e) => release3D(e, "#145524")}
+        onMouseLeave={(e) => release3D(e, "#145524")}
+        onTouchStart={press3D}
+        onTouchEnd={(e) => release3D(e, "#145524")}
+
+        style={{
+          ...btnRequest,
+          flex:2,
+          margin:0,
+          padding:"10px 16px",
+          opacity: loadingPago ? 0.7 : 1,
+          cursor: loadingPago ? "not-allowed" : "pointer"
+        }}
+      >
+        {loadingPago ? "Processing..." : "Request Ride"}
+      </button>
+
+    </div>
+
+    {/* MAP MODE */}
+    <button
   onClick={() => setModoOscuroMapa(!modoOscuroMapa)}
   style={{
     marginTop: 4,
@@ -963,426 +954,386 @@ return (
   {modoOscuroMapa ? "☀️ Light Map" : "🌙 Dark Map"}
 </button>
 
-        {/* 🗺️ MAPA */}
-       <div
-  style={{
-    marginTop: 15,
-    borderRadius: 20,
-    overflow: "hidden",
-    boxShadow: "0 10px 30px rgba(0,0,0,0.5)"
-  }}
->
-  <GoogleMap
-    mapContainerStyle={{
-      width: "100%",
-      height: "50vh"
-    }}
-    center={miUbicacion || { lat: 36.1699, lng: -115.1398 }}
-    zoom={14}
-    options={{
-      styles: modoOscuroMapa ? darkMapStyle : []
-    }}
-  >
-    {directions && <DirectionsRenderer directions={directions} />}
-    {miUbicacion && <Marker position={miUbicacion} />}
-    {driverUbicacion && <Marker position={driverUbicacion} />}
-  </GoogleMap>
-</div>
-<div
-  style={{
-    marginTop: 20,
-    marginBottom: 20,
-    display: "flex",
-    justifyContent: "center",
-    gap: 16,
-    fontSize: 14,
-  }}
->
-  <a
-    href="/privacy"
-    style={{
-      color: "#fff",
-      textDecoration: "none"
-    }}
-  >
-    Privacy Policy
-  </a>
+    {/* MAP */}
+    <div style={{ marginTop:15, borderRadius:20, overflow:"hidden", boxShadow:"0 10px 30px rgba(0,0,0,0.5)" }}>
 
-  <a
-    href="/terms"
-    style={{
-      color: "#fff",
-      textDecoration: "none"
-    }}
-  >
-    Terms of Service
-  </a>
-</div>
-{openConfig && (
-  <div style={{
-    position: "fixed",
-    top: 0,
-    left: 0,
-    width: "100%",
-    height: "100%",
-    background: "rgba(0,0,0,0.9)",
-    zIndex: 9999,
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center"
-  }}>
-    <div style={{
-      width: "90%",
-      maxWidth: 400,
-      background: "#111",
-      borderRadius: 12,
-      padding: 20,
-      display: "flex",
-      flexDirection: "column",
-      gap: 12,
-      color: "#fff"
-    }}>
-      
-      <h3>⚙️ Settings</h3>
-
-      {/* 👤 Nombre */}
-      <input
-        value={nombre}
-        onChange={(e) => setNombre(e.target.value)}
-        placeholder="Name"
-        style={inputConfig}
-      />
-
-      {/* 📞 Teléfono */}
-      <input
-        value={telefono}
-        onChange={(e) => setTelefono(e.target.value)}
-        placeholder="Phone"
-        style={inputConfig}
-      />
-      {/* 📧 EMAIL */}
-<input
-  value={email}
-  onChange={(e) => setEmail(e.target.value)}
-  placeholder="Email"
-  style={inputConfig}
-/>
-
-      {/* 💳 Método de pago */}
-      <div style={{ display: "flex", gap: 10 }}>
-        <button
-  onMouseDown={press3D}
-  onMouseUp={(e) => release3D(e, "#004494")}
-  onMouseLeave={(e) => release3D(e, "#004494")}
-  onTouchStart={press3D}
-  onTouchEnd={(e) => release3D(e, "#004494")}
-  onClick={() => {
-    setMetodoPago("stripe");
-    setMostrarCardModal(true); // 🔥 ESTO FALTABA
-  }}
-  style={{
-    ...btnPayment,
-    background: metodoPago === "stripe"
-      ? "linear-gradient(145deg, #007bff, #0056b3)"
-      : "#1e1e1e",
-  }}
->
-  💳 Card
-</button>
-      </div>
-
-      {/* 💾 Guardar */}
-      <button
-      onMouseDown={press3D}
-  onMouseUp={(e) => release3D(e, "#004494")}
-  onMouseLeave={(e) => release3D(e, "#004494")}
-  onTouchStart={press3D}
-  onTouchEnd={(e) => release3D(e, "#004494")}
-        onClick={async () => {
-          const user = auth.currentUser;
-          if (!user) return;
-
-         await set(ref(db, `usuarios/${user.uid}/perfil`), {
-  nombre,
-  telefono,
-  email, // 🔥 NUEVO
-  metodoPago,
-  updatedAt: Date.now()
-});
-          alert("✅ Saved");
-          setOpenConfig(false);
-        }}
-        style={{
-          padding: 12,
-          borderRadius: 8,
-          border: "none",
-          background: "#2ecc71",
-          color: "#fff"
-        }}
+      <GoogleMap
+        mapContainerStyle={{ width:"100%", height:"50vh" }}
+        center={miUbicacion || { lat:36.1699, lng:-115.1398 }}
+        zoom={14}
+        options={{ styles: modoOscuroMapa ? darkMapStyle : [] }}
       >
-        Save
-      </button>
 
-      {/* Cerrar */}
-      <button
-      onMouseDown={press3D}
-  onMouseUp={(e) => release3D(e, "#004494")}
-  onMouseLeave={(e) => release3D(e, "#004494")}
-  onTouchStart={press3D}
-  onTouchEnd={(e) => release3D(e, "#004494")}
-        onClick={() => setOpenConfig(false)}
-        style={{
-          padding: 10,
-          borderRadius: 8,
-          border: "none",
-          background: "#333",
-          color: "#fff"
-        }}
-      >
-        Close
-      </button>
+        {directions && <DirectionsRenderer directions={directions} />}
+        {miUbicacion && <Marker position={miUbicacion} />}
+        {driverUbicacion && <Marker position={driverUbicacion} />}
+
+      </GoogleMap>
 
     </div>
-  </div>
-)}
+
+    {/* FOOTER */}
+    <div style={{ marginTop:20, marginBottom:20, display:"flex", justifyContent:"center", gap:16, fontSize:14 }}>
+
+      <a href="/privacy" style={{ color:"#fff", textDecoration:"none" }}>
+        Privacy Policy
+      </a>
+
+      <a href="/terms" style={{ color:"#fff", textDecoration:"none" }}>
+        Terms of Service
+      </a>
+
+    </div>
+{/* CARD MODAL */}
 {mostrarCardModal && (
-    <div
+
+  <div
     style={{
       position: "fixed",
-      top: 0,
-      left: 0,
-      width: "100%",
-      height: "100%",
-      background: "rgba(0,0,0,0.85)",
-      zIndex: 9999,
+      inset: 0,
+      background: "rgba(0,0,0,0.8)",
       display: "flex",
       justifyContent: "center",
-      alignItems: "center"
+      alignItems: "center",
+      zIndex: 9999
     }}
   >
+
     <div
       style={{
         width: "90%",
         maxWidth: 400,
-        background: "#fff",
-        borderRadius: 12,
+        background: "#111",
+        borderRadius: 20,
         padding: 20,
-        display: "flex",
-        flexDirection: "column",
-        gap: 15
+        color: "#fff"
       }}
     >
-      <h3 style={{ textAlign: "center" }}>💳 Enter Card</h3>
-<div style={cardBox}>
-  <label style={cardLabel}>Card Number</label>
 
-  <CardNumberElement
-    options={{
-      style: {
-        base: {
-          fontSize: "18px",
-          color: "#000"
+      <h2 style={{ marginTop: 0 }}>
+        Payment Method
+      </h2>
+
+      {/* CARD NUMBER */}
+      <div style={{ marginBottom: 14 }}>
+        <label style={cardLabel}>
+          Card Number
+        </label>
+
+        <div style={cardBox}>
+          <CardNumberElement />
+        </div>
+      </div>
+
+      {/* EXPIRATION */}
+      <div style={{ marginBottom: 14 }}>
+        <label style={cardLabel}>
+          Expiration
+        </label>
+
+        <div style={cardBox}>
+          <CardExpiryElement />
+        </div>
+      </div>
+
+      {/* CVC */}
+      <div style={{ marginBottom: 14 }}>
+        <label style={cardLabel}>
+          CVC
+        </label>
+
+        <div style={cardBox}>
+          <CardCvcElement />
+        </div>
+      </div>
+
+      {/* ZIP */}
+      <input
+        value={zipCode}
+
+        onChange={(e) =>
+          setZipCode(e.target.value)
         }
-      }
-    }}
-  />
-</div>
 
-<div style={{ display: "flex", gap: 10 }}>
+        placeholder="ZIP Code"
 
-  <div style={{ ...cardBox, flex: 1 }}>
-    <label style={cardLabel}>Expiration</label>
-
-    <CardExpiryElement
-      options={{
-        style: {
-          base: {
-            fontSize: "18px",
-            color: "#000"
-          }
-        }
-      }}
-    />
-  </div>
-
-  <div style={{ ...cardBox, flex: 1 }}>
-    <label style={cardLabel}>CVC</label>
-
-    <CardCvcElement
-      options={{
-        style: {
-          base: {
-            fontSize: "18px",
-            color: "#000"
-          }
-        }
-      }}
-    />
-  </div>
-
-</div>
-
-<div style={cardBox}>
-  <label style={cardLabel}>ZIP Code</label>
-
-  <input
-    value={zipCode}
-    onChange={(e) =>
-      setZipCode(e.target.value)
-    }
-
-    placeholder="89109"
-
-    style={{
-      width: "100%",
-      border: "none",
-      outline: "none",
-      fontSize: 18,
-      background: "transparent"
-    }}
-  />
-</div>
-      
-
-     <button
-  onClick={async () => {
-
-    if (!stripe || !elements) {
-
-      alert("Stripe no cargado");
-
-      return;
-    }
-
-    const cardNumber =
-      elements.getElement(
-        CardNumberElement
-      );
-
-    if (!cardNumber) {
-
-      alert(
-        "Ingrese la tarjeta"
-      );
-
-      return;
-    }
-
-    const {
-      error,
-      paymentMethod
-    } =
-      await stripe.createPaymentMethod({
-
-        type: "card",
-
-        card: cardNumber,
-
-        billing_details: {
-
-          name: nombre,
-
-          phone: telefono,
-
-          email,
-
-          address: {
-
-            postal_code:
-              zipCode
-          }
-        }
-      });
-
-    if (error) {
-
-      alert(error.message);
-
-      return;
-    }
-
-    // 🔥 USUARIO ACTUAL
-    const user =
-      auth.currentUser;
-
-    // ✅ GUARDAR EN ESTADOS
-    setPaymentMethodId(
-      paymentMethod.id
-    );
-
-    setCardGuardada(true);
-
-    // ✅ GUARDAR EN FIREBASE
-    if (user) {
-
-      await update(
-        ref(
-          db,
-          `usuarios/${user.uid}/perfil`
-        ),
-        {
-          paymentMethodId:
-            paymentMethod.id,
-
-          cardLast4:
-            paymentMethod.card?.last4,
-
-          cardBrand:
-            paymentMethod.card?.brand,
-
-          expMonth:
-            paymentMethod.card?.exp_month,
-
-          expYear:
-            paymentMethod.card?.exp_year,
-
-          updatedAt:
-            Date.now()
-        }
-      );
-    }
-
-    console.log(
-      "💳 Guardada:",
-      paymentMethod.id
-    );
-
-    alert("✅ Card saved");
-
-    setMostrarCardModal(false);
-
-  }}
-
-  style={{
-    padding: 12,
-    borderRadius: 8,
-    border: "none",
-    background: "#2ecc71",
-    color: "#fff"
-  }}
->
-  💾 Save Card
-</button>
-
-      <button
-        onClick={() => setMostrarCardModal(false)}
         style={{
-          padding: 10,
-          borderRadius: 8,
+          ...inputConfig,
+          marginBottom: 16
+        }}
+      />
+
+      {/* SAVE BUTTON */}
+      <button
+
+        onClick={async () => {
+
+          try {
+
+            if (!stripe || !elements) {
+              return;
+            }
+
+            const cardNumber =
+              elements.getElement(
+                CardNumberElement
+              );
+
+            if (!cardNumber) {
+              return;
+            }
+
+            const result =
+              await stripe.createPaymentMethod({
+                type: "card",
+
+                card: cardNumber,
+
+                billing_details: {
+                  name: nombre,
+                  phone: telefono,
+                  email
+                }
+              });
+
+            if (result.error) {
+
+              alert(
+                result.error.message
+              );
+
+              return;
+            }
+
+            if (!result.paymentMethod) {
+              return;
+            }
+
+            // 🔥 SAVE STATES
+            setPaymentMethodId(
+              result.paymentMethod.id
+            );
+
+            setCardLast4(
+              result.paymentMethod.card?.last4 || ""
+            );
+
+            setCardBrand(
+              result.paymentMethod.card?.brand || ""
+            );
+
+            // 🔥 SAVE FIREBASE
+            if (user) {
+
+              await update(
+                ref(
+                  db,
+                  "usuarios/" + user.uid
+                ),
+                {
+                  paymentMethodId:
+                    result.paymentMethod.id,
+
+                  cardLast4:
+                    result.paymentMethod.card?.last4 || "",
+
+                  cardBrand:
+                    result.paymentMethod.card?.brand || "",
+
+                  updatedAt:
+                    Date.now()
+                }
+              );
+            }
+
+            setMostrarCardModal(false);
+
+            setCardGuardada(true);
+
+            alert("Card saved");
+
+          } catch (err) {
+
+            console.error(err);
+
+            alert(
+              "Error saving card"
+            );
+          }
+        }}
+
+        style={{
+          width: "100%",
+          padding: 14,
+          borderRadius: 14,
           border: "none",
-          background: "#ccc",
-          color: "#000"
+          background:
+            "linear-gradient(145deg,#007bff,#0056b3)",
+          color: "#fff",
+          fontWeight: "bold",
+          cursor: "pointer"
         }}
       >
-        ⬅ Back
+
+        Save Card
+
       </button>
+
+      {/* CLOSE */}
+      <button
+
+        onClick={() =>
+          setMostrarCardModal(false)
+        }
+
+        style={{
+          width: "100%",
+          marginTop: 10,
+          padding: 12,
+          borderRadius: 12,
+          border: "none",
+          background: "#222",
+          color: "#fff",
+          cursor: "pointer"
+        }}
+      >
+
+        Close
+
+      </button>
+
     </div>
+
   </div>
 )}
- </div>
-</div>
+{/* CONFIG MODAL */}
+{openConfig && (
 
+  <div
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.8)",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 9999
+    }}
+  >
+
+    <div
+      style={{
+        width: "90%",
+        maxWidth: 400,
+        background: "#111",
+        borderRadius: 20,
+        padding: 20,
+        color: "#fff"
+      }}
+    >
+
+      <h2>Profile Settings</h2>
+
+      <input
+        value={nombre}
+        onChange={(e) =>
+          setNombre(e.target.value)
+        }
+        placeholder="Name"
+        style={{
+          ...inputConfig,
+          marginBottom: 12
+        }}
+      />
+
+      <input
+        value={telefono}
+        onChange={(e) =>
+          setTelefono(e.target.value)
+        }
+        placeholder="Phone"
+        style={{
+          ...inputConfig,
+          marginBottom: 12
+        }}
+      />
+
+      <input
+        value={email}
+        onChange={(e) =>
+          setEmail(e.target.value)
+        }
+        placeholder="Email"
+        style={{
+          ...inputConfig,
+          marginBottom: 16
+        }}
+      />
+
+      <button
+
+        onClick={async () => {
+
+          try {
+
+            if (!user) return;
+
+            await update(
+              ref(
+                db,
+                "usuarios/" + user.uid
+              ),
+              {
+                nombre,
+                telefono,
+                email,
+                updatedAt:
+                  Date.now()
+              }
+            );
+
+            setOpenConfig(false);
+
+            alert(
+              "Profile saved"
+            );
+
+          } catch (err) {
+
+            console.error(err);
+
+            alert(
+              "Error saving profile"
+            );
+          }
+        }}
+
+        style={{
+          width: "100%",
+          padding: 14,
+          borderRadius: 14,
+          border: "none",
+          background:
+            "linear-gradient(145deg,#28a745,#1e7e34)",
+          color: "#fff",
+          fontWeight: "bold"
+        }}
+      >
+
+        Save Profile
+
+      </button>
+
+    </div>
+
+  </div>
+)}
+
+  </div>
+
+</div>
 );
+
 }
 // 🎨 ESTILOS DE LUJO 3D
 const btn3D = {
