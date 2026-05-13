@@ -575,228 +575,358 @@ const vehicleChip = {
       )}
 
     </GoogleMap>
-{/* PANEL PRINCIPAL */}
+{/* PREMIUM RIDE PANEL */}
 <div
   style={{
     position: "absolute",
     bottom: 0,
     width: "100%",
 
+     maxHeight: "34vh",
+    overflowY: "auto",
+    scrollbarWidth: "none",
+    paddingBottom: 30,
+
     background:
       "linear-gradient(180deg,#ffffff,#f7f7f7)",
 
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
 
-    padding: "14px 16px 24px",
+    padding: "6px 8px 8px",
 
     boxShadow:
-      "0 -12px 35px rgba(0,0,0,0.12)",
+      "0 -10px 40px rgba(0,0,0,0.10)",
 
     borderTop:
       "1px solid rgba(255,255,255,0.9)",
 
-    backdropFilter: "blur(14px)"
+    backdropFilter: "blur(18px)"
   }}
 >
 
   {/* HANDLE */}
   <div
     style={{
-      width: 42,
+      width: 46,
       height: 5,
       borderRadius: 999,
-      background: "#d7d7d7",
-      margin: "0 auto 16px"
+      background: "#d8d8d8",
+      margin: "0 auto 18px"
     }}
   />
 
-  {/* DRIVER + PHONE */}
+  {/* STATUS CARD */}
   <div
     style={{
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-
       background: "#fff",
 
       borderRadius: 24,
 
-      padding: "14px 14px",
+      padding: "10px 12px",
 
       boxShadow:
-        "0 8px 22px rgba(0,0,0,0.06)",
+        "0 8px 24px rgba(0,0,0,0.06)",
 
       border:
         "1px solid rgba(0,0,0,0.04)"
     }}
   >
 
-    {/* LEFT */}
+    {/* TOP */}
     <div
       style={{
-        flex: 1
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center"
       }}
     >
 
-     
-      {/* NAME */}
-      <div
-        style={{
-          fontSize: 24,
-          fontWeight: 700,
-          color: "#111",
-          lineHeight: 1
-        }}
-      >
-        {driverInfo?.nombre?.split("@")[0] ||
-          "Driver"}
-      </div>
+      <div>
 
-      {/* SUB */}
-      <div
-        style={{
-          marginTop: 6,
-
-          display: "flex",
-
-          alignItems: "center",
-
-          gap: 12,
-
-          fontSize: 13,
-
-          color: "#666"
-        }}
-      >
-
-        <span>
-          Premium Service
-        </span>
-
-        <span
+        <div
           style={{
-            color: "#f1c40f",
-            fontWeight: 700
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: 1,
+            color: "#999"
           }}
         >
-          ★ {driverInfo?.rating || "5.0"}
-        </span>
+          STATUS
+        </div>
 
+        <div
+          style={{
+            marginTop: 6,
+            fontSize: 14,
+            fontWeight: 600,
+            color: "#111"
+          }}
+        >
+
+          {fase === "pendiente" &&
+            "pending"}
+
+          {fase === "aceptado" &&
+            "assigned"}
+
+          {fase === "pickup" &&
+            "on_the_way"}
+
+          {fase === "viaje" &&
+            "in_progress"}
+
+        </div>
+
+      </div>
+
+     {/* ICON */}
+<div
+  style={{
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+
+    background:
+      fase === "viaje"
+        ? "linear-gradient(145deg,#dff8e8,#f4fff7)"
+        : "linear-gradient(145deg,#edf5ff,#f8fbff)",
+
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+
+    fontSize: 18,
+
+    boxShadow:
+      "0 6px 14px rgba(0,0,0,0.05)"
+  }}
+>
+      
+        {fase === "pendiente" && "🔍"}
+        {fase === "aceptado" && "✔"}
+        {fase === "pickup" && "🚘"}
+        {fase === "viaje" && "🚗"}
       </div>
 
     </div>
 
-    {/* PHONE BUTTON */}
-   {fase === "pickup" && (
-      <button
+    {/* PENDING MESSAGE */}
+    {fase === "pendiente" && (
 
-        onMouseDown={press}
-
-        onMouseUp={release}
-
-        onMouseLeave={release}
-
-        onClick={() => {
-
-          if (
-            driverInfo?.telefono
-          ) {
-
-            window.location.href =
-              `tel:${driverInfo.telefono}`;
-          }
-        }}
-
+      <div
         style={{
-          width: 58,
-          height: 58,
+          marginTop: 8,
+
+          padding: "14px 16px",
 
           borderRadius: 18,
 
-          border: "none",
-
           background:
-            "linear-gradient(145deg,#ffffff,#ececec)",
+            "linear-gradient(145deg,#fff8ea,#fffdf7)",
 
-          color: "#111",
+          border:
+            "1px solid rgba(255,193,7,0.14)",
 
-          fontSize: 24,
+          color: "#946200",
 
-          cursor: "pointer",
+          fontWeight: 600,
 
-          boxShadow:
-            "0 8px 18px rgba(0,0,0,0.12)",
-
-          transition:
-            "all 0.15s ease"
+          fontSize: 15
         }}
       >
-        📞
-      </button>
+        Looking for available driver
+      </div>
+
     )}
 
   </div>
 
-  {/* VEHICLE */}
-  {driverInfo && (
+  {/* DRIVER CARD */}
+  {(fase === "aceptado" ||
+    fase === "pickup" ||
+    fase === "viaje") && (
 
     <div
       style={{
-        marginTop: 12,
+        marginTop: 6,
 
         background: "#fff",
 
-        borderRadius: 22,
+        borderRadius: 14,
 
-        padding: "14px",
+        padding: "6px 8px",
 
         boxShadow:
-          "0 8px 20px rgba(0,0,0,0.05)",
+          "0 10px 26px rgba(0,0,0,0.06)",
 
         border:
           "1px solid rgba(0,0,0,0.04)"
       }}
     >
 
-      {/* LABEL */}
-      <div
-        style={{
-          fontSize: 11,
-
-          fontWeight: 800,
-
-          color: "#888",
-
-          letterSpacing: 1,
-
-          marginBottom: 10
-        }}
-      >
-        VEHICLE
-      </div>
-
-      {/* CHIPS */}
+      {/* DRIVER HEADER */}
       <div
         style={{
           display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center"
+        }}
+      >
 
+        {/* LEFT */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 4
+          }}
+        >
+
+          {/* AVATAR */}
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+
+              background:
+                "linear-gradient(145deg,#f2f2f2,#ffffff)",
+
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+
+              fontSize: 16,
+
+              boxShadow:
+                "0 6px 18px rgba(0,0,0,0.10)"
+            }}
+          >
+            🚘
+          </div>
+
+          {/* INFO */}
+          <div>
+
+            {/* NAME */}
+            <div
+              style={{
+                fontSize: 22,
+                fontWeight: 600,
+                color: "#111"
+              }}
+            >
+              {driverInfo?.nombre?.split("@")[0] ||
+                "Driver"}
+            </div>
+
+            {/* PREMIUM */}
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: 13,
+                color: "#777",
+                fontWeight: 500
+              }}
+            >
+              Premium Service
+            </div>
+
+            {/* STARS */}
+            <div
+              style={{
+                marginTop: 5,
+                color: "#f1c40f",
+                fontWeight: 600,
+                fontSize: 15
+              }}
+            >
+              ★★★★★
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* CALL */}
+        {(fase === "aceptado" ||
+          fase === "pickup") && (
+
+          <button
+
+            onMouseDown={press}
+            onMouseUp={release}
+            onMouseLeave={release}
+
+            onClick={() => {
+
+              if (
+                driverInfo?.telefono
+              ) {
+
+                window.location.href =
+                  `tel:${driverInfo.telefono}`;
+              }
+            }}
+
+            style={{
+  width: 52,
+  height: 52,
+
+  borderRadius: 18,
+
+  border:
+    "1px solid rgba(255,255,255,0.25)",
+
+  background:
+    "linear-gradient(145deg,#34d058,#1faa43)",
+
+  color: "#fff",
+
+  fontSize: 22,
+
+  cursor: "pointer",
+
+  boxShadow:
+    "0 6px 0 #148233, 0 12px 20px rgba(52,208,88,0.30)",
+
+  filter:
+    "drop-shadow(0 0 8px rgba(52,208,88,0.35))",
+
+  transition:
+    "all 0.12s ease"
+}}
+          >
+            📞
+          </button>
+
+        )}
+
+      </div>
+
+      {/* VEHICLE */}
+      <div
+        style={{
+          marginTop: 8,
+
+          display: "flex",
           flexWrap: "wrap",
 
-          gap: 8
+          gap: 4
         }}
       >
 
         <div style={vehicleChip}>
-          {driverInfo.carro?.marca}
+          {driverInfo?.carro?.marca}
         </div>
 
         <div style={vehicleChip}>
-          {driverInfo.carro?.modelo}
+          {driverInfo?.carro?.modelo}
         </div>
 
         <div style={vehicleChip}>
-          {driverInfo.carro?.color}
+          {driverInfo?.carro?.color}
         </div>
 
         <div
@@ -804,146 +934,84 @@ const vehicleChip = {
             ...vehicleChip,
 
             background: "#111",
-
             color: "#fff",
-
-            fontWeight: 800,
-
+            fontWeight: 600,
             letterSpacing: 1
           }}
         >
-          {driverInfo.carro?.placa}
+          {driverInfo?.carro?.placa}
         </div>
 
       </div>
 
     </div>
+
   )}
 
-  {/* TRIP INFO */}
+  {/* ETA + PAYMENT */}
   <div
     style={{
-      marginTop: 12,
+      marginTop: 8,
 
       display: "flex",
 
-      gap: 10
-    }}
-  >
-{/* RIDE STATUS */}
-<div
-  style={{
-    marginTop: 12,
-
-    background:
-      fase === "viaje"
-        ? "linear-gradient(145deg,#eefaf2,#f8fff9)"
-        : "linear-gradient(145deg,#edf5ff,#f7fbff)",
-
-    borderRadius: 20,
-
-    padding: "12px 14px",
-
-    border:
-      fase === "viaje"
-        ? "1px solid rgba(69,212,131,0.12)"
-        : "1px solid rgba(25,118,255,0.10)",
-
-    boxShadow:
-      fase === "viaje"
-        ? "0 8px 18px rgba(69,212,131,0.08)"
-        : "0 8px 18px rgba(25,118,255,0.08)"
-  }}
->
-
-  <div
-    style={{
-      fontSize: 11,
-
-      fontWeight: 800,
-
-      letterSpacing: 1,
-
-      marginBottom: 6,
-
-      color:
-        fase === "viaje"
-          ? "#28a745"
-          : "#1976FF"
-    }}
-  >
-    STATUS
-  </div>
-
-  <div
-    style={{
-      fontSize: 20,
-
-      fontWeight: 700,
-
-      color: "#111"
+      gap: 4
     }}
   >
 
-    {fase === "pickup" &&
-      "Driver Arriving"}
-
-    {fase === "viaje" &&
-      "Ride In Progress"}
-
-  </div>
-
-</div>
     {/* ETA */}
-    <div
-      style={{
-        flex: 1,
-
-        background:
-          "linear-gradient(145deg,#edf5ff,#f7fbff)",
-
-        borderRadius: 22,
-
-        padding: "14px",
-
-        border:
-          "1px solid rgba(25,118,255,0.10)",
-
-        boxShadow:
-          "0 8px 18px rgba(25,118,255,0.08)"
-      }}
-    >
+    {(fase === "pickup" ||
+      fase === "viaje") && (
 
       <div
         style={{
-          fontSize: 11,
+          flex: 1,
 
-          fontWeight: 800,
+          background:
+            "linear-gradient(145deg,#edf5ff,#f8fbff)",
 
-          color: "#1976FF",
+          borderRadius: 24,
 
-          letterSpacing: 1,
+          padding: "8px",
 
-          marginBottom: 6
+          border:
+            "1px solid rgba(25,118,255,0.10)",
+
+          boxShadow:
+            "0 10px 20px rgba(25,118,255,0.08)"
         }}
       >
-        ETA
+
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: 1,
+            color: "#1976FF",
+            marginBottom: 6
+          }}
+        >
+
+          {fase === "pickup"
+            ? "PICKUP ETA"
+            : "DESTINATION ETA"}
+
+        </div>
+
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 600,
+            color: "#111"
+          }}
+        >
+          {viajeData?.driverEta ||
+            "1 min"}
+        </div>
+
       </div>
 
-      <div
-        style={{
-          fontSize: 24,
-
-          fontWeight: 700,
-
-          color: "#111"
-        }}
-      >
-        {viajeData?.driverEta ||
-          "1 min"}
-      </div>
-
-    </div>
+    )}
 
     {/* PAYMENT */}
     <div
@@ -954,13 +1022,13 @@ const vehicleChip = {
           viajeData?.metodoPago ===
           "stripe"
 
-            ? "linear-gradient(145deg,#eefbf2,#f7fff9)"
+            ? "linear-gradient(145deg,#eefbf2,#f8fff9)"
 
-            : "linear-gradient(145deg,#fff3f3,#fff9f9)",
+            : "linear-gradient(145deg,#fff5f5,#fffafa)",
 
-        borderRadius: 22,
+        borderRadius: 24,
 
-        padding: "14px",
+        padding: "8px",
 
         border:
           viajeData?.metodoPago ===
@@ -974,21 +1042,17 @@ const vehicleChip = {
           viajeData?.metodoPago ===
           "stripe"
 
-            ? "0 8px 18px rgba(69,212,131,0.08)"
+            ? "0 10px 20px rgba(69,212,131,0.08)"
 
-            : "0 8px 18px rgba(255,90,90,0.08)"
+            : "0 10px 20px rgba(255,90,90,0.08)"
       }}
     >
 
       <div
         style={{
-          fontSize: 11,
-
-          fontWeight: 800,
-
+          fontSize: 10,
+          fontWeight: 600,
           letterSpacing: 1,
-
-          marginBottom: 6,
 
           color:
             viajeData?.metodoPago ===
@@ -996,24 +1060,25 @@ const vehicleChip = {
 
               ? "#28a745"
 
-              : "#ff4d4d"
+              : "#ff4d4d",
+
+          marginBottom: 6
         }}
       >
 
         {viajeData?.metodoPago ===
         "stripe"
 
-          ? "CARD"
+          ? "PAID"
 
-          : "CASH"}
+          : "PAY THE DRIVER"}
+
       </div>
 
       <div
         style={{
-          fontSize: 24,
-
-          fontWeight: 700,
-
+          fontSize: 20,
+          fontWeight: 600,
           color: "#111"
         }}
       >
@@ -1027,18 +1092,15 @@ const vehicleChip = {
 
   </div>
 
-  {/* CANCEL */}
+  {/* CANCEL BUTTON */}
   {(fase === "pendiente" ||
-    fase === "espera" ||
     fase === "aceptado" ||
     fase === "pickup") && (
 
     <button
 
       onMouseDown={press}
-
       onMouseUp={release}
-
       onMouseLeave={release}
 
       onClick={() => {
@@ -1056,27 +1118,27 @@ const vehicleChip = {
       style={{
         width: "100%",
 
-        marginTop: 16,
+        marginTop: 8,
 
-        padding: "15px",
+        padding: "10px",
 
         border: "none",
 
-        borderRadius: 22,
+        borderRadius: 24,
 
         background:
-          "linear-gradient(145deg,#ff5c5c,#ff2e2e)",
+          "linear-gradient(145deg,#ff6666,#ff2e2e)",
 
         color: "#fff",
 
         fontSize: 16,
 
-        fontWeight: 700,
+        fontWeight: 800,
 
         cursor: "pointer",
 
         boxShadow:
-          "0 10px 22px rgba(255,92,92,0.22)",
+          "0 8px 0 #d92323, 0 16px 26px rgba(255,80,80,0.22)",
 
         transition:
           "all 0.15s ease"
@@ -1084,10 +1146,11 @@ const vehicleChip = {
     >
       Cancel Ride
     </button>
+
   )}
 
 </div>
-</div>
+</div>/////////////////////////////////
   
   );
 }

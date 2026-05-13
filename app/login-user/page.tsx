@@ -261,36 +261,32 @@ Install the app for faster future access.`;
 
       try {
 
-        let appVerifier =
-          (window as any)
-            .recaptchaVerifier;
+     let appVerifier =
+  (window as any)
+    .recaptchaVerifier;
 
-        // ---------------------------------------------------
-        // CREAR RECAPTCHA
-        // ---------------------------------------------------
+// 🔥 CREAR SOLO UNA VEZ
+if (!appVerifier) {
 
-        if (!appVerifier) {
+  appVerifier =
+    new RecaptchaVerifier(
 
-          appVerifier =
-            new RecaptchaVerifier(
+      auth,
 
-              auth,
+      "recaptcha-container",
 
-              "recaptcha-container",
+      {
+        size: "invisible"
+      }
+    );
 
-              {
-                size:
-                  "invisible"
-              }
-            );
+  await appVerifier.render();
 
-          await appVerifier.render();
-
-          (
-            window as any
-          ).recaptchaVerifier =
-            appVerifier;
-        }
+  (
+    window as any
+  ).recaptchaVerifier =
+    appVerifier;
+}
 
         // ---------------------------------------------------
         // SEND SMS
@@ -660,7 +656,7 @@ const cardStyle: any = {
 
 const inputStyle: any = {
   width: "100%",
-  padding: "16px",
+  padding: "14px",
   borderRadius: 14,
   border: "1px solid #333",
   marginBottom: 15,

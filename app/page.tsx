@@ -68,7 +68,8 @@ const [cardLast4, setCardLast4] =
 
 const [cardBrand, setCardBrand] =
   useState("");
-
+const [wakeLock, setWakeLock] =
+  useState<any>(null);
 
 const [cardGuardada, setCardGuardada] = useState(false);
 const [zipCode, setZipCode] =
@@ -214,6 +215,8 @@ useEffect(() => {
     );
 
   setIosDevice(isIos);
+// 🔥 MANTENER PANTALLA ENCENDIDA
+activarWakeLock();
 
   // ✅ Detectar instalada
  const standalone =
@@ -280,6 +283,36 @@ if (
   };
 
 }, []);
+//////////// DETECTAR VISIBILIDAD PARA REACTIVAR WAKE LOCK SI SE DESACTIVA POR IRSE A OTRA PESTAÑA O BLOQUEAR PANTALLA
+useEffect(() => {
+
+  const handleVisibility =
+    async () => {
+
+      if (
+        document.visibilityState ===
+        "visible"
+      ) {
+
+        activarWakeLock();
+      }
+    };
+
+  document.addEventListener(
+    "visibilitychange",
+    handleVisibility
+  );
+
+  return () => {
+
+    document.removeEventListener(
+      "visibilitychange",
+      handleVisibility
+    );
+  };
+
+}, []);
+
 const instalarApp = async () => {
 
   // ANDROID
@@ -411,8 +444,47 @@ if (!window.google?.maps?.DirectionsService) return;
     );
   });
 };
+/////////////////////////////////////////////////ACTIVAR WAKE LOCK PARA NO SUSPENDER DURANTE EL VIAJE///////
+const activarWakeLock = async () => {
 
+  try {
 
+    // 🔥 Compatible Android Chrome
+    if (
+      "wakeLock" in navigator
+    ) {
+
+      const lock =
+        await (navigator as any)
+          .wakeLock
+          .request("screen");
+
+      setWakeLock(lock);
+
+      console.log(
+        "Wake Lock ACTIVATED"
+      );
+
+      // 🔥 Si se libera
+      lock.addEventListener(
+        "release",
+        () => {
+
+          console.log(
+            "Wake Lock RELEASED"
+          );
+        }
+      );
+    }
+
+  } catch (err) {
+
+    console.error(
+      "Wake Lock ERROR:",
+      err
+    );
+  }
+};
 
   // ///////////////////////////////////////////////////////////////📤 PEDIR VIAJE////////////////////////////////////////
 const reservar = async () => {
@@ -615,11 +687,16 @@ if (metodoPago === "stripe") {
       "💰 $" + precio.toFixed(2) + "\n\n" +
       "📡 Track:\n" + trackingUrl;
 
-    const url = `https://wa.me/${telefonoFinal}?text=${encodeURIComponent(mensajeWhatsApp)}`;
+   const adminPhone =
+  "17252876197";
 
-    // Abrimos WhatsApp
-    window.open(url, "_blank");
+const url =
+  `https://api.whatsapp.com/send?phone=${adminPhone}&text=${encodeURIComponent(mensajeWhatsApp)}`;
 
+// 📲 OPEN ADMIN CHAT
+window.location.href = url;
+
+  
     // 🚀 REDIRECCIÓN FLUIDA (Next.js Way)
     // Usamos router.push en lugar de window.location.href para no recargar la app
     setTimeout(() => {
@@ -886,7 +963,7 @@ return (
         style={{
           border: "none",
           background: "transparent",
-          fontSize: 20,
+          fontSize: 14,
           cursor: "pointer",
           color: "#999"
         }}
