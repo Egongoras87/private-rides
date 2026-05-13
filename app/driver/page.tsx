@@ -74,6 +74,7 @@ export default function DriverPage() {
   const [etas, setEtas] = useState<any>({});
   const [distanciasPickup, setDistanciasPickup] =
   useState<any>({});
+  const mapRef = useRef<any>(null);
   const { isLoaded } = useJsApiLoader(googleMapsConfig);
 const { user, loading } = useAuth();
 const ultimoViajeNotificadoRef = useRef<string | null>(null);
@@ -88,6 +89,35 @@ const [sonidoActivo, setSonidoActivo] = useState(() => {
  const [driverLocation, setDriverLocation] =
   useState<any>(null);
  const router = useRouter();
+const darkMapStyle = [
+
+  {
+    elementType: "geometry",
+    stylers: [{ color: "#0f1722" }]
+  },
+
+  {
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#d1d5db" }]
+  },
+
+  {
+    featureType: "road",
+    elementType: "geometry",
+    stylers: [{ color: "#243041" }]
+  },
+
+  {
+    featureType: "poi",
+    stylers: [{ visibility: "off" }]
+  },
+
+  {
+    featureType: "transit",
+    stylers: [{ visibility: "off" }]
+  }
+
+];
 
 useEffect(() => {
 
@@ -396,6 +426,37 @@ useEffect(() => {
   return () => unsub();
   
 }, [sonidoActivo, etas]); // Añadí dependencias necesarias
+
+//////////////////////////////////centrar mapa en driver y primer viaje
+useEffect(() => {
+
+  if (
+    !mapRef.current ||
+    !driverLocation ||
+    viajes.length === 0
+  ) return;
+
+  const primerViaje = viajes[0];
+
+  if (
+    !primerViaje.origenLat ||
+    !primerViaje.origenLng
+  ) return;
+
+  const bounds =
+    new window.google.maps.LatLngBounds();
+
+  bounds.extend(driverLocation);
+
+  bounds.extend({
+    lat: Number(primerViaje.origenLat),
+    lng: Number(primerViaje.origenLng)
+  });
+
+  mapRef.current.fitBounds(bounds);
+
+}, [driverLocation, viajes]);
+////////////////////////////////////////////////////////////////////////////////////
  useEffect(() => {
 
   if (!isLoaded) return;
@@ -699,17 +760,6 @@ const finalizar = async (v: any) => {
   }
 };
 
-const btn = (bg: string) => ({
-  padding: "10px 15px",
-  borderRadius: 10,
-  border: "none",
-  cursor: "pointer",
-  background: bg,
-  color: "#fff",
-  boxShadow: "0 4px 0 rgba(0,0,0,0.2)"
-});
-
-
 // //////////////////////////////////////////❌ RECHAZAR VIAJE (OPTIMIZADO) ///////////////////////////////////////////////
 const rechazar = async (v: any) => {
   if (!v?.id) return;
@@ -824,12 +874,12 @@ const cancelar = async (v: any) => {
   }
 };
 const estiloBoton = (color: string) => ({
-  padding: "10px 14px",
-  borderRadius: "10px",
+  padding: "6px 12px",
+  borderRadius: "14px",
   border: "none",
   cursor: "pointer",
   fontWeight: "bold",
-  fontSize: "14px",
+  fontSize: "12px",
   color: "#fff",
   background: color,
   boxShadow: "0 5px 0 rgba(0,0,0,0.2)",
@@ -893,8 +943,10 @@ useEffect(() => {
     position: "sticky",
     top: 0,
     zIndex: 10,
-    background: "#1a1a1a",
-    padding: "12px 16px",
+   background:
+  "rgba(10,10,10,0.92)",
+     backdropFilter: "blur(10px)",
+    padding: "8px 14px",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
@@ -966,7 +1018,7 @@ useEffect(() => {
 <motion.button
   whileHover={{ scale: 1.2, rotate: 90 }}
   whileTap={{ scale: 0.9 }}
-  onClick={() => (window.location.href = "/driver/profile")}
+  onClick={() => (router.push("/driver/profile"))}
   style={{
     background: "transparent",
     border: "none",
@@ -995,6 +1047,10 @@ useEffect(() => {
   {/* 🗺️ MAPA */}
 
   <GoogleMap
+  onLoad={(map) => {
+
+  mapRef.current = map;
+}}
     mapContainerStyle={{
       width: "100%",
       height: "100%"
@@ -1009,7 +1065,7 @@ useEffect(() => {
 
     zoom={12}
 
-    options={{
+    options={{styles: darkMapStyle,
       disableDefaultUI: true,
       clickableIcons: false
     }}
@@ -1020,8 +1076,13 @@ useEffect(() => {
     {driverLocation && (
 
       <Marker
-        position={driverLocation}
-      />
+  position={driverLocation}
+
+  label={{
+    text: "🚘",
+    fontSize: "20px"
+  }}
+/>
     )}
 
     {/* 📍 USERS */}
@@ -1031,18 +1092,40 @@ useEffect(() => {
   v.origenLat &&
   v.origenLng ? (
 
-    <Marker
-      key={v.id}
+   <Marker
+  key={v.id}
 
-      position={{
-        lat: Number(v.origenLat),
-        lng: Number(v.origenLng)
-      }}
+  position={{
+    lat: Number(v.origenLat),
+    lng: Number(v.origenLng)
+  }}
 
-      opacity={
-        index === 0 ? 1 : 0.7
-      }
-    />
+  label={{
+    text: `${index + 1}`,
+
+    color: "#000",
+
+    fontWeight: "bold",
+
+    fontSize: "13px"
+  }}
+
+  icon={{
+    path:
+      window.google.maps.SymbolPath
+        .BACKWARD_CLOSED_ARROW,
+
+    scale: 6,
+
+    fillColor: "#FFD400",
+
+    fillOpacity: 1,
+
+    strokeWeight: 2,
+
+    strokeColor: "#111"
+  }}
+/>
 
   ) : null
 
@@ -1062,7 +1145,7 @@ useEffect(() => {
 
       width: "100%",
 
-      maxHeight: "48vh",
+      maxHeight: "34vh",
 
       overflowY: "auto",
 
@@ -1104,9 +1187,13 @@ useEffect(() => {
 
         style={{
           background:
-            index === 0
-              ? "#1d2b1f"
+  index === 0
+    ? "linear-gradient(90deg,#162617,#101010)"
               : "#1a1a1a",
+              boxShadow:
+  index === 0
+    ? "0 0 20px rgba(0,255,153,0.12)"
+    : "none",
 
           border:
             index === 0
@@ -1115,25 +1202,58 @@ useEffect(() => {
 
           borderRadius: 20,
 
-          padding: 14,
+          padding: 6,
 
-          marginBottom: 14,
+          marginBottom: 6,
 
           cursor: "pointer"
         }}
       >
 
         {/* CLIENTE */}
+<div
+  style={{
+    display: "flex",
+    alignItems: "center",
+    gap: 10
+  }}
+>
 
+  <div
+    style={{
+      width: 30,
+      height: 30,
+
+      borderRadius: "50%",
+
+      border:
+        "2px solid #FFD400",
+
+      display: "flex",
+
+      alignItems: "center",
+
+      justifyContent: "center",
+
+      color: "#FFD400",
+
+      fontWeight: "bold",
+
+      flexShrink: 0
+    }}
+  >
+    {index + 1}
+  </div>
         <p
           style={{
             fontSize: 18,
             fontWeight: "bold",
-            marginBottom: 10
+            marginBottom: 2
           }}
         >
           {v.nombre}
         </p>
+        </div>
 
         {/* PICKUP */}
 
@@ -1168,9 +1288,9 @@ useEffect(() => {
 
             alignItems: "center",
 
-            marginTop: 14,
+            marginTop: 6,
 
-            marginBottom: 10
+            marginBottom: 6
           }}
         >
 
@@ -1182,6 +1302,11 @@ useEffect(() => {
             }}
           >
             🚗 {etas[v.id]?.toFixed(0) || "--"} min
+            {" "}
+(
+{distanciasPickup[v.id]
+  ?.toFixed(1)} mi
+)
           </div>
 
           <div
@@ -1191,8 +1316,43 @@ useEffect(() => {
               fontSize: 16
             }}
           >
-            ${Number(v.precio || 0)
-              .toFixed(0)}
+          <div
+  style={{
+    textAlign: "right"
+  }}
+>
+
+  <div
+    style={{
+      color: "#FFD54F",
+      fontWeight: "bold",
+      fontSize: 22
+    }}
+  >
+    ${Number(v.precio || 0)
+      .toFixed(0)}
+  </div>
+
+  <div
+    style={{
+      marginTop: 2,
+
+      fontSize: 11,
+
+      color:
+        v.metodoPago === "cash"
+          ? "#00ff99"
+          : "#00d4ff",
+
+      fontWeight: "bold"
+    }}
+  >
+    {v.metodoPago === "cash"
+      ? "CASH"
+      : "CARD"}
+  </div>
+
+</div>
           </div>
 
         </div>
@@ -1202,7 +1362,7 @@ useEffect(() => {
         <p
           style={{
             marginTop: 8,
-            fontSize: 13,
+            fontSize: 10,
             color:
               v.estado === "Asignado"
                 ? "#00ff99"
