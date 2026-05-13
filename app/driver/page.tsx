@@ -137,14 +137,22 @@ useEffect(() => {
 
   if (loading) return;
 
-  if (!user) {
+ if (!user) {
 
-    router.replace(
-      "/login?redirect=/driver"
-    );
+  // ⏳ Esperar restauración Firebase
+  const timeout = setTimeout(() => {
 
-    return;
-  }
+    if (!auth.currentUser) {
+
+      router.replace(
+        "/login?redirect=/driver"
+      );
+    }
+
+  }, 6000);
+
+  return () => clearTimeout(timeout);
+}
 
   // 🔥 usuario autenticado aquí
 
@@ -221,9 +229,9 @@ useEffect(() => {
         )
       ) {
 
-        window.location.replace(
-          `/driver-tracking?id=${viajeId}`
-        );
+       router.replace(
+  `/driver-tracking?id=${viajeId}`
+);
 
         return;
       }
@@ -612,7 +620,9 @@ const iniciarViaje = async (v: any) => {
     console.log("🚗 Viaje en camino");
 
     // 🔁 REDIRECCIÓN (mantienes tu flujo)
-    window.location.href = `/driver-tracking?id=${v.id}`;
+    router.push(
+  `/driver-tracking?id=${v.id}`
+);
 
   } catch (err) {
     console.error("ERROR iniciarViaje:", err);
@@ -950,7 +960,7 @@ useEffect(() => {
   }}
 >
   {activo ? "🟢 Online" : "🔴 Offline"}
-</button> {/* 🔥 AQUÍ FALTABA ESTE CIERRE */}
+</button>
 
 {/* BOTÓN CONFIGURACIÓN */}
 <motion.button
@@ -975,170 +985,296 @@ useEffect(() => {
 {/* CIERRES DE DIVS DEL HEADER */}
   </div>
 </div> {/* 🔥 CIERRA HEADER COMPLETO */}
-<div style={{ padding: 16 }}>
-  {viajes.map((v) => (
+<div
+  style={{
+    position: "relative",
+    height: "calc(100vh - 70px)"
+  }}
+>
+
+  {/* 🗺️ MAPA */}
+
+  <GoogleMap
+    mapContainerStyle={{
+      width: "100%",
+      height: "100%"
+    }}
+
+    center={
+      driverLocation || {
+        lat: 36.1699,
+        lng: -115.1398
+      }
+    }
+
+    zoom={12}
+
+    options={{
+      disableDefaultUI: true,
+      clickableIcons: false
+    }}
+  >
+
+    {/* 🚗 DRIVER */}
+
+    {driverLocation && (
+
+      <Marker
+        position={driverLocation}
+      />
+    )}
+
+    {/* 📍 USERS */}
+
+   {viajes.map((v, index) => (
+
+  v.origenLat &&
+  v.origenLng ? (
+
+    <Marker
+      key={v.id}
+
+      position={{
+        lat: Number(v.origenLat),
+        lng: Number(v.origenLng)
+      }}
+
+      opacity={
+        index === 0 ? 1 : 0.7
+      }
+    />
+
+  ) : null
+
+))}
+
+  </GoogleMap>
+
+  {/* 🚕 PANEL VIAJES */}
+
+  <div
+    style={{
+      position: "absolute",
+
+      bottom: 0,
+
+      left: 0,
+
+      width: "100%",
+
+      maxHeight: "48vh",
+
+      overflowY: "auto",
+
+      padding: 16,
+
+      borderTopLeftRadius: 28,
+
+      borderTopRightRadius: 28,
+
+      background:
+        "rgba(12,12,12,0.96)",
+
+      backdropFilter:
+        "blur(14px)",
+
+      boxShadow:
+        "0 -10px 50px rgba(0,0,0,0.6)"
+    }}
+  >
+
+    {viajes.map((v, index) => (
+
       <div
         key={v.id}
+
         onClick={() => {
-          // 🔊 Detener audio al tocar la tarjeta del viaje
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
-          window.location.href = `/driver-tracking?id=${v.id}`;
+
+          if (audioRef.current) {
+
+            audioRef.current.pause();
+
+            audioRef.current = null;
+          }
+
+          router.push(
+            `/driver-tracking?id=${v.id}`
+          );
         }}
+
         style={{
-          border: "1px solid #ddd",
-          padding: 15,
-          marginBottom: 10,
-          borderRadius: 12,
+          background:
+            index === 0
+              ? "#1d2b1f"
+              : "#1a1a1a",
+
+          border:
+            index === 0
+              ? "1px solid #00ff99"
+              : "1px solid #2a2a2a",
+
+          borderRadius: 20,
+
+          padding: 14,
+
+          marginBottom: 14,
+
           cursor: "pointer"
         }}
       >
-    
+
+        {/* CLIENTE */}
+
         <p
-  style={{
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 10
-  }}
->
-  {v.nombre}
-</p>
-        <p><b>Tel:</b> {v.telefono}</p>
-        <p
-  style={{
-    color: "#ddd",
-    fontSize: 14,
-    marginBottom: 6
-  }}
->
-  📍 {v.origen}
-</p>
-        <p
-  style={{
-    color: "#999",
-    fontSize: 14
-  }}
->
-  🏁 {v.destino}
-</p>
-     <div
-  style={{
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 14,
-    marginBottom: 10
-  }}
->
-
-  <div
-    style={{
-      color: "#00ff99",
-      fontWeight: "bold",
-      fontSize: 15
-    }}
-  >
-    🚗 {etas[v.id]?.toFixed(0) || "--"} min
-  </div>
-
-  <div
-    style={{
-      color: "#ffd54f",
-      fontWeight: "bold",
-      fontSize: 16
-    }}
-  >
-    ${Number(v.precio || 0).toFixed(0)}
-  </div>
-
-</div>
-
-        <p>
-          <b>Precio:</b>{" "}
-          {new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency: "USD"
-          }).format(v.precio || 0)}
+          style={{
+            fontSize: 18,
+            fontWeight: "bold",
+            marginBottom: 10
+          }}
+        >
+          {v.nombre}
         </p>
 
-      <p
-  style={{
-    marginTop: 8,
-    fontSize: 13,
-    color:
-      v.estado === "Asignado"
-        ? "#00ff99"
-        : "#ccc",
+        {/* PICKUP */}
 
-    fontWeight: "bold"
-  }}
->
-  {v.estado === "Asignado"
-    ? "🔒 Assigned"
-    : v.estado}
-</p>
-{v.esProgramado && (
-  <p style={{ color: "#17a2b8", fontWeight: "bold" }}>
-    🕓 Viaje programado
-  </p>
-)}
-{v.driverId && v.driverId !== auth.currentUser?.uid && (
-  <p style={{ color: "red", fontWeight: "bold" }}>
-    ❌ Tomado por otro driver
-  </p>
-)}
-{v.fecha && (
-  <p style={{ color: "#ffc107", fontWeight: "bold" }}>
-    ⏳ {Math.max(0, Math.floor((v.fecha - Date.now()) / 60000))} min restantes
-  </p>
-)}
+        <p
+          style={{
+            color: "#ddd",
+            fontSize: 14,
+            marginBottom: 6
+          }}
+        >
+          📍 {v.origen}
+        </p>
 
-        {/* 💳 PAYMENT STATUS */}
-        {v.metodoPago === "cash" && !v.pagado && (
-          <p style={{ color: "red", fontWeight: "bold" }}>
-            💵 CASH - CLIENT PAYS DRIVER
-          </p>
-        )}
+        {/* DESTINO */}
 
-        {v.metodoPago === "stripe" && v.pagado && (
-          <p style={{ color: "green", fontWeight: "bold" }}>
-            💳 PAID WITH CARD
-          </p>
-        )}
+        <p
+          style={{
+            color: "#999",
+            fontSize: 14
+          }}
+        >
+          🏁 {v.destino}
+        </p>
 
-      {/* BOTONES */}
-<div style={{ display: "flex", gap: 10, marginTop: 15, flexWrap: "wrap" }}>
-  
-  {/* SOLO SE MUESTRAN SI EL VIAJE ESTÁ PENDIENTE */}
-  {v.estado === "Pendiente" && (
-    <>
-      <button
-        style={estiloBoton("#28a745")}
-        onMouseDown={presionar}
-        onMouseUp={soltar}
-        onMouseLeave={soltar}
-        onClick={(e) => {
-          e.stopPropagation();
-          aceptarViaje(v);
-        }}
-      >
-        ✅ Aceptar
-      </button>
+        {/* ETA + PRECIO */}
 
-      <button
-        style={estiloBoton("#6c757d")}
-        onClick={(e) => {
-          e.stopPropagation();
-          rechazar(v);
-        }}
-      >
-        ❌ Rechazar
-      </button>
-    </>
-  )}
+        <div
+          style={{
+            display: "flex",
+            justifyContent:
+              "space-between",
 
+            alignItems: "center",
+
+            marginTop: 14,
+
+            marginBottom: 10
+          }}
+        >
+
+          <div
+            style={{
+              color: "#00ff99",
+              fontWeight: "bold",
+              fontSize: 15
+            }}
+          >
+            🚗 {etas[v.id]?.toFixed(0) || "--"} min
+          </div>
+
+          <div
+            style={{
+              color: "#ffd54f",
+              fontWeight: "bold",
+              fontSize: 16
+            }}
+          >
+            ${Number(v.precio || 0)
+              .toFixed(0)}
+          </div>
+
+        </div>
+
+        {/* ESTADO */}
+
+        <p
+          style={{
+            marginTop: 8,
+            fontSize: 13,
+            color:
+              v.estado === "Asignado"
+                ? "#00ff99"
+                : "#ccc",
+
+            fontWeight: "bold"
+          }}
+        >
+          {v.estado === "Asignado"
+            ? "🔒 Assigned"
+            : v.estado}
+        </p>
+
+        {/* BOTONES */}
+
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            marginTop: 15,
+            flexWrap: "wrap"
+          }}
+        >
+
+          {v.estado ===
+            "Pendiente" && (
+
+            <>
+              <button
+                style={estiloBoton(
+                  "#28a745"
+                )}
+
+                onMouseDown={
+                  presionar
+                }
+
+                onMouseUp={
+                  soltar
+                }
+
+                onMouseLeave={
+                  soltar
+                }
+
+                onClick={(e) => {
+
+                  e.stopPropagation();
+
+                  aceptarViaje(v);
+                }}
+              >
+                ✅ Aceptar
+              </button>
+
+              <button
+                style={estiloBoton(
+                  "#6c757d"
+                )}
+
+                onClick={(e) => {
+
+                  e.stopPropagation();
+
+                  rechazar(v);
+                }}
+              >
+                ❌ Rechazar
+              </button>
+            </>
+          )}
+          
   {/* SE MUESTRAN SI EL VIAJE YA FUE ASIGNADO A ESTE DRIVER */}
   {v.estado === "Asignado" && v.driverId === auth.currentUser?.uid && (
     <>
@@ -1177,13 +1313,14 @@ useEffect(() => {
       </button>
     </>
   )}
+
 </div>
-        
 
-        </div>
-          ))}
+      </div>
+    ))}
+
   </div>
-
-</div> 
+</div>
+</div>
 );
 }

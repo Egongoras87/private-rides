@@ -28,24 +28,46 @@ export default function Login() {
 
   // 1. CONFIGURAR PERSISTENCIA Y RECAPTCHA
   useEffect(() => {
-    // Asegura que la sesión dure para siempre en este dispositivo
-    setPersistence(auth, browserLocalPersistence);
 
-    if (typeof window !== "undefined" && !window.recaptchaVerifier) {
-      window.recaptchaVerifier = new RecaptchaVerifier(
-        auth,
-        "recaptcha-container",
-        { size: "invisible" }
-      );
+  const init = async () => {
+
+    // 🔥 persistencia PRIMERO
+    await setPersistence(
+      auth,
+      browserLocalPersistence
+    );
+
+    // 🔥 luego recaptcha
+    if (
+      typeof window !== "undefined" &&
+      !window.recaptchaVerifier
+    ) {
+
+      window.recaptchaVerifier =
+        new RecaptchaVerifier(
+          auth,
+          "recaptcha-container",
+          {
+            size: "invisible"
+          }
+        );
     }
+  };
 
-    return () => {
-      if (window.recaptchaVerifier) {
-        window.recaptchaVerifier.clear();
-        window.recaptchaVerifier = null;
-      }
-    };
-  }, []);
+  init();
+
+  return () => {
+
+    if (window.recaptchaVerifier) {
+
+      window.recaptchaVerifier.clear();
+
+      window.recaptchaVerifier =
+        null;
+    }
+  };
+
+}, []);
 
   
 
@@ -111,7 +133,11 @@ export default function Login() {
 
       // 3. REDIRECCIÓN SEGURA
       // Usamos replace para que no pueda volver al login con el botón 'atrás'
-      router.replace("/driver"); 
+      setTimeout(() => {
+
+  router.replace("/driver");
+
+}, 1200);
 
     } catch (err: any) {
       console.error(err);
