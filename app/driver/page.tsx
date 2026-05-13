@@ -12,8 +12,11 @@ import {
   onDisconnect,
   set
 } from "firebase/database";
-
-import { useJsApiLoader } from "@react-google-maps/api";
+import {
+  useJsApiLoader,
+  GoogleMap,
+  Marker
+} from "@react-google-maps/api";
 import { googleMapsConfig } from "@/lib/googleMaps";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -82,6 +85,8 @@ const [sonidoActivo, setSonidoActivo] = useState(() => {
   return true;
 });
  const [activo, setActivo] = useState(true);
+ const [driverLocation, setDriverLocation] =
+  useState<any>(null);
  const router = useRouter();
 
 useEffect(() => {
@@ -94,8 +99,16 @@ useEffect(() => {
 
   watchId =
     navigator.geolocation.watchPosition(
+
       (pos) => {
 
+        // 📍 GUARDAR UBICACIÓN LOCAL
+        setDriverLocation({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude
+        });
+
+        // 🔥 FIREBASE
         update(
           ref(db, "drivers/" + user.uid),
           {
@@ -982,14 +995,65 @@ useEffect(() => {
           cursor: "pointer"
         }}
       >
-        <p><b>ID:</b> {v.id}</p>
-        <p><b>Cliente:</b> {v.nombre}</p>
-        <p><b>Tel:</b> {v.telefono}</p>
-        <p><b>Origen:</b> {v.origen}</p>
-        <p><b>Destino:</b> {v.destino}</p>
-        <p>
-  ⭐ Prioridad: {(etas[v.id] || 0).toFixed(1)} min
+    
+        <p
+  style={{
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 10
+  }}
+>
+  {v.nombre}
 </p>
+        <p><b>Tel:</b> {v.telefono}</p>
+        <p
+  style={{
+    color: "#ddd",
+    fontSize: 14,
+    marginBottom: 6
+  }}
+>
+  📍 {v.origen}
+</p>
+        <p
+  style={{
+    color: "#999",
+    fontSize: 14
+  }}
+>
+  🏁 {v.destino}
+</p>
+     <div
+  style={{
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 14,
+    marginBottom: 10
+  }}
+>
+
+  <div
+    style={{
+      color: "#00ff99",
+      fontWeight: "bold",
+      fontSize: 15
+    }}
+  >
+    🚗 {etas[v.id]?.toFixed(0) || "--"} min
+  </div>
+
+  <div
+    style={{
+      color: "#ffd54f",
+      fontWeight: "bold",
+      fontSize: 16
+    }}
+  >
+    ${Number(v.precio || 0).toFixed(0)}
+  </div>
+
+</div>
 
         <p>
           <b>Precio:</b>{" "}
@@ -999,39 +1063,21 @@ useEffect(() => {
           }).format(v.precio || 0)}
         </p>
 
-       <p>
-  <b>Pickup Distance:</b>
-  {" "}
-
-  {distanciasPickup[v.id]
-    ?.toFixed(1)}
-
-  {" "}mi away
-</p>
-
-        {etas[v.id] && (
-          <>
-           <p
+      <p
   style={{
-    color: "#00d4ff",
+    marginTop: 8,
+    fontSize: 13,
+    color:
+      v.estado === "Asignado"
+        ? "#00ff99"
+        : "#ccc",
+
     fontWeight: "bold"
   }}
 >
-  🚗 Pickup:
-  {" "}
-  {etas[v.id]?.toFixed(1)}
-  min
-  •
-  {" "}
-  {distanciasPickup[v.id]?.toFixed(1)}
-  mi away
-</p>
-          </>
-        )}
-
-        <p>
-  <b>Estado:</b>{" "}
-  {v.estado === "Asignado" ? "🔒 Assigned" : v.estado}
+  {v.estado === "Asignado"
+    ? "🔒 Assigned"
+    : v.estado}
 </p>
 {v.esProgramado && (
   <p style={{ color: "#17a2b8", fontWeight: "bold" }}>
