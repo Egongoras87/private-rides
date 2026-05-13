@@ -266,6 +266,69 @@ useEffect(() => {
   };
 
 }, []);
+///////////////////////////////////// DISPLEY ON/////////////////////////
+useEffect(() => {
+
+  let wakeLock: any = null;
+
+  const activarWakeLock = async () => {
+
+    try {
+
+      if (
+        "wakeLock" in navigator
+      ) {
+
+        wakeLock =
+          await navigator.wakeLock.request(
+            "screen"
+          );
+
+        console.log(
+          "Wake Lock activo"
+        );
+
+        // 🔥 Si la pantalla vuelve
+        // a estar visible
+        document.addEventListener(
+          "visibilitychange",
+          async () => {
+
+            if (
+              wakeLock !== null &&
+              document.visibilityState ===
+                "visible"
+            ) {
+
+              wakeLock =
+                await navigator.wakeLock.request(
+                  "screen"
+                );
+            }
+          }
+        );
+      }
+
+    } catch (err) {
+
+      console.error(
+        "Wake Lock error",
+        err
+      );
+    }
+  };
+
+  activarWakeLock();
+
+  return () => {
+
+    if (wakeLock) {
+
+      wakeLock.release();
+    }
+  };
+
+}, []);
 
   // ---------------------------------------------------
   // FIREBASE
@@ -1467,10 +1530,63 @@ setCompletedPath([]);
           </div>
           
           {viajeData?.telefono && (
-            <a href={`tel:${viajeData.telefono}`} style={{
-              background: "#333", width: "40px", height: "40px", borderRadius: "10px", 
-              display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none"
-            }}>📞</a>
+  viajeData?.fase === "asignado" ||
+  viajeData?.fase === "en_camino"
+) && (
+           <a
+  href={`tel:${viajeData.telefono}`}
+
+  onMouseDown={(e) => {
+
+    e.currentTarget.style.transform =
+      "scale(0.92)";
+  }}
+
+  onMouseUp={(e) => {
+
+    e.currentTarget.style.transform =
+      "scale(1)";
+  }}
+
+  onMouseLeave={(e) => {
+
+    e.currentTarget.style.transform =
+      "scale(1)";
+  }}
+
+  style={{
+
+    background:
+      "linear-gradient(135deg,#1f1f1f,#2d2d2d)",
+
+    width: "52px",
+
+    height: "52px",
+
+    borderRadius: "50%",
+
+    display: "flex",
+
+    alignItems: "center",
+
+    justifyContent: "center",
+
+    textDecoration: "none",
+
+    boxShadow:
+      "0 4px 14px rgba(0,0,0,0.35)",
+
+    border:
+      "1px solid rgba(255,255,255,0.08)",
+
+    fontSize: "22px",
+
+    transition:
+      "all 0.2s ease"
+  }}
+>
+  📞
+</a>
           )}
         </div>
 

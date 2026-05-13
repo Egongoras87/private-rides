@@ -21,8 +21,6 @@ import { googleMapsConfig } from "@/lib/googleMaps";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useAuth }
-from "@/components/AuthProvider";
 
 // 🔥 ETA
 const calcularETA = (o: any, d: any) =>
@@ -76,9 +74,11 @@ export default function DriverPage() {
   useState<any>({});
   const mapRef = useRef<any>(null);
   const { isLoaded } = useJsApiLoader(googleMapsConfig);
-const { user, loading } = useAuth();
+
 const ultimoViajeNotificadoRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null); // Para poder detener el sonido después
+  const viajesPreviosRef =
+  useRef<string[]>([]);
 const [sonidoActivo, setSonidoActivo] = useState(() => {
   if (typeof window !== "undefined") {
     return localStorage.getItem("sonido") !== "false";
@@ -89,67 +89,176 @@ const [sonidoActivo, setSonidoActivo] = useState(() => {
  const [driverLocation, setDriverLocation] =
   useState<any>(null);
  const router = useRouter();
+ const [driverUser, setDriverUser] =
+  useState<any>(null);
+
+const [authReady, setAuthReady] =
+  useState(false);
 const darkMapStyle = [
 
   {
     elementType: "geometry",
-    stylers: [{ color: "#0f1722" }]
+    stylers: [
+      { color: "#0b1220" }
+    ]
   },
 
   {
     elementType: "labels.text.fill",
-    stylers: [{ color: "#d1d5db" }]
+    stylers: [
+      { color: "#8fa3b8" }
+    ]
   },
 
+  {
+    elementType: "labels.text.stroke",
+    stylers: [
+      { color: "#0b1220" }
+    ]
+  },
+
+  // 🌆 ciudades
+  {
+    featureType: "administrative.locality",
+    elementType: "labels.text.fill",
+    stylers: [
+      { color: "#d6dee8" }
+    ]
+  },
+
+  // 🛣️ roads principales
+  {
+    featureType: "road.highway",
+    elementType: "geometry",
+    stylers: [
+      { color: "#30475e" }
+    ]
+  },
+
+  // 🛣️ roads normales
   {
     featureType: "road",
     elementType: "geometry",
-    stylers: [{ color: "#243041" }]
+    stylers: [
+      { color: "#1f2c3d" }
+    ]
   },
 
+  // 🛣️ labels roads
+  {
+    featureType: "road",
+    elementType: "labels.text.fill",
+    stylers: [
+      { color: "#7c8ea3" }
+    ]
+  },
+
+  // 🌊 agua
+  {
+    featureType: "water",
+    elementType: "geometry",
+    stylers: [
+      { color: "#0a1622" }
+    ]
+  },
+
+  // 🌳 parques
+  {
+    featureType: "landscape",
+    elementType: "geometry",
+    stylers: [
+      { color: "#101826" }
+    ]
+  },
+
+  // ❌ ocultar POI
   {
     featureType: "poi",
-    stylers: [{ visibility: "off" }]
+    stylers: [
+      { visibility: "off" }
+    ]
   },
 
+  // ❌ ocultar transit
   {
     featureType: "transit",
-    stylers: [{ visibility: "off" }]
+    stylers: [
+      { visibility: "off" }
+    ]
   }
-
 ];
+////////////////////////////////// DETECTAR SESIÓN Y RESTAURAR USUARIO
+useEffect(() => {
 
+  const unsub =
+    onAuthStateChanged(
+      auth,
+      (firebaseUser) => {
+
+        setDriverUser(firebaseUser);
+
+        setAuthReady(true);
+
+        if (!firebaseUser) {
+
+          router.replace(
+            "/login-driver"
+          );
+
+          return;
+        }
+
+        console.log(
+          "✅ Driver restored:",
+          firebaseUser.uid
+        );
+      }
+    );
+
+  return () => unsub();
+
+}, [router]);
+///////////////////////////////// TRACKING DE UBICACIÓN EN TIEMPO REAL
 useEffect(() => {
 
   let watchId: number | null = null;
 
-  if (!user || !activo) return;
+  if (!driverUser || !activo) return;
 
   if (!navigator.geolocation) return;
 
-  watchId =
-    navigator.geolocation.watchPosition(
+ watchId =
+  navigator.geolocation.watchPosition(
 
-      (pos) => {
+    (pos) => {
 
-        // 📍 GUARDAR UBICACIÓN LOCAL
-        setDriverLocation({
+      setDriverLocation({
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude
+      });
+
+      update(
+        ref(db, "drivers/" + driverUser.uid),
+        {
           lat: pos.coords.latitude,
-          lng: pos.coords.longitude
-        });
+          lng: pos.coords.longitude,
+          lastSeen: Date.now(),
+          online: true
+        }
+      );
+    },
 
-        // 🔥 FIREBASE
-        update(
-          ref(db, "drivers/" + user.uid),
-          {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            lastSeen: Date.now(),
-            online: true
-          }
-        );
-      }
-    );
+    (err) => {
+      console.error(err);
+    },
+
+    {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 5000
+    }
+  );
+       
 
   return () => {
 
@@ -161,36 +270,11 @@ useEffect(() => {
     }
   };
 
-}, [user, activo]);
-// 🔐 AUTH
- useEffect(() => {
-
-  if (loading) return;
-
- if (!user) {
-
-  // ⏳ Esperar restauración Firebase
-  const timeout = setTimeout(() => {
-
-    if (!auth.currentUser) {
-
-      router.replace(
-        "/login?redirect=/driver"
-      );
-    }
-
-  }, 6000);
-
-  return () => clearTimeout(timeout);
-}
-
-  // 🔥 usuario autenticado aquí
-
-}, [user, loading, router]);
+}, [driverUser, activo]);
 
 useEffect(() => {
 
-  if (!user) return;
+  if (!driverUser) return;
 
   // evitar doble ejecución
   if (restoringRef.current) return;
@@ -203,7 +287,7 @@ useEffect(() => {
 
       // 🔥 buscar driver
       const driverSnap = await get(
-        ref(db, "drivers/" + user.uid)
+        ref(db, "drivers/" + driverUser.uid)
       );
 
       const driverData = driverSnap.val();
@@ -228,7 +312,7 @@ useEffect(() => {
       if (!viajeSnap.exists()) {
 
         await update(
-          ref(db, "drivers/" + user.uid),
+          ref(db, "drivers/" + driverUser.uid),
           {
             viajeActivo: null
           }
@@ -259,16 +343,18 @@ useEffect(() => {
         )
       ) {
 
-       router.replace(
+      router.replace(
   `/driver-tracking?id=${viajeId}`
 );
 
-        return;
+restoringRef.current = false;
+
+return;
       }
 
       // 🔥 limpiar basura
       await update(
-        ref(db, "drivers/" + user.uid),
+        ref(db, "drivers/" + driverUser.uid),
         {
           viajeActivo: null
         }
@@ -287,7 +373,7 @@ useEffect(() => {
 
   restoreRide();
 
-}, [user]);
+}, [driverUser]);
 // 🔥 FIREBASE RECONNECT
 useEffect(() => {
 
@@ -346,19 +432,19 @@ useEffect(() => {
 
 useEffect(() => {
 
-  if (!user) return;
+  if (!driverUser) return;
 
   const driverRef =
-    ref(db, "drivers/" + user.uid);
+    ref(db, "drivers/" + driverUser.uid);
 
   // 🟢 ONLINE
   update(driverRef, {
-    uid: user.uid,
+    uid: driverUser.uid,
     lastSeen: Date.now(),
     online: true
   });
 
-}, [user]);
+}, [driverUser]);
 
 // ///////////////////////////////////////////////////////////////📡 VIAJES
 // ///////////////////////////////////////////////////////////////📡 VIAJES
@@ -391,41 +477,114 @@ useEffect(() => {
     });
 
     // =========================================================
-    // 🔥 5. FILTRO DE VIAJES (Sincronizado con 'rechazos')
-    // =========================================================
-    const filtrados = lista.filter((v: any) => {
-      // Ocultar si ya rechazó
-      if (uid && v.rechazos && v.rechazos[uid]) {
-        return false;
-      }
+// 🔥 5. FILTRO DE VIAJES
+// =========================================================
+const filtrados = lista.filter((v: any) => {
 
-      // Visibilidad de estados
-      if (
-        v.estado !== "Pendiente" &&
-        !(v.estado === "Asignado" && v.driverId === uid)
-      ) {
-        return false;
-      }
+  // ❌ ocultar rechazados
+  if (
+    uid &&
+    v.rechazos &&
+    v.rechazos[uid]
+  ) {
+    return false;
+  }
 
-      // Lógica de tiempo
-      const esInmediato = Math.abs((v.fecha || 0) - ahora) < 30 * 60 * 1000;
-      if (esInmediato) {
-        if (!etas[v.id]) return true;
-        return etas[v.id] < 20;
-      }
+  // ✅ mostrar:
+  // Pendientes
+  // o asignados al driver
+  if (
 
-      return true;
-    });
+    v.estado !== "Pendiente" &&
 
-    // =========================================================
-    // 🔥 6. SET FINAL (Solo una vez)
-    // =========================================================
-    setViajes(filtrados);
+    !(
+
+      v.estado === "Asignado" &&
+      v.driverId === uid
+
+    )
+  ) {
+
+    return false;
+  }
+
+  // ⏰ lógica viajes inmediatos
+  const esInmediato =
+
+    Math.abs(
+      (v.fecha || 0) - ahora
+    ) < 30 * 60 * 1000;
+
+  if (esInmediato) {
+
+    // 🔥 aún no calculó ETA
+    if (!etas[v.id]) return true;
+
+    // 🔥 solo viajes cerca
+    return etas[v.id] < 20;
+  }
+
+  return true;
+});
+
+// =========================================================
+// 🔥 6. ORDEN INTELIGENTE
+// =========================================================
+filtrados.sort((a: any, b: any) => {
+
+  const ahora = Date.now();
+
+  const tiempoA =
+    Math.abs(
+      (a.fecha || 0) - ahora
+    );
+
+  const tiempoB =
+    Math.abs(
+      (b.fecha || 0) - ahora
+    );
+
+  const etaA =
+    etas[a.id] || 999;
+
+  const etaB =
+    etas[b.id] || 999;
+
+  const distA =
+    distanciasPickup[a.id] || 999;
+
+  const distB =
+    distanciasPickup[b.id] || 999;
+
+  // 🔥 score inteligente
+  const scoreA =
+
+    tiempoA * 0.001 +
+
+    etaA * 60 +
+
+    distA * 10;
+
+  const scoreB =
+
+    tiempoB * 0.001 +
+
+    etaB * 60 +
+
+    distB * 10;
+
+  return scoreA - scoreB;
+});
+
+// =========================================================
+// 🔥 7. ACTUALIZAR ESTADO
+// =========================================================
+setViajes(filtrados);
   });
 
   return () => unsub();
   
-}, [sonidoActivo, etas]); // Añadí dependencias necesarias
+}, [sonidoActivo]); // Añadí dependencias necesarias
 
 //////////////////////////////////centrar mapa en driver y primer viaje
 useEffect(() => {
@@ -455,6 +614,17 @@ useEffect(() => {
 
   mapRef.current.fitBounds(bounds);
 
+ const zoom =
+  mapRef.current.getZoom();
+
+if (zoom > 14) {
+  mapRef.current.setZoom(14);
+}
+
+if (zoom < 11) {
+  mapRef.current.setZoom(11);
+}
+
 }, [driverLocation, viajes]);
 ////////////////////////////////////////////////////////////////////////////////////
  useEffect(() => {
@@ -465,12 +635,11 @@ useEffect(() => {
 
   if (viajes.length === 0) return;
 
-  navigator.geolocation.getCurrentPosition(async (pos) => {
+  if (!driverLocation) return;
 
-    const driverPos = {
-      lat: pos.coords.latitude,
-      lng: pos.coords.longitude
-    };
+const driverPos = driverLocation;
+
+(async () => {
 
     const nuevos: any = {};
 
@@ -517,65 +686,9 @@ useEffect(() => {
       nuevasDistancias
     );
 
-    // 🔥 ordenar viajes
-    setViajes((prev) => {
+  })();
 
-      return [...prev].sort(
-        (a, b) => {
-
-          const ahora =
-            Date.now();
-
-          const tiempoA =
-            Math.abs(
-              (a.fecha || 0) -
-              ahora
-            );
-
-          const tiempoB =
-            Math.abs(
-              (b.fecha || 0) -
-              ahora
-            );
-
-          const etaA =
-            nuevos[a.id] || 999;
-
-          const etaB =
-            nuevos[b.id] || 999;
-
-          const distA =
-            nuevasDistancias[a.id] || 999;
-
-          const distB =
-            nuevasDistancias[b.id] || 999;
-
-          // 🔥 score inteligente
-          const scoreA =
-
-            tiempoA * 0.001 +
-
-            etaA * 60 +
-
-            distA * 10;
-
-          const scoreB =
-
-            tiempoB * 0.001 +
-
-            etaB * 60 +
-
-            distB * 10;
-
-          return scoreA - scoreB;
-        }
-      );
-    });
-
-  });
-
-}, [viajes, isLoaded]);
-
+}, [isLoaded, driverLocation, viajes]);
   ////////////////////////////////// 🚗 ACEPTAR RIDE/////////////////////////////////////////////////////////////////////////////
 const aceptarViaje = async (v: any) => {
   
@@ -583,6 +696,7 @@ const aceptarViaje = async (v: any) => {
   // 🔊 DETENER AUDIO INMEDIATAMENTE
   if (audioRef.current) {
     audioRef.current.pause();
+    audioRef.current.currentTime = 0;
     audioRef.current = null;
   }
 
@@ -771,6 +885,7 @@ const rechazar = async (v: any) => {
   // 🔊 DETENER AUDIO INMEDIATAMENTE
   if (audioRef.current) {
     audioRef.current.pause();
+    audioRef.current.currentTime = 0;
     audioRef.current = null;
   }
 
@@ -899,33 +1014,91 @@ const soltar = (e: any) => {
 // 🔊 LÓGICA DE AUDIO INDEPENDIENTE (UBICACIÓN CORRECTA)
 // =========================================================
 useEffect(() => {
-  // Filtramos solo los pendientes de la lista que ya tenemos en el estado
-  const pendientes = viajes.filter((v: any) => v.estado === "Pendiente");
 
-  if (pendientes.length === 0) {
-    ultimoViajeNotificadoRef.current = null;
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
+  if (!sonidoActivo) return;
+
+  // 🔥 IDs actuales
+  const idsActuales =
+
+    viajes.map((v) => v.id);
+
+  // 🔥 IDs anteriores
+  const idsPrevios =
+    viajesPreviosRef.current;
+
+  // 🔥 detectar nuevos
+  const nuevosViajes =
+
+    idsActuales.filter(
+      (id) =>
+        !idsPrevios.includes(id)
+    );
+
+  // 🔥 evitar sonido primera carga
+  if (
+    idsPrevios.length > 0 &&
+    nuevosViajes.length > 0
+  ) {
+
+    try {
+
+      // 🔇 detener anterior
+      if (audioRef.current) {
+
+        audioRef.current.pause();
+
+        audioRef.current.currentTime = 0;
+      }
+
+      // 🔊 nuevo audio
+      const audio = new Audio(
+        "/notification.mp3"
+      );
+
+      audio.volume = 1;
+
+      audio.play();
+
+      audioRef.current = audio;
+
+      console.log(
+        "🔔 Nuevo viaje"
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Audio error",
+        err
+      );
     }
-    return;
   }
 
-  const viajeActualId = pendientes[0].id;
+  // 🔥 guardar snapshot
+  viajesPreviosRef.current =
+    idsActuales;
 
-  // Solo suena si el ID es nuevo y el switch de sonido está ON
-  if (viajeActualId !== ultimoViajeNotificadoRef.current && sonidoActivo) {
-    if (audioRef.current) {
-      audioRef.current.pause();
-    }
-
-    const nuevoAudio = new Audio("/alert.mp3");
-    nuevoAudio.play().catch(() => console.log("Esperando click del driver..."));
-    
-    audioRef.current = nuevoAudio;
-    ultimoViajeNotificadoRef.current = viajeActualId;
-  }
 }, [viajes, sonidoActivo]);
+
+if (!authReady) {
+
+  return (
+
+    <div
+      style={{
+        color: "#fff",
+        display: "flex",
+        height: "100vh",
+        justifyContent: "center",
+        alignItems: "center",
+        fontSize: 18,
+        background: "#000"
+      }}
+    >
+      🔐 Restoring session...
+    </div>
+  );
+}
 
   if (!isLoaded) return <div>Cargando...</div>;
 
@@ -1145,7 +1318,7 @@ useEffect(() => {
 
       width: "100%",
 
-      maxHeight: "34vh",
+      maxHeight: "32vh",
 
       overflowY: "auto",
 
@@ -1176,7 +1349,7 @@ useEffect(() => {
           if (audioRef.current) {
 
             audioRef.current.pause();
-
+audioRef.current.currentTime = 0;
             audioRef.current = null;
           }
 

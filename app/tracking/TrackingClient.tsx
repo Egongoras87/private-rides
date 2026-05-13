@@ -424,8 +424,17 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
     color: "#fff", cursor: "pointer", boxShadow: "0 4px 0 rgba(0,0,0,0.2)", transition: "0.15s", width: "100%"
   });
 
-  const press = (e: any) => { e.target.style.transform = "scale(0.95)"; };
-  const release = (e: any) => { e.target.style.transform = "scale(1)"; };
+  const press = (e: any) => {
+
+  e.currentTarget.style.transform =
+    "scale(0.95)";
+};
+
+const release = (e: any) => {
+
+  e.currentTarget.style.transform =
+    "scale(1)";
+};
 
   if (!isLoaded) return <div style={{ background: "#111", color: "#fff", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>Cargando mapa...</div>;
 
@@ -874,7 +883,7 @@ const vehicleChip = {
   width: 52,
   height: 52,
 
-  borderRadius: 18,
+  borderRadius: 50,
 
   border:
     "1px solid rgba(255,255,255,0.25)",
@@ -888,11 +897,8 @@ const vehicleChip = {
 
   cursor: "pointer",
 
-  boxShadow:
-    "0 6px 0 #148233, 0 12px 20px rgba(52,208,88,0.30)",
-
-  filter:
-    "drop-shadow(0 0 8px rgba(52,208,88,0.35))",
+ boxShadow:
+  "0 8px 18px rgba(52,208,88,0.28)",
 
   transition:
     "all 0.12s ease"
