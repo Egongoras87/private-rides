@@ -74,7 +74,8 @@ export default function DriverPage() {
   useState<any>({});
   const mapRef = useRef<any>(null);
   const { isLoaded } = useJsApiLoader(googleMapsConfig);
-
+const mapInitializedRef =
+  useRef(false);
 const ultimoViajeNotificadoRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null); // Para poder detener el sonido después
  
@@ -589,42 +590,78 @@ setViajes(filtrados);
 useEffect(() => {
 
   if (
+
     !mapRef.current ||
+
     !driverLocation ||
+
     viajes.length === 0
+
   ) return;
 
-  const primerViaje = viajes[0];
-
+  // 🔥 evitar brincar infinito
   if (
-    !primerViaje.origenLat ||
-    !primerViaje.origenLng
+    mapInitializedRef.current
   ) return;
 
   const bounds =
-    new window.google.maps.LatLngBounds();
 
-  bounds.extend(driverLocation);
+    new window.google.maps
+      .LatLngBounds();
 
-  bounds.extend({
-    lat: Number(primerViaje.origenLat),
-    lng: Number(primerViaje.origenLng)
+  // 🚗 DRIVER
+  bounds.extend(
+    driverLocation
+  );
+
+  // 📍 TODOS LOS VIAJES
+  viajes.forEach((v) => {
+
+    if (
+      v.origenLat &&
+      v.origenLng
+    ) {
+
+      bounds.extend({
+
+        lat: Number(
+          v.origenLat
+        ),
+
+        lng: Number(
+          v.origenLng
+        )
+      });
+    }
   });
 
-  mapRef.current.fitBounds(bounds);
+  mapRef.current.fitBounds(
+    bounds
+  );
 
- const zoom =
-  mapRef.current.getZoom();
+  // 🔥 esperar fitBounds
+  setTimeout(() => {
 
-if (zoom > 14) {
-  mapRef.current.setZoom(14);
-}
+    const zoom =
+      mapRef.current?.getZoom();
 
-if (zoom < 11) {
-  mapRef.current.setZoom(11);
-}
+    if (zoom > 14) {
 
-}, [driverLocation, viajes]);
+      mapRef.current.setZoom(14);
+    }
+
+    if (zoom < 11) {
+
+      mapRef.current.setZoom(11);
+    }
+
+  }, 300);
+
+  // 🔥 SOLO 1 VEZ
+  mapInitializedRef.current =
+    true;
+
+}, [viajes]);
 ////////////////////////////////////////////////////////////////////////////////////
  useEffect(() => {
 
@@ -723,7 +760,34 @@ const aceptarViaje = async (v: any) => {
       alert(data.error || "❌ Otro driver tomó este viaje");
       return;
     }
-    
+    // 🔥 SNAPSHOT DRIVER
+const driverSnap =
+  await get(
+    ref(
+      db,
+      "drivers/" + user.uid
+    )
+  );
+
+const driverData =
+  driverSnap.val();
+
+// 🔥 GUARDAR INFO DRIVER EN VIAJE
+await update(
+  ref(db, "viajes/" + v.id),
+
+  {
+
+    driverNombre:
+      driverData?.nombre || "",
+
+    driverTelefono:
+      driverData?.telefono || "",
+
+    driverCarro:
+      driverData?.carro || {}
+  }
+);
 
     // 🟢 SOLO ESTO SE QUEDA EN FRONTEND
     await update(ref(db, "drivers/" + user.uid), {
@@ -989,7 +1053,7 @@ const cancelar = async (v: any) => {
 };
 const estiloBoton = (color: string) => ({
   padding: "6px 12px",
-  borderRadius: "14px",
+  borderRadius: "12px",
   border: "none",
   cursor: "pointer",
   fontWeight: "bold",
@@ -1264,49 +1328,69 @@ if (!authReady) {
     )}
 
     {/* 📍 USERS */}
-
-   {viajes.map((v, index) => (
+{viajes.map((v, index) => (
 
   v.origenLat &&
-  v.origenLng ? (
+  v.origenLng && (
 
-   <Marker
-  key={v.id}
+    <Marker
 
-  position={{
-    lat: Number(v.origenLat),
-    lng: Number(v.origenLng)
-  }}
+      key={`marker-${v.id}`}
 
-  label={{
-    text: `${index + 1}`,
+      position={{
+        lat: Number(v.origenLat),
+        lng: Number(v.origenLng)
+      }}
 
-    color: "#000",
+      label={{
 
-    fontWeight: "bold",
+        text: `${index + 1}`,
 
-    fontSize: "13px"
-  }}
+        color: "#111",
 
-  icon={{
-    path:
-      window.google.maps.SymbolPath
-        .BACKWARD_CLOSED_ARROW,
+        fontWeight: "bold",
 
-    scale: 6,
+        fontSize: "13px"
+      }}
 
-    fillColor: "#FFD400",
+      icon={{
 
-    fillOpacity: 1,
+        url:
+"data:image/svg+xml;charset=UTF-8," +
 
-    strokeWeight: 2,
+encodeURIComponent(`
 
-    strokeColor: "#111"
-  }}
-/>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="44"
+  height="44"
+  viewBox="0 0 24 24"
+>
 
-  ) : null
+  <path
+    d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"
+    fill="#FFD400"
+    stroke="white"
+    stroke-width="1.5"
+  />
 
+</svg>
+`),
+
+        scaledSize:
+          new window.google.maps.Size(
+            44,
+            44
+          ),
+
+        labelOrigin:
+          new window.google.maps.Point(
+            22,
+            12
+          )
+      }}
+    />
+  )
 ))}
 
   </GoogleMap>
@@ -1327,7 +1411,7 @@ if (!authReady) {
 
       overflowY: "auto",
 
-      padding: 16,
+      padding: 10,
 
       borderTopLeftRadius: 28,
 
@@ -1367,7 +1451,7 @@ if (!authReady) {
 
           borderRadius: 20,
 
-          padding: 6,
+          padding: "10px 12px",
 
           marginBottom: 6,
 

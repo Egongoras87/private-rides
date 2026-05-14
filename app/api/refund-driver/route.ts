@@ -113,7 +113,7 @@ if (v.estado !== "Pendiente" && v.driverId !== uid) {
 
     let refund = null;
 
-    // 💳 STRIPE REFUND
+    // 💳 STRIPE REFUND///////////////////////////////////////////////////////////////////////////////
     if (v.metodoPago === "stripe" && v.paymentIntentId) {
       try {
         const paymentIntent = await stripe.paymentIntents.retrieve(

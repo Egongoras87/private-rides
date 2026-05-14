@@ -29,10 +29,9 @@ export default function UserTrackingPage() {
   const cashCancelRef =
   useRef<any>(null);
   const lastCameraMoveRef = useRef(0);
-  const [driverInfo, setDriverInfo] = useState<any>(null);
+
   const [directionsResponse, setDirectionsResponse] = useState<google.maps.DirectionsResult | null>(null);
-const wakeLockRef =
-  useRef<any>(null);
+
   // Redirección si no hay sesión
  useEffect(() => {
 
@@ -116,145 +115,23 @@ const wakeLockRef =
 
 }, []);
 
-// ///////////////////////////🔥 MANTENER PANTALLA ENCENDIDA/////////////////////////////////////////////
+
+  // --- TRACKING PASIVO (BAJO CONSUMO) ---
 useEffect(() => {
-
-  let wakeLock: any = null;
-
-  const activarWakeLock =
-    async () => {
-
-      try {
-
-        if (
-          "wakeLock" in navigator
-        ) {
-
-          wakeLock =
-            await (
-              navigator as any
-            ).wakeLock.request(
-              "screen"
-            );
-
-          wakeLockRef.current =
-            wakeLock;
-
-          console.log(
-            "🔆 Wake Lock activo"
-          );
-        }
-
-      } catch (err) {
-
-        console.error(
-          "Wake Lock error",
-          err
-        );
-      }
-    };
-
-  activarWakeLock();
-
-  const handleVisibility =
-    async () => {
-
-      if (
-        document.visibilityState ===
-        "visible"
-      ) {
-
-        activarWakeLock();
-      }
-    };
-
-  document.addEventListener(
-    "visibilitychange",
-    handleVisibility
-  );
-
-  return () => {
-
-    document.removeEventListener(
-      "visibilitychange",
-      handleVisibility
-    );
-
-    if (wakeLock) {
-
-      wakeLock.release();
-    }
-  };
-
-}, []);
-//////////////////////////////////////////////informacion del driver///////////////
- ///////////////////////////////////////////////////////////////////////////////////////
-// --- TRACKING PASIVO (BAJO CONSUMO) ---
-useEffect(() => {
-
-  const id =
-    new URLSearchParams(
-      window.location.search
-    ).get("id");
-
+  const id = new URLSearchParams(window.location.search).get("id");
   if (!id || !isLoaded) return;
 
-  const viajeRef =
-    ref(db, "viajes/" + id);
-
-  // Ref para no saturar
-  // la API de Google
+  const viajeRef = ref(db, "viajes/" + id);
+  // Ref para no saturar la API de Google si ya calculamos el ETA local recientemente
   let lastEtaRequest = 0;
 
   const unsubscribe = onValue(
+  viajeRef,
+  async (snap) => {
+    const d = snap.val();
+    if (!d) return;
 
-    viajeRef,
-
-    async (snap) => {
-
-      const d = snap.val();
-
-      if (!d) return;
-
-      setViajeData(d);
-
-      // ===================================================
-      // 🔥 DRIVER INFO
-      // ===================================================
-
-      if (d.driverId) {
-
-        try {
-
-          const driverSnap =
-            await get(
-
-              ref(
-                db,
-                "drivers/" +
-                  d.driverId
-              )
-            );
-
-          if (
-            driverSnap.exists()
-          ) {
-
-            setDriverInfo(
-              driverSnap.val()
-            );
-          }
-
-        } catch (err) {
-
-          console.error(
-            "Driver info error:",
-            err
-          );
-        }
-      }
-
-      // 🔥 resto de tu lógica...
+    setViajeData(d);
 // ===================================================
 // 🔥 AUTO REFUND SI NADIE ACEPTA
 // ===================================================
@@ -413,20 +290,36 @@ if (
 
     cashCancelRef.current =
 
-      setInterval(async () => {
-
-        const expirado =
-
-          Date.now() -
-
-          d.timestamp >
-
-          5 * 60 * 1000;
-
-        // ⏳ aún no expira
-        if (!expirado) return;
+      setTimeout(async () => {
 
         try {
+
+          // 🔥 revalidar estado
+          const freshSnap =
+
+            await get(
+              ref(
+                db,
+                "viajes/" + d.id
+              )
+            );
+
+          if (!freshSnap.exists()) {
+
+            return;
+          }
+
+          const freshData =
+            freshSnap.val();
+
+          // 🔒 evitar cancelar si ya aceptaron
+          if (
+            freshData.estado !==
+            "Pendiente"
+          ) {
+
+            return;
+          }
 
           console.log(
             "❌ CANCELANDO CASH"
@@ -448,105 +341,67 @@ if (
               estado:
                 "Cancelado",
 
-              fase:
-                "cancelado",
-
               cashCancelProcesado:
                 true,
 
               cancelReason:
                 "No drivers available",
 
-              updatedAt:
+              canceladoAt:
                 Date.now()
             }
           );
-
-          // 🔥 limpiar timer
-          clearInterval(
-            cashCancelRef.current
-          );
-
-          cashCancelRef.current =
-            null;
 
           console.log(
             "✅ CASH cancelado"
           );
 
+          // 🧹 limpiar
+          cashCancelRef.current =
+            null;
+
+          localStorage.removeItem(
+            "viajeId"
+          );
+
+          localStorage.removeItem(
+            "viajeData"
+          );
+
+          // 🔔 ALERTA
+          alert(
+            "No drivers available."
+          );
+
+          // 🏠 HOME
+          window.location.href =
+            "/";
+
         } catch (err) {
 
           console.error(
-            "Cash cancel error:",
+            "CASH CANCEL ERROR:",
             err
           );
         }
 
-      }, 10000); // revisar cada 10s
+      },
+
+      // ⏳ 3 minutos
+      3 * 60 * 1000
+    );
   }
 }
 
-   // ===================================================
-// 🔥 1. VERIFICACIÓN ESTADOS FINALES
-// ===================================================
-
-if (d.estado === "Finalizado") {
-
-  // 💳 limpiar refund timer
-  if (refundCheckRef.current) {
-
-    clearInterval(
-      refundCheckRef.current
-    );
-
-    refundCheckRef.current =
-      null;
-  }
-
-  // 💵 limpiar cash timer
-  if (cashCancelRef.current) {
-
-    clearInterval(
-      cashCancelRef.current
-    );
-
-    cashCancelRef.current =
-      null;
-  }
-
-  setViajeFinalizado(true);
-
-  return;
-}
-
-if (d.estado === "Cancelado") {
-
-  // 💳 limpiar refund timer
-  if (refundCheckRef.current) {
-
-    clearInterval(
-      refundCheckRef.current
-    );
-
-    refundCheckRef.current =
-      null;
-  }
-
-  // 💵 limpiar cash timer
-  if (cashCancelRef.current) {
-
-    clearInterval(
-      cashCancelRef.current
-    );
-
-    cashCancelRef.current =
-      null;
-  }
-
-  setViajeCancelado(true);
-
-  return;
-}
+    // 1. Verificación de estados finales
+    if (d.estado === "Finalizado") {
+      setViajeFinalizado(true);
+      return;
+    }
+    if (d.estado === "Cancelado") {
+      setViajeCancelado(true);
+      return;
+    }
 
     // 2. Sincronización de Fase
     // Usamos una variable local para la lógica inmediata antes de que el estado 'fase' actualice
@@ -558,6 +413,18 @@ else if (d.estado === "En viaje") faseActual = "viaje";
     
     setFase(faseActual);
    // --- BLOQUE CORREGIDO PARA LA RUTA AL DESTINO ---
+if (faseActual === "viaje" && d.destinoLat && !d.remainingPath) {
+  const ds = new google.maps.DirectionsService();
+  ds.route({
+    origin: { lat: Number(d.driverLat), lng: Number(d.driverLng) },
+    destination: { lat: Number(d.destinoLat), lng: Number(d.destinoLng) },
+    travelMode: google.maps.TravelMode.DRIVING
+  }, (result: any, status: any) => { // Usamos any para evitar el conflicto de tipos
+    if (status === "OK") {
+      setDirectionsResponse(result);
+    }
+  });
+}
 
     // 3. NUEVO: Cálculo de ETA Local (Fallback)
 const ahora = Date.now();
@@ -608,7 +475,7 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
     }
   });
 
-  return () => {
+ return () => {
 
   unsubscribe();
 
@@ -626,7 +493,7 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
   // 💵 cash timer
   if (cashCancelRef.current) {
 
-    clearInterval(
+    clearTimeout(
       cashCancelRef.current
     );
 
@@ -692,17 +559,8 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
     color: "#fff", cursor: "pointer", boxShadow: "0 4px 0 rgba(0,0,0,0.2)", transition: "0.15s", width: "100%"
   });
 
-  const press = (e: any) => {
-
-  e.currentTarget.style.transform =
-    "scale(0.95)";
-};
-
-const release = (e: any) => {
-
-  e.currentTarget.style.transform =
-    "scale(1)";
-};
+  const press = (e: any) => { e.target.style.transform = "scale(0.95)"; };
+  const release = (e: any) => { e.target.style.transform = "scale(1)"; };
 
   if (!isLoaded) return <div style={{ background: "#111", color: "#fff", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>Cargando mapa...</div>;
 
@@ -715,716 +573,229 @@ const release = (e: any) => {
     );
   }
 
-const vehicleChip = {
+  return (
+    <div style={{ height: "100vh", position: "relative", background: "#111" }}>
+      <GoogleMap
+        onLoad={(map) => { mapRef.current = map; }}
+        mapContainerStyle={{ width: "100%", height: "100%" }}
+        center={pos || { lat: Number(viajeData?.origenLat || 36.1699), lng: Number(viajeData?.origenLng || -115.1398) }}
+        zoom={17}
+        options={{
+          disableDefaultUI: true,
+          zoomControl: false,
+          gestureHandling: "greedy",
+          mapId: "c7f305f9e66d61eb57ab057d" // Tu ID de mapa de lujo
+        }}
+      >
+        {/* Polilínea Gris: Lo que ya se recorrió */}
+        {completedPath.length > 0 && (
+          <Polyline path={completedPath} options={{ strokeColor: "#888", strokeOpacity: 0.5, strokeWeight: 3 }} />
+        )}
 
-  background:
-    "#f4f4f4",
+        {/* Polilínea Azul: La ruta exacta que ve el driver */}
+        {remainingPath.length > 0 && (
+          <Polyline path={remainingPath} options={{ strokeColor: "#1976FF", strokeOpacity: 0.9, strokeWeight: 5 }} />
+        )}
 
-  color: "#444",
-
-  padding: "7px 12px",
-
-  borderRadius: 12,
-
-  fontSize: 13,
-
-  fontWeight: 600,
-
-  border:
-    "1px solid rgba(0,0,0,0.05)"
-};
- return (
-  <div
-    style={{
-      height: "100vh",
-      position: "relative",
-      background: "#111"
-    }}
-  >
-
-    <GoogleMap
-      onLoad={(map) => {
-        mapRef.current = map;
-      }}
-
-      mapContainerStyle={{
-        width: "100%",
-        height: "100%"
-      }}
-
-      center={
-        pos || {
-          lat: Number(
-            viajeData?.origenLat || 36.1699
-          ),
-
-          lng: Number(
-            viajeData?.origenLng || -115.1398
-          )
-        }
-      }
-
-      zoom={17}
-
-      options={{
-        disableDefaultUI: true,
-        zoomControl: false,
-        gestureHandling: "greedy",
-        mapId: "c7f305f9e66d61eb57ab057d"
-      }}
-    >
-
-      {/* Ruta completada */}
-      {completedPath.length > 0 && (
-
-        <Polyline
-          path={completedPath}
-
-          options={{
-            strokeColor: "#888",
-            strokeOpacity: 0.5,
-            strokeWeight: 3
-          }}
-        />
-      )}
-
-      {/* Ruta restante */}
-      {remainingPath.length > 0 && (
-
-        <Polyline
-          path={remainingPath}
-
-          options={{
-            strokeColor: "#1976FF",
-            strokeOpacity: 0.9,
-            strokeWeight: 5
-          }}
-        />
-      )}
-
-      {/* Driver marker */}
-      {pos && (
-
-        <Marker
-          position={pos}
-
-          icon={{
-
-            path:
-              "M 0, 0 m -10, 0 a 10,10 0 1,0 20,0 a 10,10 0 1,0 -20,0 M -4,3 L 0,-5 L 4,3 L 0,1 Z",
-
-            fillColor: "#1976FF",
-
-            fillOpacity: 1,
-
-            strokeColor: "#fff",
-
-            strokeWeight: 2,
-
-            scale: 2,
-
-            rotation:
-              viajeData?.heading || 0,
-
-            anchor:
-              new window.google.maps.Point(
-                0,
-                0
-              )
-          }}
-        />
-      )}
-
-      {/* Destino */}
-      {viajeData?.destinoLat && (
-
-        <Marker
-          position={{
-            lat: Number(
-              viajeData.destinoLat
-            ),
-
-            lng: Number(
-              viajeData.destinoLng
-            )
-          }}
-        />
-      )}
-
-    </GoogleMap>
-{/* PREMIUM RIDE PANEL */}
-<div
-  style={{
-    position: "absolute",
-    bottom: 0,
-    width: "100%",
-
-     maxHeight: "34vh",
-    overflowY: "auto",
-    scrollbarWidth: "none",
-    paddingBottom: 30,
-
-    background:
-      "linear-gradient(180deg,#ffffff,#f7f7f7)",
-
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-
-    padding: "6px 8px 8px",
-
-    boxShadow:
-      "0 -10px 40px rgba(0,0,0,0.10)",
-
-    borderTop:
-      "1px solid rgba(255,255,255,0.9)",
-
-    backdropFilter: "blur(18px)"
-  }}
->
-
-  {/* HANDLE */}
-  <div
-    style={{
-      width: 46,
-      height: 5,
-      borderRadius: 999,
-      background: "#d8d8d8",
-      margin: "0 auto 18px"
-    }}
+        {/* Marcador Conductor (Círculo con Flecha) */}
+{pos && (
+  <Marker 
+    position={pos} 
+    icon={{
+      // Este path dibuja un círculo (M) y luego una flecha (L/Z) en el centro
+      path: "M 0, 0 m -10, 0 a 10,10 0 1,0 20,0 a 10,10 0 1,0 -20,0 M -4,3 L 0,-5 L 4,3 L 0,1 Z",
+      fillColor: "#1976FF",
+      fillOpacity: 1,
+      strokeColor: "#fff",
+      strokeWeight: 2,
+      scale: 2, // Ajusta el tamaño general aquí
+      rotation: viajeData?.heading || 0,
+      anchor: new window.google.maps.Point(0, 0), // Centra el icono en la coordenada
+    }} 
   />
-
-  {/* STATUS CARD */}
-  <div
-    style={{
-      background: "#fff",
-
-      borderRadius: 24,
-
-      padding: "10px 12px",
-
-      boxShadow:
-        "0 8px 24px rgba(0,0,0,0.06)",
-
-      border:
-        "1px solid rgba(0,0,0,0.04)"
-    }}
-  >
-
-    {/* TOP */}
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center"
-      }}
-    >
-
-      <div>
-
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: 1,
-            color: "#999"
-          }}
-        >
-          STATUS
-        </div>
-
-        <div
-          style={{
-            marginTop: 6,
-            fontSize: 14,
-            fontWeight: 600,
-            color: "#111"
-          }}
-        >
-
-          {fase === "pendiente" &&
-            "pending"}
-
-          {fase === "aceptado" &&
-            "assigned"}
-
-          {fase === "pickup" &&
-            "on_the_way"}
-
-          {fase === "viaje" &&
-            "in_progress"}
-
-        </div>
-
-      </div>
-
-     {/* ICON */}
-<div
-  style={{
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-
-    background:
-      fase === "viaje"
-        ? "linear-gradient(145deg,#dff8e8,#f4fff7)"
-        : "linear-gradient(145deg,#edf5ff,#f8fbff)",
-
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-
-    fontSize: 18,
-
-    boxShadow:
-      "0 6px 14px rgba(0,0,0,0.05)"
-  }}
->
-      
-        {fase === "pendiente" && "🔍"}
-        {fase === "aceptado" && "✔"}
-        {fase === "pickup" && "🚘"}
-        {fase === "viaje" && "🚗"}
-      </div>
-
-    </div>
-
-    {/* PENDING MESSAGE */}
-    {fase === "pendiente" && (
-
-      <div
-        style={{
-          marginTop: 8,
-
-          padding: "14px 16px",
-
-          borderRadius: 18,
-
-          background:
-            "linear-gradient(145deg,#fff8ea,#fffdf7)",
-
-          border:
-            "1px solid rgba(255,193,7,0.14)",
-
-          color: "#946200",
-
-          fontWeight: 600,
-
-          fontSize: 15
-        }}
-      >
-        Looking for available driver
-      </div>
-
-    )}
-
-  </div>
-
-  {/* DRIVER CARD */}
-  {(fase === "aceptado" ||
-    fase === "pickup" ||
-    fase === "viaje") && (
-
-    <div
-      style={{
-        marginTop: 6,
-
-        background: "#fff",
-
-        borderRadius: 14,
-
-        padding: "6px 8px",
-
-        boxShadow:
-          "0 10px 26px rgba(0,0,0,0.06)",
-
-        border:
-          "1px solid rgba(0,0,0,0.04)"
-      }}
-    >
-
-      {/* DRIVER HEADER */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center"
-        }}
-      >
-
-        {/* LEFT */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 4
-          }}
-        >
-
-          {/* AVATAR */}
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: "50%",
-
-              background:
-                "linear-gradient(145deg,#f2f2f2,#ffffff)",
-
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-
-              fontSize: 16,
-
-              boxShadow:
-                "0 6px 18px rgba(0,0,0,0.10)"
-            }}
-          >
-            🚘
-          </div>
-
-          {/* INFO */}
-          <div>
-
-            {/* NAME */}
-            <div
-              style={{
-                fontSize: 22,
-                fontWeight: 600,
-                color: "#111"
-              }}
-            >
-              {driverInfo?.nombre?.split("@")[0] ||
-                "Driver"}
-            </div>
-
-            {/* PREMIUM */}
-            <div
-              style={{
-                marginTop: 4,
-                fontSize: 13,
-                color: "#777",
-                fontWeight: 500
-              }}
-            >
-              Premium Service
-            </div>
-
-            {/* STARS */}
-            <div
-              style={{
-                marginTop: 5,
-                color: "#f1c40f",
-                fontWeight: 600,
-                fontSize: 15
-              }}
-            >
-              ★★★★★
-            </div>
-
-          </div>
-
-        </div>
-
-        {/* CALL */}
-        {(fase === "aceptado" ||
-          fase === "pickup") && (
-
-          <button
-
-            onMouseDown={press}
-            onMouseUp={release}
-            onMouseLeave={release}
-
-            onClick={() => {
-
-              if (
-                driverInfo?.telefono
-              ) {
-
-                window.location.href =
-                  `tel:${driverInfo.telefono}`;
-              }
-            }}
-
-            style={{
-  width: 52,
-  height: 52,
-
-  borderRadius: 50,
-
-  border:
-    "1px solid rgba(255,255,255,0.25)",
-
-  background:
-    "linear-gradient(145deg,#34d058,#1faa43)",
-
-  color: "#fff",
-
-  fontSize: 22,
-
-  cursor: "pointer",
-
- boxShadow:
-  "0 8px 18px rgba(52,208,88,0.28)",
-
-  transition:
-    "all 0.12s ease"
-}}
-          >
-            📞
-          </button>
-
+)}
+
+        {/* Destino Final */}
+        {viajeData?.destinoLat && (
+          <Marker position={{ lat: Number(viajeData.destinoLat), lng: Number(viajeData.destinoLng) }} />
         )}
-
-      </div>
-
-      {/* VEHICLE */}
-      <div
-        style={{
-          marginTop: 8,
-
-          display: "flex",
-          flexWrap: "wrap",
-
-          gap: 4
-        }}
-      >
-
-        <div style={vehicleChip}>
-          {driverInfo?.carro?.marca}
-        </div>
-
-        <div style={vehicleChip}>
-          {driverInfo?.carro?.modelo}
-        </div>
-
-        <div style={vehicleChip}>
-          {driverInfo?.carro?.color}
-        </div>
-
-        <div
-          style={{
-            ...vehicleChip,
-
-            background: "#111",
-            color: "#fff",
-            fontWeight: 600,
-            letterSpacing: 1
-          }}
-        >
-          {driverInfo?.carro?.placa}
-        </div>
-
-      </div>
-
-    </div>
-
+        {directionsResponse && (
+    <DirectionsRenderer 
+      directions={directionsResponse} 
+      options={{ 
+        preserveViewport: true, 
+        suppressMarkers: true, 
+        polylineOptions: { strokeColor: "#1976FF", strokeWeight: 5, strokeOpacity: 0.8 } 
+      }} 
+    />
   )}
+</GoogleMap>
 
-  {/* ETA + PAYMENT */}
+      {/* PANEL DE INFORMACIÓN */}
+<div style={{ position: "absolute", bottom: 0, width: "100%", background: "#fff", padding: "24px 20px", borderTopLeftRadius: 24, borderTopRightRadius: 24, boxShadow: "0 -5px 20px rgba(0,0,0,0.1)" }}>
+  
+  {/* NUEVA LÍNEA: DATOS DEL CONDUCTOR */}
+  {viajeData?.driverNombre && (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid #eee" }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: "bold", fontSize: 30 }}>
+          {viajeData.driverNombre?.split('@')[0]} {/* Muestra el nombre antes del @ */}
+          <span style={{ marginLeft: 8, color: "#f1c40f" }}>★ {viajeData.driverRating || "5.0"}</span>
+        </div>
+        <div style={{ fontSize: 13, color: "#666", marginTop: 2 }}>
+          {viajeData.driverCar?.marca} {viajeData.driverCar?.modelo} • <span style={{ color: "#000", fontWeight: "600" }}>{viajeData.driverCar?.placa}</span>
+        </div>
+      </div>
+      <div style={{ textAlign: "right", fontSize: 12, color: viajeData.driverCar?.color === "Blanco" ? "#999" : viajeData.driverCar?.color }}>
+        {viajeData.driverCar?.color}
+      </div>
+    </div>
+  )}
+  {/* CALL DRIVER */}
+{(fase === "aceptado" || fase === "pickup") &&
+  viajeData?.driverTelefono && (
+
   <div
     style={{
-      marginTop: 8,
-
-      display: "flex",
-
-      gap: 4
+      position: "absolute",
+      right: 16,
+      top: -26,
+      zIndex: 20
     }}
   >
 
-    {/* ETA */}
-    {(fase === "pickup" ||
-      fase === "viaje") && (
+    <a
+      href={`tel:${viajeData.driverTelefono}`}
 
-      <div
-        style={{
-          flex: 1,
+      onMouseDown={(e) => {
+        e.currentTarget.style.transform =
+          "scale(0.90)";
+      }}
 
-          background:
-            "linear-gradient(145deg,#edf5ff,#f8fbff)",
+      onMouseUp={(e) => {
+        e.currentTarget.style.transform =
+          "scale(1)";
+      }}
 
-          borderRadius: 24,
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform =
+          "scale(1)";
+      }}
 
-          padding: "8px",
-
-          border:
-            "1px solid rgba(25,118,255,0.10)",
-
-          boxShadow:
-            "0 10px 20px rgba(25,118,255,0.08)"
-        }}
-      >
-
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: 1,
-            color: "#1976FF",
-            marginBottom: 6
-          }}
-        >
-
-          {fase === "pickup"
-            ? "PICKUP ETA"
-            : "DESTINATION ETA"}
-
-        </div>
-
-        <div
-          style={{
-            fontSize: 14,
-            fontWeight: 600,
-            color: "#111"
-          }}
-        >
-          {viajeData?.driverEta ||
-            "1 min"}
-        </div>
-
-      </div>
-
-    )}
-
-    {/* PAYMENT */}
-    <div
       style={{
-        flex: 1,
+
+        width: 62,
+        height: 62,
+
+        borderRadius: "50%",
 
         background:
-          viajeData?.metodoPago ===
-          "stripe"
+          "linear-gradient(145deg,#1fd15a,#12a846)",
 
-            ? "linear-gradient(145deg,#eefbf2,#f8fff9)"
+        display: "flex",
 
-            : "linear-gradient(145deg,#fff5f5,#fffafa)",
+        alignItems: "center",
 
-        borderRadius: 24,
+        justifyContent: "center",
 
-        padding: "8px",
+        textDecoration: "none",
+
+        boxShadow:
+          "0 10px 25px rgba(0,0,0,0.35), inset 0 2px 4px rgba(255,255,255,0.25)",
 
         border:
-          viajeData?.metodoPago ===
-          "stripe"
-
-            ? "1px solid rgba(69,212,131,0.12)"
-
-            : "1px solid rgba(255,90,90,0.12)",
-
-        boxShadow:
-          viajeData?.metodoPago ===
-          "stripe"
-
-            ? "0 10px 20px rgba(69,212,131,0.08)"
-
-            : "0 10px 20px rgba(255,90,90,0.08)"
-      }}
-    >
-
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 600,
-          letterSpacing: 1,
-
-          color:
-            viajeData?.metodoPago ===
-            "stripe"
-
-              ? "#28a745"
-
-              : "#ff4d4d",
-
-          marginBottom: 6
-        }}
-      >
-
-        {viajeData?.metodoPago ===
-        "stripe"
-
-          ? "PAID"
-
-          : "PAY THE DRIVER"}
-
-      </div>
-
-      <div
-        style={{
-          fontSize: 20,
-          fontWeight: 600,
-          color: "#111"
-        }}
-      >
-        $
-        {viajeData?.precio?.toFixed(
-          2
-        )}
-      </div>
-
-    </div>
-
-  </div>
-
-  {/* CANCEL BUTTON */}
-  {(fase === "pendiente" ||
-    fase === "aceptado" ||
-    fase === "pickup") && (
-
-    <button
-
-      onMouseDown={press}
-      onMouseUp={release}
-      onMouseLeave={release}
-
-      onClick={() => {
-
-        if (
-          confirm(
-            "Do you want to cancel this ride?"
-          )
-        ) {
-
-          cancelarViaje();
-        }
-      }}
-
-      style={{
-        width: "100%",
-
-        marginTop: 8,
-
-        padding: "10px",
-
-        border: "none",
-
-        borderRadius: 24,
-
-        background:
-          "linear-gradient(145deg,#ff6666,#ff2e2e)",
-
-        color: "#fff",
-
-        fontSize: 16,
-
-        fontWeight: 800,
-
-        cursor: "pointer",
-
-        boxShadow:
-          "0 8px 0 #d92323, 0 16px 26px rgba(255,80,80,0.22)",
+          "2px solid rgba(255,255,255,0.25)",
 
         transition:
-          "all 0.15s ease"
+          "all 0.15s ease",
+
+        transform:
+          "scale(1)",
+
+        userSelect: "none"
       }}
     >
-      Cancel Ride
-    </button>
 
-  )}
+      <span
+        style={{
+          fontSize: 28,
+          filter:
+            "drop-shadow(0 2px 2px rgba(0,0,0,0.35))"
+        }}
+      >
+        📞
+      </span>
 
+    </a>
+
+  </div>
+)}
+<a
+  href={`https://wa.me/${viajeData.driverTelefono.replace(/\D/g, "")}`}
+  target="_blank"
+></a>
+
+ <h3 style={{ margin: 0, fontSize: 18 }}>
+  {fase === "pendiente" && "🔍 Looking for a driver..."} {/* 👈 AÑADE ESTO */}
+  {fase === "aceptado" && "✅ Your ride was accepted"}
+  {fase === "pickup" && "🚗 Driver on the way"}
+  {fase === "viaje" && "✨ Ride in progress"}
+</h3>
+
+{/* ETA / STATUS */}
+
+{fase === "pendiente" && (
+  <p style={{ fontSize: 16, color: "#666", margin: "8px 0" }}>
+    Looking for nearby drivers...
+  </p>
+)}
+
+{(fase === "pickup" || fase === "viaje") && (
+  <p style={{ fontSize: 22, fontWeight: "bold", color: "#1976FF", margin: "4px 0" }}>
+    {viajeData?.driverEta || "Calculating..."}
+  </p>
+)}
+
+  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+    {viajeData?.metodoPago === "stripe" ? (
+      <span style={{ color: "#28a745", fontWeight: "600" }}>💳 Paid: ${viajeData?.precio?.toFixed(2)}</span>
+    ) : (
+     <span
+  style={{
+    fontWeight: "700",
+    fontSize: "22px"
+  }}
+>
+  💵 Pay the Driver:
+
+  <span
+    style={{
+      color: "#f70909"
+    }}
+  >
+    $
+
+    {Number(
+      viajeData?.precio || 0
+    ).toFixed(2)}
+
+  </span>
+</span>
+    )}
+  </div>
+
+ {/* Ahora incluimos 'pendiente' y 'espera' para que siempre pueda cancelar antes del viaje */}
+{(fase === "pendiente" || fase === "espera" || fase === "aceptado" || fase === "pickup") && (
+  <button
+    style={{ ...btn("#000"), marginTop: 20 }}
+    onMouseDown={press}
+    onMouseUp={release}
+    onClick={() => { if(confirm("Do you wish to cancel this ride?")) cancelarViaje(); }}
+  >
+    Cancel Ride
+  </button>
+)}
 </div>
-</div>/////////////////////////////////
-  
+    </div>
   );
 }
