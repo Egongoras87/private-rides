@@ -77,6 +77,8 @@ export default function DriverPage() {
 const mapInitializedRef =
   useRef(false);
 const ultimoViajeNotificadoRef = useRef<string | null>(null);
+const viajesPreviosRef =
+  useRef<string[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null); // Para poder detener el sonido después
  
 const [sonidoActivo, setSonidoActivo] = useState(() => {
@@ -1074,77 +1076,97 @@ const soltar = (e: any) => {
   e.currentTarget.style.boxShadow = "0 5px 0 rgba(0,0,0,0.2)";
 };
 // =========================================================
-// 🔊 LÓGICA DE AUDIO INDEPENDIENTE (UBICACIÓN CORRECTA)
+// 🔊 AUDIO NUEVO VIAJE (FIX REAL)
 // =========================================================
 useEffect(() => {
 
-  if (!sonidoActivo) return;
+  if (!sonidoActivo)
+    return;
 
   // 🔥 solo pendientes
   const pendientes = viajes.filter(
-    (v) => v.estado === "Pendiente"
+    (v) =>
+      v.estado === "Pendiente"
   );
 
-  if (pendientes.length === 0)
-    return;
-
-  // 🔥 primer viaje actual
-  const primerViaje =
-    pendientes[0];
+  // 🔥 ids actuales
+  const idsActuales =
+    pendientes.map(
+      (v) => v.id
+    );
 
   // 🔥 primera carga
   if (
-    !ultimoViajeNotificadoRef.current
+    viajesPreviosRef.current
+      .length === 0
   ) {
 
-    ultimoViajeNotificadoRef.current =
-      primerViaje.id;
+    viajesPreviosRef.current =
+      idsActuales;
 
     return;
   }
 
-  // 🔥 nuevo viaje
-  if (
-    ultimoViajeNotificadoRef.current !==
-    primerViaje.id
-  ) {
+  // 🔥 detectar NUEVO viaje
+  const nuevoViaje =
+    idsActuales.find(
 
-    try {
+      (id) =>
 
-      // 🔇 detener anterior
-      if (audioRef.current) {
+        !viajesPreviosRef.current.includes(
+          id
+        )
+    );
 
-        audioRef.current.pause();
+  // 🔥 actualizar memoria
+  viajesPreviosRef.current =
+    idsActuales;
 
-        audioRef.current.currentTime = 0;
-      }
+  // ❌ no hay nuevo
+  if (!nuevoViaje)
+    return;
 
-      const audio =
-        new Audio(
-          "/notification.mp3"
-        );
+  try {
 
-      audio.volume = 1;
+    // 🔇 detener anterior
+    if (audioRef.current) {
 
-      audio.play();
+      audioRef.current.pause();
 
-      audioRef.current = audio;
-
-      console.log(
-        "🔔 Nuevo viaje"
-      );
-
-      // 🔥 guardar último
-      ultimoViajeNotificadoRef.current =
-        primerViaje.id;
-
-    } catch (err) {
-
-      console.error(
-        "Audio error",
-        err
-      );
+      audioRef.current.currentTime = 0;
     }
+
+    // 🔊 reproducir
+    const audio =
+      new Audio(
+        "/notification.mp3"
+      );
+
+    audio.volume = 1;
+
+    audio.play().catch(
+      (err) => {
+
+        console.error(
+          "Play blocked:",
+          err
+        );
+      }
+    );
+
+    audioRef.current =
+      audio;
+
+    console.log(
+      "🔔 Nuevo viaje detectado"
+    );
+
+  } catch (err) {
+
+    console.error(
+      "Audio error:",
+      err
+    );
   }
 
 }, [viajes, sonidoActivo]);
@@ -1212,9 +1234,24 @@ if (!authReady) {
         e.stopPropagation();
         setSonidoActivo(!sonidoActivo);
 
-        if (!sonidoActivo) {
-          audioRef.current?.play().catch(() => {});
-        }
+       if (!sonidoActivo) {
+
+  const unlock =
+    new Audio(
+      "/notification.mp3"
+    );
+
+  unlock.volume = 0;
+
+  unlock.play()
+    .then(() => {
+
+      unlock.pause();
+
+      unlock.currentTime = 0;
+    })
+    .catch(() => {});
+}
       }}
       style={{
         background: "transparent",

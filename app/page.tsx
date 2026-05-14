@@ -694,14 +694,17 @@ const url =
   `https://api.whatsapp.com/send?phone=${adminPhone}&text=${encodeURIComponent(mensajeWhatsApp)}`;
 
 // 📲 OPEN ADMIN CHAT
-window.location.href = url;
+window.open(
+  url,
+  "_blank"
+);
 
   
     // 🚀 REDIRECCIÓN FLUIDA (Next.js Way)
     // Usamos router.push en lugar de window.location.href para no recargar la app
-    setTimeout(() => {
-      router.push(`/tracking?id=${viajeId}`);
-    }, 800);
+   router.push(
+  `/tracking?id=${viajeId}`
+);
 
   } catch (error) {
     console.error("ERROR:", error);

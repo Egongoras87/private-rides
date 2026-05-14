@@ -11,6 +11,40 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 
 export default function UserTrackingPage() {
+  // ===================================================
+// 🔥 WAKE LOCK
+// ===================================================
+
+const activarWakeLock =
+  async () => {
+
+    try {
+
+      if (
+        "wakeLock" in navigator
+      ) {
+
+        wakeLockRef.current =
+
+          await (
+            navigator as any
+          ).wakeLock.request(
+            "screen"
+          );
+
+        console.log(
+          "🔒 Wake Lock activo"
+        );
+      }
+
+    } catch (err) {
+
+      console.error(
+        "Wake Lock error:",
+        err
+      );
+    }
+  };
   const { isLoaded } = useJsApiLoader(googleMapsConfig);
 
   // --- ESTADO DEL MAPA ---
@@ -29,7 +63,8 @@ export default function UserTrackingPage() {
   const cashCancelRef =
   useRef<any>(null);
   const lastCameraMoveRef = useRef(0);
-
+const wakeLockRef =
+  useRef<any>(null);
   const [directionsResponse, setDirectionsResponse] = useState<google.maps.DirectionsResult | null>(null);
 
   // Redirección si no hay sesión
@@ -98,8 +133,9 @@ export default function UserTrackingPage() {
                 key
               );
 
-              window.location.href =
-                `/tracking?id=${key}`;
+             window.location.replace(
+  `/tracking?id=${key}`
+);
 
               return;
             }
@@ -112,6 +148,60 @@ export default function UserTrackingPage() {
     );
 
   return () => unsub();
+
+}, []);
+
+// ===================================================
+// 🔥 MANTENER PANTALLA ENCENDIDA
+// ===================================================
+
+useEffect(() => {
+
+  activarWakeLock();
+
+  const handleVisibility =
+    async () => {
+
+      // 🔥 volver activar
+      if (
+
+        document.visibilityState ===
+        "visible"
+
+      ) {
+
+        activarWakeLock();
+      }
+    };
+
+  document.addEventListener(
+
+    "visibilitychange",
+
+    handleVisibility
+  );
+
+  return () => {
+
+    document.removeEventListener(
+
+      "visibilitychange",
+
+      handleVisibility
+    );
+
+    // 🔓 liberar wake lock
+    if (
+      wakeLockRef.current
+    ) {
+
+      wakeLockRef.current
+        .release();
+
+      wakeLockRef.current =
+        null;
+    }
+  };
 
 }, []);
 
@@ -413,17 +503,71 @@ else if (d.estado === "En viaje") faseActual = "viaje";
     
     setFase(faseActual);
    // --- BLOQUE CORREGIDO PARA LA RUTA AL DESTINO ---
-if (faseActual === "viaje" && d.destinoLat && !d.remainingPath) {
-  const ds = new google.maps.DirectionsService();
-  ds.route({
-    origin: { lat: Number(d.driverLat), lng: Number(d.driverLng) },
-    destination: { lat: Number(d.destinoLat), lng: Number(d.destinoLng) },
-    travelMode: google.maps.TravelMode.DRIVING
-  }, (result: any, status: any) => { // Usamos any para evitar el conflicto de tipos
-    if (status === "OK") {
-      setDirectionsResponse(result);
+if (
+
+  faseActual === "viaje" &&
+
+  d.destinoLat &&
+
+  !d.remainingPath &&
+
+  !directionsResponse &&
+
+  window.google?.maps
+
+) {
+
+  const ds =
+
+    new window.google.maps
+      .DirectionsService();
+
+  ds.route(
+
+    {
+
+      origin: {
+
+        lat: Number(
+          d.driverLat
+        ),
+
+        lng: Number(
+          d.driverLng
+        )
+      },
+
+      destination: {
+
+        lat: Number(
+          d.destinoLat
+        ),
+
+        lng: Number(
+          d.destinoLng
+        )
+      },
+
+      travelMode:
+        window.google.maps
+          .TravelMode.DRIVING
+    },
+
+    (
+      result: any,
+      status: any
+    ) => {
+
+      if (
+        status === "OK"
+      ) {
+
+        setDirectionsResponse(
+          result
+        );
+      }
     }
-  });
+  );
 }
 
     // 3. NUEVO: Cálculo de ETA Local (Fallback)
@@ -561,8 +705,37 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
 
   const press = (e: any) => { e.target.style.transform = "scale(0.95)"; };
   const release = (e: any) => { e.target.style.transform = "scale(1)"; };
+if (
+  !isLoaded ||
+  !window.google?.maps
+) {
 
-  if (!isLoaded) return <div style={{ background: "#111", color: "#fff", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>Cargando mapa...</div>;
+  return (
+
+    <div
+      style={{
+
+        background: "#111",
+
+        color: "#fff",
+
+        height: "100vh",
+
+        display: "flex",
+
+        alignItems: "center",
+
+        justifyContent: "center",
+
+        fontSize: 18,
+
+        fontWeight: 600
+      }}
+    >
+      Cargando mapa...
+    </div>
+  );
+}
 
   if (viajeCancelado || viajeFinalizado) {
     return (
@@ -643,11 +816,11 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
           <span style={{ marginLeft: 8, color: "#f1c40f" }}>★ {viajeData.driverRating || "5.0"}</span>
         </div>
         <div style={{ fontSize: 13, color: "#666", marginTop: 2 }}>
-          {viajeData.driverCar?.marca} {viajeData.driverCar?.modelo} • <span style={{ color: "#000", fontWeight: "600" }}>{viajeData.driverCar?.placa}</span>
+          {viajeData.driverCarro?.marca} {viajeData.driverCarro?.modelo} • <span style={{ color: "#000", fontWeight: "600" }}>{viajeData.driverCarro?.placa}</span>
         </div>
       </div>
-      <div style={{ textAlign: "right", fontSize: 12, color: viajeData.driverCar?.color === "Blanco" ? "#999" : viajeData.driverCar?.color }}>
-        {viajeData.driverCar?.color}
+      <div style={{ textAlign: "right", fontSize: 12, color: viajeData.driverCarro?.color === "Blanco" ? "#999" : viajeData.driverCarro?.color }}>
+        {viajeData.driverCarro?.color}
       </div>
     </div>
   )}
@@ -730,10 +903,6 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
 
   </div>
 )}
-<a
-  href={`https://wa.me/${viajeData.driverTelefono.replace(/\D/g, "")}`}
-  target="_blank"
-></a>
 
  <h3 style={{ margin: 0, fontSize: 18 }}>
   {fase === "pendiente" && "🔍 Looking for a driver..."} {/* 👈 AÑADE ESTO */}
