@@ -25,7 +25,9 @@ export function middleware(
   // ---------------------------------------------------
 
   if (
-    host === driverDomain
+    host.includes(
+      driverDomain
+    )
   ) {
 
     // 🔥 ROOT DRIVER
@@ -49,8 +51,6 @@ export function middleware(
 
       "/login-user",
 
-      "/tracking",
-
       "/terms",
 
       "/privacy"
@@ -61,6 +61,14 @@ export function middleware(
         url.pathname
       )
     ) {
+
+      // 🔥 evitar loops
+      if (
+        url.pathname === "/driver"
+      ) {
+
+        return NextResponse.next();
+      }
 
       url.pathname =
         "/driver";
@@ -82,6 +90,6 @@ export const config = {
 
   matcher: [
 
-    "/((?!api|_next/static|_next/image|favicon.ico).*)"
+    "/((?!api|_next/static|_next/image|favicon.ico|manifest.json|sw.js|icons).*)"
   ]
 };

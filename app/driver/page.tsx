@@ -9,7 +9,6 @@ import {
   update,
   get,
   runTransaction,
-  onDisconnect,
   set
 } from "firebase/database";
 import {
@@ -93,9 +92,10 @@ const [sonidoActivo, setSonidoActivo] = useState(() => {
  const router = useRouter();
  const [driverUser, setDriverUser] =
   useState<any>(null);
+const [loadingAuth,
+  setLoadingAuth] =
+    useState(true);
 
-const [authReady, setAuthReady] =
-  useState(false);
 const darkMapStyle = [
 
   {
@@ -189,37 +189,39 @@ const darkMapStyle = [
     ]
   }
 ];
-// DETECTAR SESIÓN Y RESTAURAR USUARIO
+// =========================================================
+// 🔥 AUTH PERSISTENTE
+// =========================================================
 useEffect(() => {
 
   const unsub =
+
     onAuthStateChanged(
+
       auth,
-      (firebaseUser) => {
 
-        setDriverUser(firebaseUser);
+      async (user) => {
 
-        setAuthReady(true);
+        // ✅ usuario autenticado
+        if (user) {
 
-        if (!firebaseUser) {
+          setDriverUser(user);
 
-          router.replace(
-            "/login-driver"
-          );
+        } else {
 
-          return;
+          setDriverUser(null);
         }
 
-        console.log(
-          "✅ Driver restored:",
-          firebaseUser.uid
-        );
+        // ✅ auth ya terminó
+        setLoadingAuth(false);
+        
       }
     );
 
   return () => unsub();
 
-}, [router]);
+}, []);
+
 // TRACKING DE UBICACIÓN EN TIEMPO REAL
 useEffect(() => {
 
@@ -329,11 +331,7 @@ useEffect(() => {
 
       // 🔥 estados que deben restaurar tracking
       const estadosTracking = [
-
-        "Asignado",
-
         "En camino",
-
         "En viaje"
 
       ];
@@ -345,10 +343,9 @@ useEffect(() => {
         )
       ) {
 
-      router.replace(
+   router.replace(
   `/driver-tracking?id=${viajeId}`
 );
-
 restoringRef.current = false;
 
 return;
@@ -586,7 +583,7 @@ setViajes(filtrados);
 
   return () => unsub();
   
-}, [sonidoActivo]); // Añadí dependencias necesarias
+}, []); 
 
 //centrar mapa en driver y primer viaje
 useEffect(() => {
@@ -791,11 +788,7 @@ await update(
   }
 );
 
-    // 🟢 SOLO ESTO SE QUEDA EN FRONTEND
-    await update(ref(db, "drivers/" + user.uid), {
-      viajeActivo: v.id
-    });
-
+   
     alert("✅ Viaje aceptado");
 
     
@@ -856,6 +849,13 @@ const iniciarViaje = async (v: any) => {
       alert(data.error || "No se pudo iniciar el viaje");
       return;
     }
+    // 🔥 activar tracking REAL
+await update(
+  ref(db, "drivers/" + uid),
+  {
+    viajeActivo: v.id
+  }
+);
 
     console.log("🚗 Viaje en camino");
 
@@ -1171,7 +1171,7 @@ useEffect(() => {
 
 }, [viajes, sonidoActivo]);
 
-if (!authReady) {
+if (loadingAuth) {
 
   return (
 
@@ -1423,7 +1423,7 @@ encodeURIComponent(`
         labelOrigin:
           new window.google.maps.Point(
             22,
-            12
+            15
           )
       }}
     />
@@ -1622,7 +1622,7 @@ encodeURIComponent(`
     }}
   >
     ${Number(v.precio || 0)
-      .toFixed(0)}
+      .toFixed(2)}
   </div>
 
   <div
