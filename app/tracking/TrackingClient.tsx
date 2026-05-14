@@ -804,36 +804,125 @@ if (
   )}
 </GoogleMap>
 
-      {/* PANEL DE INFORMACIÓN */}
-<div style={{ position: "absolute", bottom: 0, width: "100%", background: "#fff", padding: "24px 20px", borderTopLeftRadius: 24, borderTopRightRadius: 24, boxShadow: "0 -5px 20px rgba(0,0,0,0.1)" }}>
-  
-  {/* NUEVA LÍNEA: DATOS DEL CONDUCTOR */}
+     {/* PANEL DE INFORMACIÓN */}
+<div
+  style={{
+
+    position: "absolute",
+
+    overflow: "visible",
+
+    zIndex: 20,
+
+    bottom: 0,
+
+    width: "100%",
+
+    background: "#fff",
+
+    padding: "24px 20px",
+
+    borderTopLeftRadius: 24,
+
+    borderTopRightRadius: 24,
+
+    boxShadow:
+      "0 -5px 20px rgba(0,0,0,0.1)"
+  }}
+>
+
+  {/* DRIVER INFO */}
   {viajeData?.driverNombre && (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid #eee" }}>
+
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: 12,
+        paddingBottom: 12,
+        borderBottom: "1px solid #eee"
+      }}
+    >
+
       <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: "bold", fontSize: 30 }}>
-          {viajeData.driverNombre?.split('@')[0]} {/* Muestra el nombre antes del @ */}
-          <span style={{ marginLeft: 8, color: "#f1c40f" }}>★ {viajeData.driverRating || "5.0"}</span>
+
+        <div
+          style={{
+            fontWeight: "bold",
+            fontSize: 30
+          }}
+        >
+
+          {viajeData.driverNombre?.split("@")[0]}
+
+          <span
+            style={{
+              marginLeft: 8,
+              color: "#f1c40f"
+            }}
+          >
+            ★ {viajeData.driverRating || "5.0"}
+          </span>
+
         </div>
-        <div style={{ fontSize: 13, color: "#666", marginTop: 2 }}>
-          {viajeData.driverCarro?.marca} {viajeData.driverCarro?.modelo} • <span style={{ color: "#000", fontWeight: "600" }}>{viajeData.driverCarro?.placa}</span>
+
+        <div
+          style={{
+            fontSize: 13,
+            color: "#666",
+            marginTop: 2
+          }}
+        >
+
+          {viajeData.driverCarro?.marca}
+          {" "}
+          {viajeData.driverCarro?.modelo}
+
+          {" • "}
+
+          <span
+            style={{
+              color: "#000",
+              fontWeight: "600"
+            }}
+          >
+            {viajeData.driverCarro?.placa}
+          </span>
+
         </div>
+
       </div>
-      <div style={{ textAlign: "right", fontSize: 12, color: viajeData.driverCarro?.color === "Blanco" ? "#999" : viajeData.driverCarro?.color }}>
+
+      <div
+        style={{
+          textAlign: "right",
+          fontSize: 12,
+          color:
+            viajeData.driverCarro?.color === "Blanco"
+              ? "#999"
+              : viajeData.driverCarro?.color
+        }}
+      >
         {viajeData.driverCarro?.color}
       </div>
+
     </div>
   )}
-  {/* CALL DRIVER */}
+ {/* CALL DRIVER */}
 {(fase === "aceptado" || fase === "pickup") &&
   viajeData?.driverTelefono && (
 
   <div
     style={{
+
       position: "absolute",
+
       right: 16,
+
       top: -26,
-      zIndex: 20
+
+      zIndex: 50
     }}
   >
 
@@ -841,16 +930,19 @@ if (
       href={`tel:${viajeData.driverTelefono}`}
 
       onMouseDown={(e) => {
+
         e.currentTarget.style.transform =
           "scale(0.90)";
       }}
 
       onMouseUp={(e) => {
+
         e.currentTarget.style.transform =
           "scale(1)";
       }}
 
       onMouseLeave={(e) => {
+
         e.currentTarget.style.transform =
           "scale(1)";
       }}
@@ -858,6 +950,7 @@ if (
       style={{
 
         width: 62,
+
         height: 62,
 
         borderRadius: "50%",
@@ -885,13 +978,17 @@ if (
         transform:
           "scale(1)",
 
-        userSelect: "none"
+        userSelect: "none",
+
+        WebkitTapHighlightColor:
+          "transparent"
       }}
     >
 
       <span
         style={{
           fontSize: 28,
+
           filter:
             "drop-shadow(0 2px 2px rgba(0,0,0,0.35))"
         }}
@@ -905,7 +1002,7 @@ if (
 )}
 
  <h3 style={{ margin: 0, fontSize: 18 }}>
-  {fase === "pendiente" && "🔍 Looking for a driver..."} {/* 👈 AÑADE ESTO */}
+  {fase === "pendiente" && "🔍 Looking for nearby drivers...."} {/* 👈 AÑADE ESTO */}
   {fase === "aceptado" && "✅ Your ride was accepted"}
   {fase === "pickup" && "🚗 Driver on the way"}
   {fase === "viaje" && "✨ Ride in progress"}
@@ -913,11 +1010,6 @@ if (
 
 {/* ETA / STATUS */}
 
-{fase === "pendiente" && (
-  <p style={{ fontSize: 16, color: "#666", margin: "8px 0" }}>
-    Looking for nearby drivers...
-  </p>
-)}
 
 {(fase === "pickup" || fase === "viaje") && (
   <p style={{ fontSize: 22, fontWeight: "bold", color: "#1976FF", margin: "4px 0" }}>

@@ -150,7 +150,7 @@ useEffect(() => {
     );
 
   return () => unsub();
-/////////////////////////////////////////// DETECTAR PWA INSTALADA/////////////////////////
+// DETECTAR PWA INSTALADA//
 }, [router]);
 useEffect(() => {
 
@@ -339,7 +339,7 @@ if (!appVerifier) {
       }
     };
 
-    ///////////////////////////////////////////INSTALAR APP/////////////////////////
+    //INSTALAR APP//
 const instalarApp = async () => {
 
   if (!installPrompt) return;

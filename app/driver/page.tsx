@@ -189,7 +189,7 @@ const darkMapStyle = [
     ]
   }
 ];
-////////////////////////////////// DETECTAR SESIÓN Y RESTAURAR USUARIO
+// DETECTAR SESIÓN Y RESTAURAR USUARIO
 useEffect(() => {
 
   const unsub =
@@ -220,7 +220,7 @@ useEffect(() => {
   return () => unsub();
 
 }, [router]);
-///////////////////////////////// TRACKING DE UBICACIÓN EN TIEMPO REAL
+// TRACKING DE UBICACIÓN EN TIEMPO REAL
 useEffect(() => {
 
   let watchId: number | null = null;
@@ -448,8 +448,8 @@ useEffect(() => {
 
 }, [driverUser]);
 
-// ///////////////////////////////////////////////////////////////📡 VIAJES
-// ///////////////////////////////////////////////////////////////📡 VIAJES
+// //📡 VIAJES
+// //📡 VIAJES
 useEffect(() => {
   const viajesRef = ref(db, "viajes");
 
@@ -588,7 +588,7 @@ setViajes(filtrados);
   
 }, [sonidoActivo]); // Añadí dependencias necesarias
 
-//////////////////////////////////centrar mapa en driver y primer viaje
+//centrar mapa en driver y primer viaje
 useEffect(() => {
 
   if (
@@ -664,7 +664,7 @@ useEffect(() => {
     true;
 
 }, [viajes]);
-////////////////////////////////////////////////////////////////////////////////////
+//
  useEffect(() => {
 
   if (!isLoaded) return;
@@ -727,7 +727,7 @@ const driverPos = driverLocation;
   })();
 
 }, [isLoaded, driverLocation, viajes]);
-  ////////////////////////////////// 🚗 ACEPTAR RIDE/////////////////////////////////////////////////////////////////////////////
+  // 🚗 ACEPTAR RIDE//
 const aceptarViaje = async (v: any) => {
   
   const user = auth.currentUser;
@@ -804,7 +804,7 @@ await update(
     alert("Error aceptando viaje");
   }
 };
-////////////////////////////////////////////// INICIAR VIAJE ////////////////////////////////////////////////////////////
+// INICIAR VIAJE //
 const iniciarViaje = async (v: any) => {
   if (!v?.id) return;
 
@@ -869,7 +869,7 @@ const iniciarViaje = async (v: any) => {
     alert("Error inesperado");
   }
 };
-// /////////////////////////////////////FINALIZAR////////////////////////////////////////////////////////////////////////////
+// //FINALIZAR//
 const finalizar = async (v: any) => {
   if (!v?.id) return;
 
@@ -939,7 +939,7 @@ const finalizar = async (v: any) => {
   }
 };
 
-// //////////////////////////////////////////❌ RECHAZAR VIAJE (OPTIMIZADO) ///////////////////////////////////////////////
+// //❌ RECHAZAR VIAJE (OPTIMIZADO) //
 const rechazar = async (v: any) => {
   if (!v?.id) return;
 
@@ -992,7 +992,7 @@ const rechazar = async (v: any) => {
     alert("Hubo un problema de conexión. Intenta de nuevo.");
   }
 };
-//////////////////////////////// ❌ CANCELAR VIAJE (YA TOMADO)///////////////////////////////////////////////////
+// ❌ CANCELAR VIAJE (YA TOMADO)//
 
 
 
@@ -1471,29 +1471,35 @@ encodeURIComponent(`
         key={v.id}
 
       
-        style={{
-          background:
-  index === 0
-    ? "linear-gradient(90deg,#162617,#101010)"
-              : "#1a1a1a",
-              boxShadow:
-  index === 0
-    ? "0 0 20px rgba(0,255,153,0.12)"
-    : "none",
+       style={{
+  background:
+    index === 0
+      ? "linear-gradient(90deg,#162617,#101010)"
+      : "#1a1a1a",
 
-          border:
-            index === 0
-              ? "1px solid #00ff99"
-              : "1px solid #2a2a2a",
+  boxShadow:
+    index === 0
+      ? "0 0 20px rgba(0,255,153,0.12)"
+      : "none",
 
-          borderRadius: 20,
+  border:
+    index === 0
+      ? "1px solid #00ff99"
+      : "1px solid #2a2a2a",
 
-          padding: "10px 12px",
+  borderRadius: 20,
 
-          marginBottom: 6,
+  padding: "10px 12px",
 
-          cursor: "pointer"
-        }}
+  marginBottom: 6,
+
+  cursor: "default",
+
+  WebkitTapHighlightColor:
+    "transparent",
+
+  userSelect: "none"
+}}
       >
 
         {/* CLIENTE */}

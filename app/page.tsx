@@ -205,7 +205,9 @@ useEffect(() => {
   verificarSesion();
 
 }, [user, loading, router]);
-/////////////////////////////////////////// DETECTAR PWA INSTALADA/////////////////////////
+ 
+//DETECTAR PWA INSTALADA//
+
 useEffect(() => {
 
   // 📱 Detectar iPhone
@@ -283,7 +285,7 @@ if (
   };
 
 }, []);
-//////////// DETECTAR VISIBILIDAD PARA REACTIVAR WAKE LOCK SI SE DESACTIVA POR IRSE A OTRA PESTAÑA O BLOQUEAR PANTALLA
+// DETECTAR VISIBILIDAD PARA REACTIVAR WAKE LOCK SI SE DESACTIVA POR IRSE A OTRA PESTAÑA O BLOQUEAR PANTALLA
 useEffect(() => {
 
   const handleVisibility =
@@ -338,10 +340,7 @@ const instalarApp = async () => {
     "On iPhone tap Share then Add to Home Screen"
   );
 };
-
-
-//////////////////////////////////////////////////////📍 Calcular ruta
-  // 📍 Calcular ruta
+ // 📍 Calcular ruta
   const calcularRuta = () => {
   if (!origenRef.current || !destinoRef.current) return;
 
@@ -444,7 +443,7 @@ if (!window.google?.maps?.DirectionsService) return;
     );
   });
 };
-/////////////////////////////////////////////////ACTIVAR WAKE LOCK PARA NO SUSPENDER DURANTE EL VIAJE///////
+//ACTIVAR WAKE LOCK PARA NO SUSPENDER DURANTE EL VIAJE//
 const activarWakeLock = async () => {
 
   try {
@@ -486,7 +485,7 @@ const activarWakeLock = async () => {
   }
 };
 
-  // ///////////////////////////////////////////////////////////////📤 PEDIR VIAJE////////////////////////////////////////
+ //📤 PEDIR VIAJE//
 const reservar = async () => {
   if (loadingPago) return;
 
@@ -892,7 +891,7 @@ if (!isLoaded) {
   );
 }
 
-//////////////////////////////// RETURN ////////////////////////////////
+// RETURN //
 return (
 
 
@@ -1027,7 +1026,7 @@ return (
   </div>
 )}
 
-///////////////////////////////////////////////panel de arriba 
+//panel de arriba 
   {/* BACKGROUND */}
   <div style={{ position:"fixed", top:0, left:0, width:"100%", height:"100%", backgroundImage:"url('/bg.png?v=2')", backgroundSize:"cover", backgroundPosition:"center", zIndex:-2 }} />
 
