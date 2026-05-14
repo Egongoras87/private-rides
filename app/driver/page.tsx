@@ -77,8 +77,7 @@ export default function DriverPage() {
 
 const ultimoViajeNotificadoRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null); // Para poder detener el sonido después
-  const viajesPreviosRef =
-  useRef<string[]>([]);
+ 
 const [sonidoActivo, setSonidoActivo] = useState(() => {
   if (typeof window !== "undefined") {
     return localStorage.getItem("sonido") !== "false";
@@ -1017,27 +1016,33 @@ useEffect(() => {
 
   if (!sonidoActivo) return;
 
-  // 🔥 IDs actuales
-  const idsActuales =
+  // 🔥 solo pendientes
+  const pendientes = viajes.filter(
+    (v) => v.estado === "Pendiente"
+  );
 
-    viajes.map((v) => v.id);
+  if (pendientes.length === 0)
+    return;
 
-  // 🔥 IDs anteriores
-  const idsPrevios =
-    viajesPreviosRef.current;
+  // 🔥 primer viaje actual
+  const primerViaje =
+    pendientes[0];
 
-  // 🔥 detectar nuevos
-  const nuevosViajes =
-
-    idsActuales.filter(
-      (id) =>
-        !idsPrevios.includes(id)
-    );
-
-  // 🔥 evitar sonido primera carga
+  // 🔥 primera carga
   if (
-    idsPrevios.length > 0 &&
-    nuevosViajes.length > 0
+    !ultimoViajeNotificadoRef.current
+  ) {
+
+    ultimoViajeNotificadoRef.current =
+      primerViaje.id;
+
+    return;
+  }
+
+  // 🔥 nuevo viaje
+  if (
+    ultimoViajeNotificadoRef.current !==
+    primerViaje.id
   ) {
 
     try {
@@ -1050,10 +1055,10 @@ useEffect(() => {
         audioRef.current.currentTime = 0;
       }
 
-      // 🔊 nuevo audio
-      const audio = new Audio(
-        "/notification.mp3"
-      );
+      const audio =
+        new Audio(
+          "/notification.mp3"
+        );
 
       audio.volume = 1;
 
@@ -1065,6 +1070,10 @@ useEffect(() => {
         "🔔 Nuevo viaje"
       );
 
+      // 🔥 guardar último
+      ultimoViajeNotificadoRef.current =
+        primerViaje.id;
+
     } catch (err) {
 
       console.error(
@@ -1073,10 +1082,6 @@ useEffect(() => {
       );
     }
   }
-
-  // 🔥 guardar snapshot
-  viajesPreviosRef.current =
-    idsActuales;
 
 }, [viajes, sonidoActivo]);
 
@@ -1344,20 +1349,7 @@ if (!authReady) {
       <div
         key={v.id}
 
-        onClick={() => {
-
-          if (audioRef.current) {
-
-            audioRef.current.pause();
-audioRef.current.currentTime = 0;
-            audioRef.current = null;
-          }
-
-          router.push(
-            `/driver-tracking?id=${v.id}`
-          );
-        }}
-
+      
         style={{
           background:
   index === 0

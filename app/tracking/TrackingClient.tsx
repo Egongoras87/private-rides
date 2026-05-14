@@ -26,10 +26,13 @@ export default function UserTrackingPage() {
   const mapRef = useRef<any>(null);
   const refundCheckRef =
   useRef<any>(null);
+  const cashCancelRef =
+  useRef<any>(null);
   const lastCameraMoveRef = useRef(0);
   const [driverInfo, setDriverInfo] = useState<any>(null);
   const [directionsResponse, setDirectionsResponse] = useState<google.maps.DirectionsResult | null>(null);
-
+const wakeLockRef =
+  useRef<any>(null);
   // Redirección si no hay sesión
  useEffect(() => {
 
@@ -113,35 +116,145 @@ export default function UserTrackingPage() {
 
 }, []);
 
-
-  useEffect(() => {
-  if (!viajeData?.driverId) return;
-
-  const driverRef = ref(db, "drivers/" + viajeData.driverId);
-  const unsubscribe = onValue(driverRef, (snap) => {
-    if (snap.exists()) {
-      setDriverInfo(snap.val());
-    }
-  });
-
-  return () => unsubscribe();
-}, [viajeData?.driverId]);
- // --- TRACKING PASIVO (BAJO CONSUMO) ---
+// ///////////////////////////🔥 MANTENER PANTALLA ENCENDIDA/////////////////////////////////////////////
 useEffect(() => {
-  const id = new URLSearchParams(window.location.search).get("id");
+
+  let wakeLock: any = null;
+
+  const activarWakeLock =
+    async () => {
+
+      try {
+
+        if (
+          "wakeLock" in navigator
+        ) {
+
+          wakeLock =
+            await (
+              navigator as any
+            ).wakeLock.request(
+              "screen"
+            );
+
+          wakeLockRef.current =
+            wakeLock;
+
+          console.log(
+            "🔆 Wake Lock activo"
+          );
+        }
+
+      } catch (err) {
+
+        console.error(
+          "Wake Lock error",
+          err
+        );
+      }
+    };
+
+  activarWakeLock();
+
+  const handleVisibility =
+    async () => {
+
+      if (
+        document.visibilityState ===
+        "visible"
+      ) {
+
+        activarWakeLock();
+      }
+    };
+
+  document.addEventListener(
+    "visibilitychange",
+    handleVisibility
+  );
+
+  return () => {
+
+    document.removeEventListener(
+      "visibilitychange",
+      handleVisibility
+    );
+
+    if (wakeLock) {
+
+      wakeLock.release();
+    }
+  };
+
+}, []);
+//////////////////////////////////////////////informacion del driver///////////////
+ ///////////////////////////////////////////////////////////////////////////////////////
+// --- TRACKING PASIVO (BAJO CONSUMO) ---
+useEffect(() => {
+
+  const id =
+    new URLSearchParams(
+      window.location.search
+    ).get("id");
+
   if (!id || !isLoaded) return;
 
-  const viajeRef = ref(db, "viajes/" + id);
-  // Ref para no saturar la API de Google si ya calculamos el ETA local recientemente
+  const viajeRef =
+    ref(db, "viajes/" + id);
+
+  // Ref para no saturar
+  // la API de Google
   let lastEtaRequest = 0;
 
   const unsubscribe = onValue(
-  viajeRef,
-  async (snap) => {
-    const d = snap.val();
-    if (!d) return;
 
-    setViajeData(d);
+    viajeRef,
+
+    async (snap) => {
+
+      const d = snap.val();
+
+      if (!d) return;
+
+      setViajeData(d);
+
+      // ===================================================
+      // 🔥 DRIVER INFO
+      // ===================================================
+
+      if (d.driverId) {
+
+        try {
+
+          const driverSnap =
+            await get(
+
+              ref(
+                db,
+                "drivers/" +
+                  d.driverId
+              )
+            );
+
+          if (
+            driverSnap.exists()
+          ) {
+
+            setDriverInfo(
+              driverSnap.val()
+            );
+          }
+
+        } catch (err) {
+
+          console.error(
+            "Driver info error:",
+            err
+          );
+        }
+      }
+
+      // 🔥 resto de tu lógica...
 // ===================================================
 // 🔥 AUTO REFUND SI NADIE ACEPTA
 // ===================================================
@@ -282,15 +395,158 @@ if (
   }
 }
 
-    // 1. Verificación de estados finales
-    if (d.estado === "Finalizado") {
-      setViajeFinalizado(true);
-      return;
-    }
-    if (d.estado === "Cancelado") {
-      setViajeCancelado(true);
-      return;
-    }
+// ===================================================
+// 💵 AUTO CANCEL CASH
+// ===================================================
+
+if (
+
+  d.estado === "Pendiente" &&
+
+  d.metodoPago === "cash" &&
+
+  !d.cashCancelProcesado
+) {
+
+  // 🔒 evitar múltiples timers
+  if (!cashCancelRef.current) {
+
+    cashCancelRef.current =
+
+      setInterval(async () => {
+
+        const expirado =
+
+          Date.now() -
+
+          d.timestamp >
+
+          5 * 60 * 1000;
+
+        // ⏳ aún no expira
+        if (!expirado) return;
+
+        try {
+
+          console.log(
+            "❌ CANCELANDO CASH"
+          );
+
+          // ===================================================
+          // ❌ CANCELAR VIAJE
+          // ===================================================
+
+          await update(
+
+            ref(
+              db,
+              "viajes/" + d.id
+            ),
+
+            {
+
+              estado:
+                "Cancelado",
+
+              fase:
+                "cancelado",
+
+              cashCancelProcesado:
+                true,
+
+              cancelReason:
+                "No drivers available",
+
+              updatedAt:
+                Date.now()
+            }
+          );
+
+          // 🔥 limpiar timer
+          clearInterval(
+            cashCancelRef.current
+          );
+
+          cashCancelRef.current =
+            null;
+
+          console.log(
+            "✅ CASH cancelado"
+          );
+
+        } catch (err) {
+
+          console.error(
+            "Cash cancel error:",
+            err
+          );
+        }
+
+      }, 10000); // revisar cada 10s
+  }
+}
+
+   // ===================================================
+// 🔥 1. VERIFICACIÓN ESTADOS FINALES
+// ===================================================
+
+if (d.estado === "Finalizado") {
+
+  // 💳 limpiar refund timer
+  if (refundCheckRef.current) {
+
+    clearInterval(
+      refundCheckRef.current
+    );
+
+    refundCheckRef.current =
+      null;
+  }
+
+  // 💵 limpiar cash timer
+  if (cashCancelRef.current) {
+
+    clearInterval(
+      cashCancelRef.current
+    );
+
+    cashCancelRef.current =
+      null;
+  }
+
+  setViajeFinalizado(true);
+
+  return;
+}
+
+if (d.estado === "Cancelado") {
+
+  // 💳 limpiar refund timer
+  if (refundCheckRef.current) {
+
+    clearInterval(
+      refundCheckRef.current
+    );
+
+    refundCheckRef.current =
+      null;
+  }
+
+  // 💵 limpiar cash timer
+  if (cashCancelRef.current) {
+
+    clearInterval(
+      cashCancelRef.current
+    );
+
+    cashCancelRef.current =
+      null;
+  }
+
+  setViajeCancelado(true);
+
+  return;
+}
 
     // 2. Sincronización de Fase
     // Usamos una variable local para la lógica inmediata antes de que el estado 'fase' actualice
@@ -356,6 +612,7 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
 
   unsubscribe();
 
+  // 💳 refund timer
   if (refundCheckRef.current) {
 
     clearInterval(
@@ -363,6 +620,17 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
     );
 
     refundCheckRef.current =
+      null;
+  }
+
+  // 💵 cash timer
+  if (cashCancelRef.current) {
+
+    clearInterval(
+      cashCancelRef.current
+    );
+
+    cashCancelRef.current =
       null;
   }
 };
