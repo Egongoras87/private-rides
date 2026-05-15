@@ -776,7 +776,10 @@ const driverPos = driverLocation;
 
   })();
 
-  // =========================================================
+  
+}, [isLoaded, driverLocation, viajes]);
+
+// =========================================================
 // 🔔 SISTEMA PROFESIONAL NUEVO VIAJE
 // =========================================================
 useEffect(() => {
@@ -839,7 +842,6 @@ useEffect(() => {
 
 }, [viajes, sonidoActivo]);
 
-}, [isLoaded, driverLocation, viajes]);
   // 🚗 ACEPTAR RIDE//
 const aceptarViaje = async (v: any) => {
   
