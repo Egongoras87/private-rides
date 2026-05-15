@@ -79,7 +79,9 @@ const ultimoViajeNotificadoRef = useRef<string | null>(null);
 const viajesPreviosRef =
   useRef<string[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null); // Para poder detener el sonido después
- 
+ const vibrationRef = useRef<any>(null);
+const notificationPermissionRef =
+  useRef(false);
 const [sonidoActivo, setSonidoActivo] = useState(() => {
   if (typeof window !== "undefined") {
     return localStorage.getItem("sonido") !== "false";
@@ -373,6 +375,19 @@ return;
   restoreRide();
 
 }, [driverUser]);
+
+// 🔥 precargar audio
+useEffect(() => {
+
+  const audio =
+    new Audio(
+      "/notification.mp3"
+    );
+
+  audio.load();
+
+}, []);
+
 // 🔥 FIREBASE RECONNECT
 useEffect(() => {
 
@@ -428,6 +443,44 @@ useEffect(() => {
 useEffect(() => {
   localStorage.setItem("sonido", sonidoActivo.toString());
 }, [sonidoActivo]);
+
+// =========================================================
+// 🔔 PERMISO NOTIFICACIONES
+// =========================================================
+useEffect(() => {
+
+  if (
+    typeof window === "undefined"
+  ) return;
+
+  if (
+    !("Notification" in window)
+  ) return;
+
+  if (
+    Notification.permission ===
+    "granted"
+  ) {
+
+    notificationPermissionRef.current =
+      true;
+
+    return;
+  }
+
+  Notification.requestPermission()
+    .then((permission) => {
+
+      if (
+        permission === "granted"
+      ) {
+
+        notificationPermissionRef.current =
+          true;
+      }
+    });
+
+}, []);
 
 useEffect(() => {
 
@@ -723,6 +776,69 @@ const driverPos = driverLocation;
 
   })();
 
+  // =========================================================
+// 🔔 SISTEMA PROFESIONAL NUEVO VIAJE
+// =========================================================
+useEffect(() => {
+
+  if (!sonidoActivo)
+    return;
+
+  // 🔥 viajes pendientes
+  const pendientes = viajes.filter(
+    (v) =>
+      v.estado === "Pendiente"
+  );
+
+  // 🔥 ids actuales
+  const idsActuales =
+    pendientes.map(
+      (v) => v.id
+    );
+
+  // =====================================================
+  // 🔥 PRIMERA CARGA
+  // =====================================================
+  if (
+    viajesPreviosRef.current.length === 0
+  ) {
+
+    viajesPreviosRef.current =
+      idsActuales;
+
+    // 🔥 si ya había viajes
+    if (
+      idsActuales.length > 0
+    ) {
+
+      reproducirAlertaViaje();
+    }
+
+    return;
+  }
+
+  // =====================================================
+  // 🔥 DETECTAR NUEVO
+  // =====================================================
+  const nuevoViaje =
+    idsActuales.find(
+      (id) =>
+        !viajesPreviosRef.current.includes(id)
+    );
+
+  // 🔥 actualizar memoria
+  viajesPreviosRef.current =
+    idsActuales;
+
+  // ❌ nada nuevo
+  if (!nuevoViaje)
+    return;
+
+  // 🔥 ALERTA TOTAL
+  reproducirAlertaViaje();
+
+}, [viajes, sonidoActivo]);
+
 }, [isLoaded, driverLocation, viajes]);
   // 🚗 ACEPTAR RIDE//
 const aceptarViaje = async (v: any) => {
@@ -730,11 +846,14 @@ const aceptarViaje = async (v: any) => {
   const user = auth.currentUser;
   // 🔊 DETENER AUDIO INMEDIATAMENTE
   if (audioRef.current) {
-    audioRef.current.pause();
-    audioRef.current.currentTime = 0;
-    audioRef.current = null;
-  }
+  audioRef.current.pause();
+  audioRef.current.currentTime = 0;
+  audioRef.current = null;
+}
 
+if (navigator.vibrate) {
+  navigator.vibrate(0);
+}
   if (!user) {
     alert("Error de usuario");
     return;
@@ -953,6 +1072,9 @@ const rechazar = async (v: any) => {
     audioRef.current.currentTime = 0;
     audioRef.current = null;
   }
+  if (navigator.vibrate) {
+  navigator.vibrate(0);
+}
 
   try {
     const user = auth.currentUser;
@@ -1076,59 +1198,14 @@ const soltar = (e: any) => {
   e.currentTarget.style.boxShadow = "0 5px 0 rgba(0,0,0,0.2)";
 };
 // =========================================================
-// 🔊 AUDIO NUEVO VIAJE (FIX REAL)
+// 🔔 ALERTA GLOBAL VIAJE
 // =========================================================
-useEffect(() => {
-
-  if (!sonidoActivo)
-    return;
-
-  // 🔥 solo pendientes
-  const pendientes = viajes.filter(
-    (v) =>
-      v.estado === "Pendiente"
-  );
-
-  // 🔥 ids actuales
-  const idsActuales =
-    pendientes.map(
-      (v) => v.id
-    );
-
-  // 🔥 primera carga
-  if (
-    viajesPreviosRef.current
-      .length === 0
-  ) {
-
-    viajesPreviosRef.current =
-      idsActuales;
-
-    return;
-  }
-
-  // 🔥 detectar NUEVO viaje
-  const nuevoViaje =
-    idsActuales.find(
-
-      (id) =>
-
-        !viajesPreviosRef.current.includes(
-          id
-        )
-    );
-
-  // 🔥 actualizar memoria
-  viajesPreviosRef.current =
-    idsActuales;
-
-  // ❌ no hay nuevo
-  if (!nuevoViaje)
-    return;
+const reproducirAlertaViaje =
+  async () => {
 
   try {
 
-    // 🔇 detener anterior
+    // 🔇 detener audio anterior
     if (audioRef.current) {
 
       audioRef.current.pause();
@@ -1136,7 +1213,7 @@ useEffect(() => {
       audioRef.current.currentTime = 0;
     }
 
-    // 🔊 reproducir
+    // 🔊 nuevo audio
     const audio =
       new Audio(
         "/notification.mp3"
@@ -1144,32 +1221,66 @@ useEffect(() => {
 
     audio.volume = 1;
 
-    audio.play().catch(
-      (err) => {
+    // 🔥 loop infinito
+    audio.loop = true;
 
-        console.error(
-          "Play blocked:",
-          err
-        );
-      }
-    );
+    await audio.play();
 
-    audioRef.current =
-      audio;
+    audioRef.current = audio;
+
+    // =====================================================
+    // 📳 VIBRACIÓN
+    // =====================================================
+    if (navigator.vibrate) {
+
+      navigator.vibrate([
+        500,
+        300,
+        500,
+        300,
+        800
+      ]);
+    }
+
+    // =====================================================
+    // 🔔 PUSH VISUAL
+    // =====================================================
+    if (
+      notificationPermissionRef.current
+    ) {
+
+      new Notification(
+  "🚖 New Ride Request",
+  {
+    body:
+      "A customer needs a ride now.",
+
+    icon:
+      "/icon-192.png",
+
+    badge:
+      "/icon-192.png",
+
+    requireInteraction:
+      true,
+
+    silent: false
+  } as NotificationOptions
+);
+    }
 
     console.log(
-      "🔔 Nuevo viaje detectado"
+      "🔔 ALERTA ACTIVADA"
     );
 
   } catch (err) {
 
     console.error(
-      "Audio error:",
+      "ALERTA ERROR:",
       err
     );
   }
-
-}, [viajes, sonidoActivo]);
+};
 
 if (loadingAuth) {
 
@@ -1241,7 +1352,7 @@ if (loadingAuth) {
       "/notification.mp3"
     );
 
-  unlock.volume = 0;
+  unlock.volume = 0.01;
 
   unlock.play()
     .then(() => {
@@ -1553,7 +1664,7 @@ encodeURIComponent(`
           style={{
             color: "#ddd",
             fontSize: 14,
-            marginBottom: 6
+            marginBottom: 2
           }}
         >
           📍 {v.origen}
@@ -1580,9 +1691,9 @@ encodeURIComponent(`
 
             alignItems: "center",
 
-            marginTop: 6,
+            marginTop: 2,
 
-            marginBottom: 6
+            marginBottom: 2
           }}
         >
 
@@ -1653,7 +1764,7 @@ encodeURIComponent(`
 
         <p
           style={{
-            marginTop: 8,
+            marginTop: 4,
             fontSize: 10,
             color:
               v.estado === "Asignado"
@@ -1674,7 +1785,7 @@ encodeURIComponent(`
           style={{
             display: "flex",
             gap: 10,
-            marginTop: 15,
+            marginTop: 10,
             flexWrap: "wrap"
           }}
         >

@@ -1,7 +1,7 @@
 import { db } from "@/lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 
-const MAX_SMS_DIA = 4;
+const MAX_SMS_DIA = 10;
 const COOLDOWN_MS = 60 * 1000; // 60 segundos
 const MAX_IP_MIN = 10;
 
