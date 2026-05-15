@@ -261,6 +261,9 @@ const [mounted, setMounted] = useState(false);
       ? "0 4px 0 #1e7e34"
       : "0 4px 0 #0056b3";
   };
+  if (!mounted) {
+    return <div style={containerStyle}>Loading...</div>; // Evita el choque de SSR en PC
+  }
 
   return (
     <div style={containerStyle}>
