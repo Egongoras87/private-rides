@@ -82,6 +82,12 @@ const viajesPreviosRef =
  const vibrationRef = useRef<any>(null);
 const notificationPermissionRef =
   useRef(false);
+  const [silenciado, setSilenciado] =
+  useState(false);
+  const alertAudioRef =
+  useRef<HTMLAudioElement | null>(
+    null
+  );
 const [sonidoActivo, setSonidoActivo] = useState(() => {
   if (typeof window !== "undefined") {
     return localStorage.getItem("sonido") !== "false";
@@ -842,6 +848,28 @@ useEffect(() => {
 
 }, [viajes, sonidoActivo]);
 
+useEffect(() => {
+
+  // 🔥 pendientes reales
+  const pendientes =
+    viajes.filter(
+      (v) =>
+        v.estado ===
+        "Pendiente"
+    );
+
+  // ❌ no quedan viajes
+  if (
+    pendientes.length === 0
+  ) {
+
+    detenerAlertaViaje();
+
+    return;
+  }
+
+}, [viajes]);
+
   // 🚗 ACEPTAR RIDE//
 const aceptarViaje = async (v: any) => {
   
@@ -1205,6 +1233,8 @@ const soltar = (e: any) => {
 const reproducirAlertaViaje =
   async () => {
 
+    if (silenciado) return;
+
   try {
 
     // 🔇 detener audio anterior
@@ -1284,6 +1314,22 @@ const reproducirAlertaViaje =
   }
 };
 
+const detenerAlertaViaje =
+  () => {
+
+    if (
+      !alertAudioRef.current
+    ) return;
+
+    alertAudioRef.current.pause();
+
+    alertAudioRef.current.currentTime = 0;
+
+    alertAudioRef.current = null;
+
+    navigator.vibrate?.(0);
+};
+
 if (loadingAuth) {
 
   return (
@@ -1341,44 +1387,91 @@ if (loadingAuth) {
   {/* DERECHA */}
   <div style={{ display: "flex", alignItems: "center", gap: 15 }}>
 
-    {/* 🔊 SONIDO */}
-    <button
-      onClick={(e) => {
-        e.stopPropagation();
-        setSonidoActivo(!sonidoActivo);
+  {/* 🔊 SONIDO */}
+<button
+  onClick={(e) => {
 
-       if (!sonidoActivo) {
+    e.stopPropagation();
 
-  const unlock =
-    new Audio(
-      "/notification.mp3"
+    const nuevoEstado =
+      !sonidoActivo;
+
+    setSonidoActivo(
+      nuevoEstado
     );
 
-  unlock.volume = 0.01;
+    // ===================================================
+    // 🔇 APAGAR SONIDO
+    // ===================================================
 
-  unlock.play()
-    .then(() => {
+    if (!nuevoEstado) {
 
-      unlock.pause();
+      // 🔥 detener audio loop
+      detenerAlertaViaje();
 
-      unlock.currentTime = 0;
-    })
-    .catch(() => {});
-}
-      }}
-      style={{
-        background: "transparent",
-        border: "none",
-        fontSize: "22px",
-        cursor: "pointer",
-        color: "#eee9e9",
-        transition: "0.2s"
-      }}
-      onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.2)")}
-      onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
-    >
-      {sonidoActivo ? "🔊" : "🔇"}
-    </button>
+      // 🔥 detener vibración
+      navigator.vibrate?.(0);
+
+      return;
+    }
+
+    // ===================================================
+    // 🔓 DESBLOQUEAR AUDIO
+    // ===================================================
+
+    const unlock =
+      new Audio(
+        "/notification-v2.mp3"
+      );
+
+    unlock.volume = 0.01;
+
+    unlock.play()
+
+      .then(() => {
+
+        unlock.pause();
+
+        unlock.currentTime = 0;
+      })
+
+      .catch(() => {});
+  }}
+
+  style={{
+
+    background: "transparent",
+
+    border: "none",
+
+    fontSize: "22px",
+
+    cursor: "pointer",
+
+    color:
+      sonidoActivo
+        ? "#eee9e9"
+        : "#ff4d4d",
+
+    transition: "0.2s"
+  }}
+
+  onMouseEnter={(e) => {
+
+    e.currentTarget.style.transform =
+      "scale(1.2)";
+  }}
+
+  onMouseLeave={(e) => {
+
+    e.currentTarget.style.transform =
+      "scale(1)";
+  }}
+>
+
+  {sonidoActivo ? "🔊" : "🔇"}
+
+</button>
    
 <button
   onClick={async () => {
