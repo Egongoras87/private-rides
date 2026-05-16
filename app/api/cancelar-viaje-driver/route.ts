@@ -72,6 +72,8 @@ export async function POST(req: Request) {
   canceladoPor: "driver",
   refundId: refundId || v.refundId || null,
   refundProcesado: !!refundId,
+  refundPercent:
+    refundId ? 1 : 0,
   estadoPago: refundId ? "reembolsado" : v.estadoPago,
   canceladoAt: Date.now()
 });

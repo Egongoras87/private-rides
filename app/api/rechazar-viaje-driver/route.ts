@@ -80,6 +80,10 @@ if (totalRechazos >= totalDriversOnline) {
 
   await viajeRef.update({
     estado: "Cancelado",
+    estadoPago:
+     refund
+    ? "reembolsado"
+    : v.estadoPago,
     canceladoPor: "no_drivers_available",
     refundId: refund?.id || null,
     refundAt: Date.now(),

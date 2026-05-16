@@ -277,7 +277,7 @@ clientSecret =
           Date.now(),
 
           expiraAt:
-          Date.now() + 300000,
+          Date.now() + 180000,
 
         // 💳 PAGO
         pagado:

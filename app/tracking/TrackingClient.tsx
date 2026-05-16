@@ -58,9 +58,7 @@ const activarWakeLock =
   const [viajeCancelado, setViajeCancelado] = useState(false);
   const [viajeFinalizado, setViajeFinalizado] = useState(false);
   const mapRef = useRef<any>(null);
-  const refundCheckRef =
-  useRef<any>(null);
-  const cashCancelRef =
+    const cashCancelRef =
   useRef<any>(null);
   const lastCameraMoveRef = useRef(0);
 const wakeLockRef =
@@ -533,17 +531,6 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
 
   unsubscribe();
 
-  // 💳 refund timer
-  if (refundCheckRef.current) {
-
-    clearInterval(
-      refundCheckRef.current
-    );
-
-    refundCheckRef.current =
-      null;
-  }
-
   // 💵 cash timer
   if (cashCancelRef.current) {
 
@@ -558,44 +545,80 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
 }, [isLoaded]); // Quitamos 'fase' de las dependencias para evitar re-suscripciones innecesarias
 
   // --- LÓGICA DE CANCELACIÓN (Mantenida de tu código) ---
-  const cancelarViaje = async () => {
+ const cancelarViaje = async () => {
 
   try {
 
-    const id = new URLSearchParams(window.location.search).get("id") || localStorage.getItem("viajeId");
+    const id =
+      new URLSearchParams(window.location.search).get("id") ||
+      localStorage.getItem("viajeId");
 
-    if (!id) return alert("Ride not found");
+    if (!id) {
 
-    const user = auth.currentUser;
+      alert("Ride not found");
 
-    if (!user) return alert("Session expired");
+      return;
+    }
 
-    const viajeRef = ref(db, "viajes/" + id);
+    const user =
+      auth.currentUser;
 
-    const snap = await get(viajeRef);
+    if (!user) {
 
-    if (!snap.exists()) return alert("Ride does not exist");
+      alert("Session expired");
 
-    const viaje = snap.val();
+      return;
+    }
+
+    const viajeRef =
+      ref(db, "viajes/" + id);
+
+    const snap =
+      await get(viajeRef);
+
+    if (!snap.exists()) {
+
+      alert("Ride does not exist");
+
+      return;
+    }
+
+    const viaje =
+      snap.val();
+
     console.log(
-  "CANCELANDO VIAJE:",
-  viaje
-);
-    // 🔒 evitar doble refund
-if (viaje.refundProcesado) {
-
-  alert("Refund already processed");
-
-  return;
-}
+      "CANCELANDO VIAJE:",
+      viaje
+    );
 
     // ===================================================
-    // 🔒 VALIDAR ESTADO
+    // 🚫 ESTADOS INVÁLIDOS
     // ===================================================
 
-    if (viaje.estado === "Finalizado" || viaje.estado === "Cancelado") {
+    if (
+
+      viaje.estado === "Finalizado" ||
+
+      viaje.estado === "Cancelado"
+
+    ) {
 
       alert("Ride already closed");
+
+      return;
+    }
+
+    // ===================================================
+    // 🚫 DOBLE REFUND
+    // ===================================================
+
+    if (
+      viaje.refundProcesado
+    ) {
+
+      alert(
+        "Refund already processed"
+      );
 
       return;
     }
@@ -604,9 +627,16 @@ if (viaje.refundProcesado) {
     // ⏳ CALCULAR REFUND
     // ===================================================
 
-    const tiempo = Date.now() - (viaje.timestamp || Date.now());
+    const minutos =
 
-    const minutos = tiempo / 60000;
+      (
+        Date.now() -
+
+        (
+          viaje.timestamp ||
+          Date.now()
+        )
+      ) / 60000;
 
     let porcentaje = 0;
 
@@ -614,134 +644,130 @@ if (viaje.refundProcesado) {
     else if (minutos <= 5) porcentaje = 0.5;
 
     // ===================================================
-    // 💳 CONFIRMAR CANCELACIÓN
+    // 💳 MENSAJE STRIPE
     // ===================================================
 
-    if (viaje.metodoPago === "stripe") {
+    let mensaje =
+      "Cancel ride?";
 
-      const msg =
+    if (
+      viaje.metodoPago ===
+      "stripe"
+    ) {
+
+      mensaje =
+
         porcentaje === 1
-          ? "Full refund"
+
+          ? "Cancel ride?\nFull refund"
+
           : porcentaje === 0.5
-          ? "50% refund"
-          : "No refund";
 
-      const ok = confirm(`Cancel ride?\n${msg}`);
+          ? "Cancel ride?\n50% refund"
 
-      if (!ok) return;
+          : "Cancel ride?\nNo refund";
     }
 
-    // ===================================================
-    // 🧹 LIMPIAR TIMERS
-    // ===================================================
+    const ok =
+      confirm(mensaje);
 
-    if (refundCheckRef.current) {
-
-      clearInterval(refundCheckRef.current);
-
-      refundCheckRef.current = null;
-    }
-
-    if (cashCancelRef.current) {
-
-      clearTimeout(cashCancelRef.current);
-
-      cashCancelRef.current = null;
-    }
+    if (!ok) return;
 
     // ===================================================
-// 🚗 LIBERAR DRIVER
-// ===================================================
-
-if (viaje.driverId) {
-
-  try {
-
-    const driverRef = ref(db, "drivers/" + viaje.driverId);
-
-    const driverSnap = await get(driverRef);
-
-    if (driverSnap.exists()) {
-
-      await update(driverRef, { viajeActivo: null });
-    }
-
-  } catch (err) {
-
-    console.error("DRIVER RELEASE ERROR:", err);
-  }
-}
-    // ===================================================
-    // ❌ CANCELAR VIAJE
-    // ===================================================
-
-    await update(viajeRef, {
-      estado: "Cancelado",
-      driverId: null,
-      canceladoEn: Date.now(),
-      cancelReason: "Canceled by user",
-      updatedAt: Date.now()
-    });
-
-    // ===================================================
-    // 💳 REFUND STRIPE
+    // 🧹 LIMPIAR TIMER CASH
     // ===================================================
 
     if (
-      viaje.metodoPago === "stripe" &&
-      viaje.paymentIntentId &&
-      porcentaje > 0
+      cashCancelRef.current
     ) {
 
-      try {
+      clearTimeout(
+        cashCancelRef.current
+      );
 
-        const token = await user.getIdToken(true);
-
-        await update(viajeRef, {
-  refundProcesado: true
-});
-
-        const refundRes = await fetch("/api/refund-cancel", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            viajeId: id,
-            percent: porcentaje
-          })
-        });
-
-        const refundData = await refundRes.json();
-
-        if (refundData.success) {
-
-          await update(viajeRef, {
-            refundProcesado: true,
-            estadoPago: "reembolsado"
-          });
-        }
-
-      } catch (err) {
-
-        console.error("REFUND ERROR:", err);
-      }
+      cashCancelRef.current =
+        null;
     }
 
     // ===================================================
-    // 🧹 LIMPIAR STORAGE
+    // 🔐 TOKEN
     // ===================================================
 
-    localStorage.removeItem("viajeId");
-
-    localStorage.removeItem("viajeData");
+    const token =
+      await user.getIdToken(true);
 
     // ===================================================
-    // 🔥 UI
+    // 🚀 API CANCEL
     // ===================================================
 
-    setViajeCancelado(true);
+    const response =
+      await fetch(
+        "/api/refund-cancel",
+        {
+
+          method: "POST",
+
+          headers: {
+
+            "Content-Type":
+              "application/json",
+
+            Authorization:
+              `Bearer ${token}`
+          },
+
+          body: JSON.stringify({
+
+            viajeId: id,
+
+            percent: porcentaje
+          })
+        }
+      );
+
+    const data =
+      await response.json();
+
+    // ===================================================
+    // ❌ API ERROR
+    // ===================================================
+
+    if (!response.ok) {
+
+      alert(
+
+        data.error ||
+
+        "Unable to cancel ride"
+      );
+
+      return;
+    }
+
+    console.log(
+      "✅ VIAJE CANCELADO:",
+      data
+    );
+
+    // ===================================================
+    // 🧹 STORAGE
+    // ===================================================
+
+    localStorage.removeItem(
+      "viajeId"
+    );
+
+    localStorage.removeItem(
+      "viajeData"
+    );
+
+    // ===================================================
+    // ✅ UI
+    // ===================================================
+
+    setViajeCancelado(
+      true
+    );
 
     // ===================================================
     // 🏠 REDIRECT
@@ -749,15 +775,21 @@ if (viaje.driverId) {
 
     setTimeout(() => {
 
-      window.location.href = "/";
+      window.location.href =
+        "/";
 
     }, 1200);
 
   } catch (err) {
 
-    console.error("CANCEL ERROR:", err);
+    console.error(
+      "CANCEL ERROR:",
+      err
+    );
 
-    alert("Unable to cancel ride");
+    alert(
+      "Unable to cancel ride"
+    );
   }
 };
 
