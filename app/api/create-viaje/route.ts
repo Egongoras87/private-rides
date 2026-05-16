@@ -233,7 +233,6 @@ const paymentIntent =
 
     confirm: true,
 
-    off_session: true,
 
     setup_future_usage:
       "off_session"
