@@ -65,7 +65,8 @@ const [lngDestino, setLngDestino] = useState(0);
 const [paymentMethodId, setPaymentMethodId] = useState<string | null>(null);
 const [cardLast4, setCardLast4] =
   useState("");
-
+const adminPhone =
+  "17252876197";
 const [cardBrand, setCardBrand] =
   useState("");
 const [wakeLock, setWakeLock] =
@@ -598,98 +599,81 @@ if (!res.ok) {
 // ✅ ID DEL VIAJE
 const viajeId = data.id;
 
-// 💳 SOLO SI ES TARJETA
+// =========================================================
+// 💳 STRIPE YA CONFIRMADO EN BACKEND
+// =========================================================
+
 if (metodoPago === "stripe") {
 
-  if (!stripe) {
-
-    alert("Stripe aún no está listo");
-
-    setLoadingPago(false);
-
-    return;
-  }
-
-  const { error, paymentIntent } =
-    await stripe.confirmCardPayment(
-      data.clientSecret,
-      {
-        payment_method: paymentMethodId!
-      }
-    );
-
-  if (error) {
-
-    console.error(error);
-
-    alert(error.message);
-
-    setLoadingPago(false);
-
-    return;
-  }
-   // ✅ ACTUALIZAR FIREBASE
+  // ✅ ACTUALIZAR FIREBASE
   await update(
     ref(db, "viajes/" + viajeId),
     {
       pagado: true,
       estadoPago: "pagado",
-      paymentIntentId: paymentIntent.id
+      paymentIntentId:
+        data.paymentIntentId
     }
   );
-
-  if (!paymentIntent) {
-
-    alert("No se pudo procesar el pago");
-
-    setLoadingPago(false);
-
-    return;
-  }
-
-  if (paymentIntent.status !== "succeeded") {
-
-    alert("Pago no completado");
-
-    setLoadingPago(false);
-
-    return;
-  }
-
- 
 }
-  
-       // 🔥 LOCAL STORAGE
-    localStorage.setItem("viajeId", viajeId);
-    localStorage.setItem(
-      "viajeData",
-      JSON.stringify({
-        id: viajeId,
-        nombre,
-        telefono,
-        origen,
-        destino,
-        precio,
-        distancia
-      })
-    );
 
-    const trackingUrl = `${window.location.origin}/tracking?id=${viajeId}`;
-    const telefonoFinal = "1" + telefono.replace(/\D/g, "");
+// =========================================================
+// 🔥 LOCAL STORAGE
+// =========================================================
 
-    const mensajeWhatsApp =
-      "🚗 NEW RIDE\n\n" +
-      "👤 " + nombre + "\n" +
-      "📞 " + telefono + "\n" +
-      "📍 " + origen + "\n" +
-      "🏁 " + destino + "\n" +
-      "💰 $" + precio.toFixed(2) + "\n\n" +
-      "📡 Track:\n" + trackingUrl;
+localStorage.setItem(
+  "viajeId",
+  viajeId
+);
 
-   const adminPhone =
+localStorage.setItem(
+  "viajeData",
+  JSON.stringify({
+    id: viajeId,
+    nombre,
+    telefono,
+    origen,
+    destino,
+    precio,
+    distancia
+  })
+);
+
+// =========================================================
+// 📲 WHATSAPP ADMIN
+// =========================================================
+
+const trackingUrl =
+  `${window.location.origin}/tracking?id=${viajeId}`;
+
+const telefonoFinal =
+  "1" +
+  telefono.replace(/\D/g, "");
+
+const mensajeWhatsApp =
+
+  "🚗 NEW RIDE\n\n" +
+
+  "👤 " + nombre + "\n" +
+
+  "📞 " + telefono + "\n" +
+
+  "📍 " + origen + "\n" +
+
+  "🏁 " + destino + "\n" +
+
+  "💰 $" +
+  precio.toFixed(2) +
+
+  "\n\n📡 Track:\n" +
+
+  trackingUrl;
+
+const adminPhone =
   "17252876197";
 
 const url =
+
   `https://api.whatsapp.com/send?phone=${adminPhone}&text=${encodeURIComponent(mensajeWhatsApp)}`;
 
 // 📲 OPEN ADMIN CHAT
@@ -698,20 +682,31 @@ window.open(
   "_blank"
 );
 
-  
-    // 🚀 REDIRECCIÓN FLUIDA (Next.js Way)
-    // Usamos router.push en lugar de window.location.href para no recargar la app
-   router.push(
+// =========================================================
+// 🚀 REDIRECT TRACKING
+// =========================================================
+
+router.push(
   `/tracking?id=${viajeId}`
 );
 
-  } catch (error) {
-    console.error("ERROR:", error);
-    alert("❌ Error de conexión");
-  } finally {
-    setLoadingPago(false);
-  }
+} catch (error) {
+
+  console.error(
+    "ERROR:",
+    error
+  );
+
+  alert(
+    "❌ Error de conexión"
+  );
+
+} finally {
+
+  setLoadingPago(false);
+}
 };
+
   // 📡 Leer ubicación del driver (simulación)
  useEffect(() => {
   const id = localStorage.getItem("viajeId");
