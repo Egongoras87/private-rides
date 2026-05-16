@@ -66,7 +66,6 @@ if (totalRechazos >= totalDriversOnline) {
 
   if (v.refundProcesado) return NextResponse.json({ success: true, alreadyRefunded: true });
 
-  await viajeRef.update({ refundProcesado: true });
 
   let refund = null;
 
@@ -79,17 +78,70 @@ if (totalRechazos >= totalDriversOnline) {
   }
 
   await viajeRef.update({
-    estado: "Cancelado",
-    estadoPago:
-     refund
-    ? "reembolsado"
-    : v.estadoPago,
-    canceladoPor: "no_drivers_available",
-    refundId: refund?.id || null,
-    refundAt: Date.now(),
-    refundPercent: refund ? 1 : 0,
-    finalizadoAt: Date.now()
+
+  estado:
+    "Cancelado",
+
+  estadoPago:
+
+    refund
+
+      ? "reembolsado"
+
+      : v.estadoPago,
+
+  canceladoPor:
+    "no_drivers_available",
+
+  refundId:
+    refund?.id || null,
+
+  refundProcesado:
+    true,
+
+  refundAt:
+    Date.now(),
+
+  refundPercent:
+
+    v.metodoPago === "stripe"
+
+      ? 1
+
+      : 0,
+
+  trackingVisible:
+    false,
+
+  expiraAt:
+    null,
+
+  canceladoAt:
+    Date.now()
+});
+const driversConViaje =
+  await db
+    .ref("drivers")
+    .orderByChild("viajeActivo")
+    .equalTo(viajeId)
+    .once("value");
+
+if (driversConViaje.exists()) {
+
+  const updates: any = {};
+
+  driversConViaje.forEach((child) => {
+
+    updates[
+      child.key + "/viajeActivo"
+    ] = null;
   });
+
+  await db
+    .ref("drivers")
+    .update(updates);
+}
+  
       return NextResponse.json({ success: true, message: "Viaje cancelado por falta de drivers" });
     }
 

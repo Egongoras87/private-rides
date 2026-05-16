@@ -10,9 +10,9 @@ const stripe = new Stripe(
 );
 
 // 🔥 TARIFAS
-const BASE_FARE = 1;
-const PRICE_PER_MILE = 1;
-const MIN_FARE = 2;
+const BASE_FARE = 8;
+const PRICE_PER_MILE = 2.5;
+const MIN_FARE = 12;
 
 export async function POST(
   req: Request
@@ -277,7 +277,7 @@ clientSecret =
           Date.now(),
 
           expiraAt:
-          Date.now() + 180000,
+          Date.now() + 120000,
 
         // 💳 PAGO
         pagado:

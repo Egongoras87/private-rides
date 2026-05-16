@@ -31,16 +31,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 });
     }
 
-    // 🔒 SOLO ANTES DE RECOGER
-    // ❌ NO permitir en "En viaje"
+     // 🔒 IDEMPOTENCIA (evita doble cancelación / doble refund)
+    if (v.estado === "Cancelado") {
+      return NextResponse.json({ ok: true, already: true });
+    }
+
+    // 🔒 SOLO ANTES DE RECOGE
     if (v.estado !== "Asignado" && v.estado !== "En camino") {
       return NextResponse.json({ error: "Estado inválido" }, { status: 400 });
     }
 
-    // 🔒 IDEMPOTENCIA (evita doble cancelación / doble refund)
-    if (v.estado === "Cancelado") {
-      return NextResponse.json({ ok: true, already: true });
-    }
+   
 
     let refundId: string | null = null;
 
@@ -49,7 +50,7 @@ export async function POST(req: Request) {
       v.metodoPago === "stripe" &&
       v.pagado &&
       v.paymentIntentId &&
-      !v.refundId
+      !v.refundProcesado
     ) {
       try {
         const refund = await stripe.refunds.create({
@@ -67,15 +68,44 @@ export async function POST(req: Request) {
     }
 
     // 🔥 ACTUALIZAR VIAJE
-   await refViaje.update({
-  estado: "Cancelado",
-  canceladoPor: "driver",
-  refundId: refundId || v.refundId || null,
-  refundProcesado: !!refundId,
+  await refViaje.update({
+
+  estado:
+    "Cancelado",
+
+  canceladoPor:
+    "driver",
+
+  refundId:
+    refundId || v.refundId || null,
+
+  refundProcesado:
+    true,
+
   refundPercent:
-    refundId ? 1 : 0,
-  estadoPago: refundId ? "reembolsado" : v.estadoPago,
-  canceladoAt: Date.now()
+
+    v.metodoPago === "stripe"
+
+    ? 1
+
+    : 0,
+
+  estadoPago:
+
+    refundId
+
+      ? "reembolsado"
+
+      : v.estadoPago,
+
+  trackingVisible:
+    false,
+
+  expiraAt:
+    null,
+
+  canceladoAt:
+    Date.now()
 });
     if (v.telefono) {
   const telefono = "1" + String(v.telefono).replace(/\D/g, "");

@@ -97,10 +97,10 @@ const [iosDevice, setIosDevice] =
 
 const [cerrarInstall, setCerrarInstall] =
   useState(false);
-    const BASE_FARE = 1;        // tarifa base
-const PRICE_PER_MILE = 1; // por milla
+    const BASE_FARE = 8;        // tarifa base
+const PRICE_PER_MILE = 2.5; // por milla
 
-const MIN_FARE = 2;        // mínimo
+const MIN_FARE = 12;        // mínimo
 
   const origenRef = useRef<HTMLInputElement | null>(null);
   const destinoRef = useRef<HTMLInputElement | null>(null);
@@ -535,7 +535,7 @@ const reservar = async () => {
   metodoPago,     // 🔥 NUEVO
   ultimaActualizacion: Date.now()
 });
-    console.log("✅ Perfil sincronizado con Firebase");
+    
   } catch (profileError) {
     console.error("Error guardando el perfil:", profileError);
   }

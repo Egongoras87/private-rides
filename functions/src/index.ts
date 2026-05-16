@@ -3,7 +3,11 @@ import * as admin from "firebase-admin";
 import Stripe from "stripe";
 import { defineSecret } from "firebase-functions/params";
 
-admin.initializeApp();
+admin.initializeApp({
+
+  databaseURL:
+    "https://private-rides-52e08-default-rtdb.firebaseio.com"
+});
 
 const db =
   admin.database();
@@ -25,7 +29,7 @@ export const autoRefundExpiredRides =
 
     {
       schedule:
-        "every 1 minutes",
+      "* * * * *",
 
       region:
         "us-central1",
@@ -132,25 +136,26 @@ export const autoRefundExpiredRides =
             continue;
           }
 
-          console.log(
-            "💸 EXPIRED:",
-            id
-          );
 
           // =====================================================
           // 🔒 BLOQUEAR
           // =====================================================
-
+              console.log(
+               "📝 UPDATING RIDE STATUS..."
+               );
           await db
             .ref(
               "viajes/" + id
             )
             .update({
+                
 
               refundProcesado:
                 true
             });
-
+console.log(
+  "✅ RIDE STATUS UPDATED"
+);
           // =====================================================
           // 💳 REFUND STRIPE
           // =====================================================
@@ -229,10 +234,10 @@ export const autoRefundExpiredRides =
 
       } catch (err) {
 
-        console.error(
-          "🔥 SCHEDULER ERROR:",
-          err
-        );
+       console.error(
+  "🔥 SCHEDULER ERROR:",
+  JSON.stringify(err)
+);
       }
     }
   );

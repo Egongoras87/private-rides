@@ -40,6 +40,13 @@ export async function POST(req: Request) {
           return;
         }
 
+        if (
+         actual.refundProcesado
+          ) {
+
+  return;
+          }
+
         // 🔒 SOLO EN VIAJE
         if (actual.estado !== "En viaje") {
           return;
@@ -51,29 +58,43 @@ export async function POST(req: Request) {
         }
 
         // ✅ FINALIZAR
-        return {
+       return {
 
-          ...actual,
+  ...actual,
 
-          estado: "Finalizado",
+  estado:
+    "Finalizado",
 
-          fase: "finalizado",
+  fase:
+    "finalizado",
 
-          trackingVisible: false,
+  trackingVisible:
+    false,
 
-          navigationMode: null,
+  navigationMode:
+    null,
 
-          navigationActive: false,
+  navigationActive:
+    false,
 
-          routeVersion:
-            (actual.routeVersion || 0) + 1,
+  routeVersion:
+    (actual.routeVersion || 0) + 1,
 
-          driverLat: null,
+  driverLat:
+    null,
 
-          driverLng: null,
+  driverLng:
+    null,
 
-          finalizadoAt: Date.now()
-        };
+  expiraAt:
+    null,
+
+  rechazos:
+    null,
+
+  finalizadoAt:
+    Date.now()
+};
       });
 
     // ❌ NO COMMIT

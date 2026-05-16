@@ -273,56 +273,87 @@ export async function POST(req: Request) {
     }
 
     // =====================================================
-    // 🔴 CANCELAR VIAJE
-    // =====================================================
+// 🔴 CANCELAR VIAJE
+// =====================================================
 
-    await viajeRef.update({
+await viajeRef.update({
 
-      estado:
-        "Cancelado",
+  estado:
+    "Cancelado",
 
-      estadoPago:
-        refund
-          ? "reembolsado"
-          : v.estadoPago,
+  estadoPago:
+    refund
+      ? "reembolsado"
+      : v.estadoPago,
 
-      canceladoPor:
-        "user",
+  canceladoPor:
+    "user",
 
-      refundPercent,
+  refundPercent,
 
-      refundId:
-        refund?.id || null,
+  refundId:
+    refund?.id || null,
 
-      refundAt:
-        Date.now()
-    });
+  refundAt:
+    Date.now(),
 
-    return NextResponse.json({
+  trackingVisible:
+    false
+});
 
-      refunded:
-        refundPercent > 0,
+// =====================================================
+// 🚗 LIBERAR DRIVER
+// =====================================================
 
-      percent:
-        refundPercent
-    });
+if (v.driverId) {
 
-  } catch (err: any) {
+  try {
+
+    await db
+      .ref(
+        "drivers/" +
+        v.driverId
+      )
+      .update({
+
+        viajeActivo:
+          null
+      });
+
+  } catch (err) {
 
     console.error(
-      "🔥 REFUND ERROR:",
+      "DRIVER RELEASE ERROR:",
       err
-    );
-
-    return NextResponse.json(
-      {
-        error:
-          "Error procesando refund",
-
-        details:
-          err.message
-      },
-      { status: 500 }
     );
   }
 }
+
+return NextResponse.json({
+
+  refunded:
+    refundPercent > 0,
+
+  percent:
+    refundPercent
+});
+
+} catch (err: any) {
+
+  console.error(
+    "🔥 REFUND ERROR:",
+    err
+  );
+
+  return NextResponse.json(
+    {
+      error:
+        "Error procesando refund",
+
+      details:
+        err.message
+    },
+    { status: 500 }
+  );
+}
+ } 

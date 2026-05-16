@@ -451,8 +451,7 @@ const recalcularETA = useCallback(async (
 
       drivingOptions: {
         departureTime: new Date(),
-        trafficModel:
-          google.maps.TrafficModel.BEST_GUESS
+        
       }
     },
 
@@ -513,7 +512,7 @@ const solicitarRuta = useCallback((
   if (!directionsRef.current) return;
   const now = Date.now();
 
-  if (!force && now - lastRouteTimeRef.current < 15000) return;
+ if (!force && now - lastRouteTimeRef.current < 60000) return;
   lastRouteTimeRef.current = now;
 
   directionsRef.current.route(
@@ -521,7 +520,7 @@ const solicitarRuta = useCallback((
       origin,
       destination,
       travelMode: google.maps.TravelMode.DRIVING,
-      provideRouteAlternatives: true, // 🔥 Activado para ver otras rutas
+      provideRouteAlternatives: false,
       drivingOptions: {
         departureTime: new Date(),
         trafficModel: google.maps.TrafficModel.BEST_GUESS

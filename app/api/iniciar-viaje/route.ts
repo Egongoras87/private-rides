@@ -46,20 +46,28 @@ export async function POST(req: Request) {
         }
 
         // ✅ CAMBIAR ESTADO
-        return {
+       return {
 
-          ...actual,
+  ...actual,
 
-          estado: "En camino",
+  estado:
+    "En camino",
 
-          fase: "pickup",
+  fase:
+    "en_camino",
 
-          trackingVisible: true,
+  trackingVisible:
+    true,
 
-          navigationActive: true,
+  navigationActive:
+    true,
 
-          enCaminoAt: Date.now()
-        };
+  enCaminoAt:
+    Date.now(),
+
+  expiraAt:
+    null
+};
       });
 
     // ❌ NO COMMIT

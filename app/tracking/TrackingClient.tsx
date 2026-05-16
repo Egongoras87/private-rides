@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useRef, useState } from "react";
 import { db } from "@/lib/firebase";
-import { ref, onValue, update, get } from "firebase/database";
+import { ref, onValue, get } from "firebase/database";
 
 import { useJsApiLoader, GoogleMap, Marker, Polyline, DirectionsRenderer } from "@react-google-maps/api";
 import { googleMapsConfig } from "@/lib/googleMaps";
@@ -58,8 +58,7 @@ const activarWakeLock =
   const [viajeCancelado, setViajeCancelado] = useState(false);
   const [viajeFinalizado, setViajeFinalizado] = useState(false);
   const mapRef = useRef<any>(null);
-    const cashCancelRef =
-  useRef<any>(null);
+ 
   const lastCameraMoveRef = useRef(0);
 const wakeLockRef =
   useRef<any>(null);
@@ -220,151 +219,19 @@ useEffect(() => {
     if (!d) return;
 
     setViajeData(d);
-// ===================================================
-// 💵 AUTO CANCEL CASH
-// ===================================================
-
-if (
-
-  d.estado === "Pendiente" &&
-
-  d.metodoPago === "cash" &&
-
-  !d.cashCancelProcesado
-) {
-
-  // 🔒 evitar múltiples timers
-  if (!cashCancelRef.current) {
-
-    cashCancelRef.current =
-
-      setTimeout(async () => {
-
-        try {
-
-          // 🔥 revalidar estado
-          const freshSnap =
-
-            await get(
-              ref(
-                db,
-                "viajes/" + d.id
-              )
-            );
-
-          if (!freshSnap.exists()) {
-
-            return;
-          }
-
-          const freshData =
-            freshSnap.val();
-
-          // 🔒 evitar cancelar si ya aceptaron
-          if (
-            freshData.estado !==
-            "Pendiente"
-          ) {
-
-            return;
-          }
-
-          console.log(
-            "❌ CANCELANDO CASH"
-          );
-
-          // ===================================================
-          // ❌ CANCELAR VIAJE CASH
-          // ===================================================
-
-          await update(
-
-            ref(
-              db,
-              "viajes/" + d.id
-            ),
-
-            {
-
-              estado:
-                "Cancelado",
-
-              cashCancelProcesado:
-                true,
-
-              cancelReason:
-                "No drivers available",
-
-              canceladoAt:
-                Date.now()
-            }
-          );
-
-          console.log(
-            "✅ CASH cancelado"
-          );
-
-          // 🧹 limpiar
-          cashCancelRef.current =
-            null;
-
-          localStorage.removeItem(
-            "viajeId"
-          );
-
-          localStorage.removeItem(
-            "viajeData"
-          );
-
-          // 🔔 ALERTA
-          alert(
-            "No drivers available."
-          );
-
-          // 🏠 HOME
-          window.location.href =
-            "/";
-
-        } catch (err) {
-
-          console.error(
-            "CASH CANCEL ERROR:",
-            err
-          );
-        }
-
-      },
-
-      // ⏳ 5 minutos
-      5 * 60 * 1000
-    );
-  }
-
-} else {
-
-  // 🧹 limpiar timer cash
-  if (cashCancelRef.current) {
-
-    clearTimeout(
-      cashCancelRef.current
-    );
-
-    cashCancelRef.current =
-      null;
-  }
-}
 
 // ===================================================
 // 🚫 STRIPE REFUND YA NO EN FRONTEND
 // ===================================================
 
-// Stripe refund ahora es controlado por:
-// ✅ backend
-// ✅ cron job
-// ✅ api/refund
-// ✅ expiraAt
+// ✅ Backend controla:
+// - refunds
+// - expiración
+// - cancelaciones automáticas
+// - scheduler
+// - timeout rides
 
-// El frontend SOLO escucha Firebase.
+// Frontend SOLO escucha Firebase.
 
 // ===================================================
 // ✅ ESTADOS FINALES
@@ -374,9 +241,25 @@ if (
   d.estado === "Finalizado"
 ) {
 
+  // 🧹 limpiar storage
+  localStorage.removeItem(
+    "viajeId"
+  );
+
+  localStorage.removeItem(
+    "viajeData"
+  );
+
   setViajeFinalizado(
     true
   );
+
+  setTimeout(() => {
+
+    window.location.href =
+      "/";
+
+  }, 2000);
 
   return;
 }
@@ -397,6 +280,26 @@ if (
   setViajeCancelado(
     true
   );
+
+  // 🔔 ALERTA SOLO
+  // SI NO HAY DRIVERS
+
+  if (
+    d.canceladoPor ===
+    "no_drivers_available"
+  ) {
+
+    alert(
+      "No drivers available."
+    );
+  }
+
+  setTimeout(() => {
+
+    window.location.href =
+      "/";
+
+  }, 1500);
 
   return;
 }
@@ -478,29 +381,6 @@ if (
   );
 }
 
-    // 3. NUEVO: Cálculo de ETA Local (Fallback)
-const ahora = Date.now();
-
-if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ahora - lastEtaRequest > 10000)) {
-  lastEtaRequest = ahora; 
-  const service = new window.google.maps.DirectionsService();
-
- service.route(
-  {
-    origin: { lat: Number(d.driverLat), lng: Number(d.driverLng) },
-    destination: { lat: Number(d.origenLat), lng: Number(d.origenLng) },
-    travelMode: window.google.maps.TravelMode.DRIVING,
-  },
-  (res: any, status: any) => { // Cambiado a any
-    if (status === "OK" && res?.routes?.[0]?.legs?.[0]) {
-      setViajeData((prev: any) => ({
-        ...prev,
-        driverEta: res.routes[0].legs[0].duration?.text || "Calculating...",
-      }));
-    }
-  }
-);
-}
     // 4. Lectura Directa de Rutas
     if (Array.isArray(d.remainingPath)) setRemainingPath(d.remainingPath);
     if (Array.isArray(d.completedPath)) setCompletedPath(d.completedPath);
@@ -520,10 +400,20 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
       });
 
       // Throttle de cámara (Cada 2 segundos)
-      if (mapRef.current && ahora - lastCameraMoveRef.current > 2000) {
-        lastCameraMoveRef.current = ahora;
-        mapRef.current.panTo(nuevaPos);
-      }
+      const nowCamera = Date.now();
+
+if (
+  mapRef.current &&
+  nowCamera - lastCameraMoveRef.current > 2000
+) {
+
+  lastCameraMoveRef.current =
+    nowCamera;
+
+  mapRef.current.panTo(
+    nuevaPos
+  );
+}
     }
   });
 
@@ -531,16 +421,6 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
 
   unsubscribe();
 
-  // 💵 cash timer
-  if (cashCancelRef.current) {
-
-    clearTimeout(
-      cashCancelRef.current
-    );
-
-    cashCancelRef.current =
-      null;
-  }
 };
 }, [isLoaded]); // Quitamos 'fase' de las dependencias para evitar re-suscripciones innecesarias
 
@@ -673,22 +553,7 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
 
     if (!ok) return;
 
-    // ===================================================
-    // 🧹 LIMPIAR TIMER CASH
-    // ===================================================
-
-    if (
-      cashCancelRef.current
-    ) {
-
-      clearTimeout(
-        cashCancelRef.current
-      );
-
-      cashCancelRef.current =
-        null;
-    }
-
+   
     // ===================================================
     // 🔐 TOKEN
     // ===================================================

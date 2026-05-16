@@ -49,6 +49,13 @@ export async function POST(req: Request) {
           return actual;
         }
 
+        if (
+        actual.refundProcesado
+        ) {
+
+        return;
+        }
+
         // 🔒 YA TOMADO
         if (
           actual.driverId ||
@@ -68,7 +75,8 @@ export async function POST(req: Request) {
 
           driverId: uid,
 
-          trackingVisible: false,
+          trackingVisible: true,
+          rechazos: null,
 
           asignadoAt: Date.now(),
           expiraAt: null
@@ -107,14 +115,19 @@ export async function POST(req: Request) {
 
     // ✅ OPCIONAL:
     // guardar último viaje aceptado
-    await adminDb
-      .ref("drivers/" + uid)
-      .update({
+   await adminDb
+  .ref("drivers/" + uid)
+  .update({
 
-        ultimoViajeAceptado: viajeId,
+    viajeActivo:
+      viajeId,
 
-        updatedAt: Date.now()
-      });
+    ultimoViajeAceptado:
+      viajeId,
+
+    updatedAt:
+      Date.now()
+  });
 
     return NextResponse.json({
       ok: true,

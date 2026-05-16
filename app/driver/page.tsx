@@ -22,31 +22,7 @@ import { motion } from "framer-motion";
 import { useEffect, useState, useCallback, useRef } from "react";
 
 // 🔥 ETA
-const calcularETA = (o: any, d: any) =>
-  new Promise<number>((resolve) => {
-    if (!window?.google?.maps?.DirectionsService) {
-      resolve(0);
-      return;
-    }
 
-    const service = new window.google.maps.DirectionsService();
-
-    service.route(
-      {
-        origin: o,
-        destination: d,
-        travelMode: window.google.maps.TravelMode.DRIVING
-      },
-      (res: any, status: any) => {
-        if (status === "OK" && res?.routes?.[0]?.legs?.[0]) {
-          const dur = res.routes[0].legs[0].duration.value;
-          resolve(dur / 60);
-        } else {
-          resolve(0);
-        }
-      }
-    );
-  });
 
   const calcularDistancia = (a: any, b: any) => {
   const R = 3958.8;
@@ -739,38 +715,36 @@ const driverPos = driverLocation;
 
     const nuevasDistancias: any = {};
 
-    await Promise.all(
+   await Promise.all(
 
-      viajes.map(async (v) => {
+  viajes.map(async (v) => {
 
-        if (!v.origenLat || !v.origenLng)
-          return;
+    if (!v.origenLat || !v.origenLng)
+      return;
 
-        const origen = {
-          lat: Number(v.origenLat),
-          lng: Number(v.origenLng)
-        };
+    const origen = {
+      lat: Number(v.origenLat),
+      lng: Number(v.origenLng)
+    };
 
-        // 🔥 ETA
-        const eta =
-          await calcularETA(
-            driverPos,
-            origen
-          );
+    // 🔥 SOLO DISTANCIA
+    const dist =
+      calcularDistancia(
+        driverPos,
+        origen
+      );
 
-        nuevos[v.id] = eta;
+    nuevasDistancias[v.id] =
+      dist;
 
-        // 🔥 DISTANCIA
-        const dist =
-          calcularDistancia(
-            driverPos,
-            origen
-          );
+    // 🔥 ETA APROXIMADO
+    // sin Google API
+    const eta =
+      Math.round(dist * 2.5);
 
-        nuevasDistancias[v.id] =
-          dist;
-      })
-    );
+    nuevos[v.id] = eta;
+  })
+);
 
     // 🔥 guardar ETAS
     setEtas(nuevos);
@@ -1006,7 +980,7 @@ await update(
   }
 );
 
-    console.log("🚗 Viaje en camino");
+    
 
     // 🔁 REDIRECCIÓN (mantienes tu flujo)
     router.push(
@@ -1080,7 +1054,7 @@ const finalizar = async (v: any) => {
       viajeActivo: null
     });
 
-    console.log("✅ Viaje finalizado correctamente");
+   
 
   } catch (err) {
     console.error("ERROR FINALIZANDO:", err);
@@ -1134,10 +1108,10 @@ const rechazar = async (v: any) => {
 
     // 🔥 SOLO LOG (sin WhatsApp)
     if (data.message === "Viaje cancelado por falta de drivers") {
-      console.log("📢 Viaje cancelado globalmente.");
+      
     }
 
-    console.log("❌ Viaje ocultado para este driver.");
+    
 
   } catch (error) {
     console.error("🔥 ERROR CRÍTICO EN RECHAZAR:", error);
