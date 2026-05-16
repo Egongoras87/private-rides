@@ -667,6 +667,10 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
     if (!snap.exists()) return alert("Ride does not exist");
 
     const viaje = snap.val();
+    console.log(
+  "CANCELANDO VIAJE:",
+  viaje
+);
     // 🔒 evitar doble refund
 if (viaje.refundProcesado) {
 
@@ -736,17 +740,27 @@ if (viaje.refundProcesado) {
     }
 
     // ===================================================
-    // 🚗 LIBERAR DRIVER
-    // ===================================================
+// 🚗 LIBERAR DRIVER
+// ===================================================
 
-    if (viaje.driverId) {
+if (viaje.driverId) {
 
-      await update(
-        ref(db, "drivers/" + viaje.driverId),
-        { viajeActivo: null }
-      );
+  try {
+
+    const driverRef = ref(db, "drivers/" + viaje.driverId);
+
+    const driverSnap = await get(driverRef);
+
+    if (driverSnap.exists()) {
+
+      await update(driverRef, { viajeActivo: null });
     }
 
+  } catch (err) {
+
+    console.error("DRIVER RELEASE ERROR:", err);
+  }
+}
     // ===================================================
     // ❌ CANCELAR VIAJE
     // ===================================================

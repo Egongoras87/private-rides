@@ -103,59 +103,148 @@ export async function POST(
         precioFinal.toFixed(2)
       );
 
-    // =====================================================
-    // 💳 STRIPE
-    // =====================================================
+   // =====================================================
+// 💳 STRIPE
+// =====================================================
 
-    let paymentIntentId:
-      string | null = null;
+let paymentIntentId: string | null = null;
 
-    let clientSecret:
-      string | null = null;
+let clientSecret: string | null = null;
 
+let customerId: string | null = null;
+
+if (metodoPago === "stripe") {
+
+  if (!paymentMethodId) {
+
+    return NextResponse.json(
+      {
+        error: "paymentMethodId requerido"
+      },
+      { status: 400 }
+    );
+  }
+
+  // =====================================================
+  // 👤 USER FIREBASE
+  // =====================================================
+
+  const userRef =
+    adminDb.ref(
+      "users/" + decoded.uid
+    );
+
+  const userSnap =
+    await userRef.get();
+
+  const userData =
+    userSnap.val() || {};
+
+  // =====================================================
+  // 👤 CUSTOMER EXISTENTE
+  // =====================================================
+
+  customerId =
+    userData.customerId || null;
+
+  // =====================================================
+  // 👤 CREAR CUSTOMER
+  // =====================================================
+
+  if (!customerId) {
+
+    const customer =
+      await stripe.customers.create({
+
+        metadata: {
+          firebaseUID:
+            decoded.uid
+        }
+      });
+
+    customerId =
+      customer.id;
+
+    await userRef.update({
+      customerId
+    });
+  }
+
+  // =====================================================
+  // 🔗 ATTACH CARD
+  // =====================================================
+
+  try {
+
+    await stripe.paymentMethods.attach(
+
+      paymentMethodId,
+
+      {
+        customer: customerId
+      }
+    );
+    await stripe.customers.update(
+  customerId,
+  {
+    invoice_settings: {
+      default_payment_method:
+        paymentMethodId
+    }
+  }
+);
+
+  } catch (err: any) {
+
+    // 🔥 ya attached
     if (
-      metodoPago === "stripe"
+      !err.message.includes(
+        "already attached"
+      )
     ) {
 
-      if (!paymentMethodId) {
-
-        return NextResponse.json(
-          {
-            error:
-              "paymentMethodId requerido"
-          },
-          { status: 400 }
-        );
-      }
-
-      const paymentIntent =
-
-        await stripe
-          .paymentIntents
-          .create({
-
-            amount:
-              Math.round(
-                precioFinalFijo * 100
-              ),
-
-            currency: "usd",
-
-            payment_method:
-              paymentMethodId,
-
-            automatic_payment_methods: {
-              enabled: true
-            }
-          });
-
-      paymentIntentId =
-        paymentIntent.id;
-
-      clientSecret =
-        paymentIntent.client_secret;
+      throw err;
     }
+  }
 
+  // =====================================================
+// 💳 PAYMENT INTENT
+// =====================================================
+
+const paymentIntent =
+  await stripe.paymentIntents.create({
+
+    amount:
+      Math.round(
+        precioFinalFijo * 100
+      ),
+
+    currency: "usd",
+
+    customer:
+      customerId,
+
+    payment_method:
+      paymentMethodId,
+
+    payment_method_types: [
+      "card"
+    ],
+
+    confirm: true,
+
+    off_session: true,
+
+    setup_future_usage:
+      "off_session"
+  });
+
+paymentIntentId =
+  paymentIntent.id;
+
+clientSecret =
+  paymentIntent.client_secret;
+}
     // =====================================================
     // 🚗 CREAR VIAJE
     // =====================================================
