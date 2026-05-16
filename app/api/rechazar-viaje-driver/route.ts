@@ -62,21 +62,30 @@ export async function POST(req: Request) {
     const totalRechazos = rechazosSnap.numChildren();
 
     // 3. LÓGICA DE CANCELACIÓN TOTAL
-    if (totalRechazos >= totalDriversOnline) {
-      let refund = null;
-      if (v.metodoPago === "stripe" && v.paymentIntentId) {
-        refund = await stripe.refunds.create({
-          payment_intent: v.paymentIntentId,
-        });
-      }
+if (totalRechazos >= totalDriversOnline) {
 
-      await viajeRef.update({
-        estado: "Cancelado",
-        canceladoPor: "no_drivers_available",
-        refundId: refund?.id || null,
-        finalizadoAt: Date.now()
-      });
+  if (v.refundProcesado) return NextResponse.json({ success: true, alreadyRefunded: true });
 
+  await viajeRef.update({ refundProcesado: true });
+
+  let refund = null;
+
+  if (v.metodoPago === "stripe" && v.paymentIntentId) {
+
+    refund = await stripe.refunds.create({
+      payment_intent: v.paymentIntentId,
+      amount: Math.round(v.precio * 100)
+    });
+  }
+
+  await viajeRef.update({
+    estado: "Cancelado",
+    canceladoPor: "no_drivers_available",
+    refundId: refund?.id || null,
+    refundAt: Date.now(),
+    refundPercent: refund ? 1 : 0,
+    finalizadoAt: Date.now()
+  });
       return NextResponse.json({ success: true, message: "Viaje cancelado por falta de drivers" });
     }
 

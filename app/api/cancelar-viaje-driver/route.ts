@@ -67,12 +67,14 @@ export async function POST(req: Request) {
     }
 
     // 🔥 ACTUALIZAR VIAJE
-    await refViaje.update({
-      estado: "Cancelado",
-      canceladoPor: "driver",
-      refundId: refundId || v.refundId || null,
-      canceladoAt: Date.now()
-    });
+   await refViaje.update({
+  estado: "Cancelado",
+  canceladoPor: "driver",
+  refundId: refundId || v.refundId || null,
+  refundProcesado: !!refundId,
+  estadoPago: refundId ? "reembolsado" : v.estadoPago,
+  canceladoAt: Date.now()
+});
     if (v.telefono) {
   const telefono = "1" + String(v.telefono).replace(/\D/g, "");
 

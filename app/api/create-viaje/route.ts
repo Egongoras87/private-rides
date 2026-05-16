@@ -277,13 +277,13 @@ clientSecret =
           Date.now(),
 
         // 💳 PAGO
-        pagado: false,
+        pagado:
+        metodoPago === "stripe",
 
+        // 📊 ESTADO PAGO
         estadoPago:
-
           metodoPago === "stripe"
-
-            ? "procesando"
+            ? "pagado"
 
             : "pendiente",
 
