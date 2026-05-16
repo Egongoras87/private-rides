@@ -649,53 +649,193 @@ if (!d.driverEta && d.driverLat && d.origenLat && faseActual === "pickup" && (ah
 
   // --- LÓGICA DE CANCELACIÓN (Mantenida de tu código) ---
   const cancelarViaje = async () => {
-    try {
-      const id = new URLSearchParams(window.location.search).get("id") || localStorage.getItem("viajeId");
-      if (!id) return alert("No se encontró el viaje");
 
-      const user = auth.currentUser;
-      if (!user) return alert("Debes iniciar sesión");
+  try {
 
-      const viajeRef = ref(db, "viajes/" + id);
-      const snap = await get(viajeRef);
-      if (!snap.exists()) return;
+    const id = new URLSearchParams(window.location.search).get("id") || localStorage.getItem("viajeId");
 
-      const viaje = snap.val();
-      const tiempo = Date.now() - (viaje.timestamp || Date.now());
-      const minutos = tiempo / 60000;
-      let porcentaje = minutos <= 2 ? 1 : minutos <= 5 ? 0.5 : 0;
+    if (!id) return alert("Ride not found");
 
-      if (viaje.metodoPago === "stripe") {
-        const msg = porcentaje === 1 ? "Reembolso completo" : porcentaje === 0.5 ? "Reembolso parcial (50%)" : "Sin reembolso";
-        if (!confirm(`Cancelar viaje\n${msg}`)) return;
-      }
+    const user = auth.currentUser;
 
-      // Liberar Driver y actualizar estado
-      if (viaje.driverId) {
-        await update(ref(db, "drivers/" + viaje.driverId), { viajeActivo: null });
-      }
+    if (!user) return alert("Session expired");
 
-      await update(viajeRef, {
-        estado: "Cancelado",
-        driverId: null,
-        canceladoEn: Date.now()
-      });
+    const viajeRef = ref(db, "viajes/" + id);
 
-      if (viaje.metodoPago === "stripe" && viaje.paymentIntentId && porcentaje > 0) {
-        const token = await user.getIdToken(true);
-        await fetch("/api/refund-cancel", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ viajeId: id, percent: porcentaje }),
-        });
-      }
+    const snap = await get(viajeRef);
 
-      localStorage.removeItem("viajeId");
-      window.location.href = "/";
-    } catch (err) {
-      console.error(err);
+    if (!snap.exists()) return alert("Ride does not exist");
+
+    const viaje = snap.val();
+    // 🔒 evitar doble refund
+if (viaje.refundProcesado) {
+
+  alert("Refund already processed");
+
+  return;
+}
+
+    // ===================================================
+    // 🔒 VALIDAR ESTADO
+    // ===================================================
+
+    if (viaje.estado === "Finalizado" || viaje.estado === "Cancelado") {
+
+      alert("Ride already closed");
+
+      return;
     }
-  };
+
+    // ===================================================
+    // ⏳ CALCULAR REFUND
+    // ===================================================
+
+    const tiempo = Date.now() - (viaje.timestamp || Date.now());
+
+    const minutos = tiempo / 60000;
+
+    let porcentaje = 0;
+
+    if (minutos <= 2) porcentaje = 1;
+    else if (minutos <= 5) porcentaje = 0.5;
+
+    // ===================================================
+    // 💳 CONFIRMAR CANCELACIÓN
+    // ===================================================
+
+    if (viaje.metodoPago === "stripe") {
+
+      const msg =
+        porcentaje === 1
+          ? "Full refund"
+          : porcentaje === 0.5
+          ? "50% refund"
+          : "No refund";
+
+      const ok = confirm(`Cancel ride?\n${msg}`);
+
+      if (!ok) return;
+    }
+
+    // ===================================================
+    // 🧹 LIMPIAR TIMERS
+    // ===================================================
+
+    if (refundCheckRef.current) {
+
+      clearInterval(refundCheckRef.current);
+
+      refundCheckRef.current = null;
+    }
+
+    if (cashCancelRef.current) {
+
+      clearTimeout(cashCancelRef.current);
+
+      cashCancelRef.current = null;
+    }
+
+    // ===================================================
+    // 🚗 LIBERAR DRIVER
+    // ===================================================
+
+    if (viaje.driverId) {
+
+      await update(
+        ref(db, "drivers/" + viaje.driverId),
+        { viajeActivo: null }
+      );
+    }
+
+    // ===================================================
+    // ❌ CANCELAR VIAJE
+    // ===================================================
+
+    await update(viajeRef, {
+      estado: "Cancelado",
+      driverId: null,
+      canceladoEn: Date.now(),
+      cancelReason: "Canceled by user",
+      updatedAt: Date.now()
+    });
+
+    // ===================================================
+    // 💳 REFUND STRIPE
+    // ===================================================
+
+    if (
+      viaje.metodoPago === "stripe" &&
+      viaje.paymentIntentId &&
+      porcentaje > 0
+    ) {
+
+      try {
+
+        const token = await user.getIdToken(true);
+
+        await update(viajeRef, {
+  refundProcesado: true
+});
+
+        const refundRes = await fetch("/api/refund-cancel", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            viajeId: id,
+            percent: porcentaje
+          })
+        });
+
+        const refundData = await refundRes.json();
+
+        if (refundData.success) {
+
+          await update(viajeRef, {
+            refundProcesado: true,
+            estadoPago: "reembolsado"
+          });
+        }
+
+      } catch (err) {
+
+        console.error("REFUND ERROR:", err);
+      }
+    }
+
+    // ===================================================
+    // 🧹 LIMPIAR STORAGE
+    // ===================================================
+
+    localStorage.removeItem("viajeId");
+
+    localStorage.removeItem("viajeData");
+
+    // ===================================================
+    // 🔥 UI
+    // ===================================================
+
+    setViajeCancelado(true);
+
+    // ===================================================
+    // 🏠 REDIRECT
+    // ===================================================
+
+    setTimeout(() => {
+
+      window.location.href = "/";
+
+    }, 1200);
+
+  } catch (err) {
+
+    console.error("CANCEL ERROR:", err);
+
+    alert("Unable to cancel ride");
+  }
+};
 
   // --- RENDERIZADO DE UI ---
   const btn = (bg: string) => ({
