@@ -70,7 +70,8 @@ export async function POST(req: Request) {
 
           trackingVisible: false,
 
-          asignadoAt: Date.now()
+          asignadoAt: Date.now(),
+          expiraAt: null
         };
       });
 

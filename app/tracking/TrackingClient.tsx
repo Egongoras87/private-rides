@@ -223,146 +223,6 @@ useEffect(() => {
 
     setViajeData(d);
 // ===================================================
-// 🔥 AUTO REFUND SI NADIE ACEPTA
-// ===================================================
-
-if (
-  d.estado === "Pendiente" &&
-  d.metodoPago === "stripe" &&
-  d.paymentIntentId &&
-  !d.refundProcesado
-) {
-
-  // 🔒 evitar múltiples timers
-  if (!refundCheckRef.current) {
-
-    refundCheckRef.current =
-      setInterval(async () => {
-
-        const expirado =
-
-          Date.now() -
-          d.timestamp >
-
-          5 * 60 * 1000;
-
-        // ⏳ aún no expira
-        if (!expirado) return;
-
-        try {
-
-          console.log(
-            "💸 REEMBOLSO AUTOMÁTICO"
-          );
-
-          // ===================================================
-          // 💳 HACER REFUND
-          // ===================================================
-
-          const refundRes =
-            await fetch(
-              "/api/refund",
-              {
-                method: "POST",
-
-                headers: {
-                  "Content-Type":
-                    "application/json"
-                },
-
-                body: JSON.stringify({
-                  paymentIntentId:
-                    d.paymentIntentId
-                })
-              }
-            );
-
-          const refundData =
-            await refundRes.json();
-
-          // ❌ FALLÓ REFUND
-          if (!refundData.success) {
-
-            console.error(
-              "Refund failed"
-            );
-
-            return;
-          }
-
-          // ===================================================
-          // ❌ CANCELAR VIAJE
-          // ===================================================
-
-          await update(
-            ref(
-              db,
-              "viajes/" + d.id
-            ),
-            {
-              estado:
-                "Cancelado",
-
-              estadoPago:
-                "reembolsado",
-
-              pagado: false,
-
-              refundProcesado:
-                true,
-
-              canceladoAt:
-                Date.now()
-            }
-          );
-
-          // ===================================================
-          // 🧹 LIMPIEZA
-          // ===================================================
-
-          clearInterval(
-            refundCheckRef.current
-          );
-
-          refundCheckRef.current =
-            null;
-
-          localStorage.removeItem(
-            "viajeId"
-          );
-
-          localStorage.removeItem(
-            "viajeData"
-          );
-
-          // ===================================================
-          // 🔔 ALERTA
-          // ===================================================
-
-          alert(
-            "No drivers available.\nYour payment was refunded."
-          );
-
-          // ===================================================
-          // 🏠 HOME
-          // ===================================================
-
-          window.location.href =
-            "/";
-
-        } catch (err) {
-
-          console.error(
-            "AUTO REFUND ERROR:",
-            err
-          );
-        }
-
-      }, 15000); // revisar cada 15 segundos
-  }
-}
-
-// ===================================================
 // 💵 AUTO CANCEL CASH
 // ===================================================
 
@@ -416,7 +276,7 @@ if (
           );
 
           // ===================================================
-          // ❌ CANCELAR VIAJE
+          // ❌ CANCELAR VIAJE CASH
           // ===================================================
 
           await update(
@@ -477,21 +337,71 @@ if (
 
       },
 
-      // ⏳ 3 minutos
-      3 * 60 * 1000
+      // ⏳ 5 minutos
+      5 * 60 * 1000
     );
+  }
+
+} else {
+
+  // 🧹 limpiar timer cash
+  if (cashCancelRef.current) {
+
+    clearTimeout(
+      cashCancelRef.current
+    );
+
+    cashCancelRef.current =
+      null;
   }
 }
 
-    // 1. Verificación de estados finales
-    if (d.estado === "Finalizado") {
-      setViajeFinalizado(true);
-      return;
-    }
-    if (d.estado === "Cancelado") {
-      setViajeCancelado(true);
-      return;
-    }
+// ===================================================
+// 🚫 STRIPE REFUND YA NO EN FRONTEND
+// ===================================================
+
+// Stripe refund ahora es controlado por:
+// ✅ backend
+// ✅ cron job
+// ✅ api/refund
+// ✅ expiraAt
+
+// El frontend SOLO escucha Firebase.
+
+// ===================================================
+// ✅ ESTADOS FINALES
+// ===================================================
+
+if (
+  d.estado === "Finalizado"
+) {
+
+  setViajeFinalizado(
+    true
+  );
+
+  return;
+}
+
+if (
+  d.estado === "Cancelado"
+) {
+
+  // 🧹 limpiar storage
+  localStorage.removeItem(
+    "viajeId"
+  );
+
+  localStorage.removeItem(
+    "viajeData"
+  );
+
+  setViajeCancelado(
+    true
+  );
+
+  return;
+}
 
     // 2. Sincronización de Fase
     // Usamos una variable local para la lógica inmediata antes de que el estado 'fase' actualice
