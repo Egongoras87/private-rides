@@ -98,7 +98,7 @@ const [iosDevice, setIosDevice] =
 const [cerrarInstall, setCerrarInstall] =
   useState(false);
     const BASE_FARE = 8;        // tarifa base
-const PRICE_PER_MILE = 2.5; // por milla
+const PRICE_PER_MILE = 2.0; // por milla
 
 const MIN_FARE = 12;        // mínimo
 

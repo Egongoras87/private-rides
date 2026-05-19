@@ -489,12 +489,12 @@ const solicitarRuta = useCallback((
 ) return;
 
 currentStepIndexRef.current = 0;
-     const points =
+    const points =
   res.routes[0]
     .overview_path
     .filter(
       (_: any, i: number) =>
-        i % 4 === 0
+        i % 2 === 0
     )
     .map((p) => ({
       lat: p.lat(),

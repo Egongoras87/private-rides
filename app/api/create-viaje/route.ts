@@ -11,7 +11,7 @@ const stripe = new Stripe(
 
 // 🔥 TARIFAS
 const BASE_FARE = 8;
-const PRICE_PER_MILE = 2.5;
+const PRICE_PER_MILE = 2.0;
 const MIN_FARE = 12;
 
 export async function POST(
