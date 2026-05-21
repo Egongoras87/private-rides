@@ -65,8 +65,6 @@ const [lngDestino, setLngDestino] = useState(0);
 const [paymentMethodId, setPaymentMethodId] = useState<string | null>(null);
 const [cardLast4, setCardLast4] =
   useState("");
-const adminPhone =
-  "17252876197";
 const [cardBrand, setCardBrand] =
   useState("");
 const [wakeLock, setWakeLock] =
@@ -100,7 +98,7 @@ const [cerrarInstall, setCerrarInstall] =
     const BASE_FARE = 8;        // tarifa base
 const PRICE_PER_MILE = 2.0; // por milla
 
-const MIN_FARE = 12;        // mínimo
+const MIN_FARE = 10;        // mínimo
 
   const origenRef = useRef<HTMLInputElement | null>(null);
   const destinoRef = useRef<HTMLInputElement | null>(null);
@@ -637,49 +635,6 @@ localStorage.setItem(
     precio,
     distancia
   })
-);
-
-// =========================================================
-// 📲 WHATSAPP ADMIN
-// =========================================================
-
-const trackingUrl =
-  `${window.location.origin}/tracking?id=${viajeId}`;
-
-const telefonoFinal =
-  "1" +
-  telefono.replace(/\D/g, "");
-
-const mensajeWhatsApp =
-
-  "🚗 NEW RIDE\n\n" +
-
-  "👤 " + nombre + "\n" +
-
-  "📞 " + telefono + "\n" +
-
-  "📍 " + origen + "\n" +
-
-  "🏁 " + destino + "\n" +
-
-  "💰 $" +
-  precio.toFixed(2) +
-
-  "\n\n📡 Track:\n" +
-
-  trackingUrl;
-
-const adminPhone =
-  "17252876197";
-
-const url =
-
-  `https://api.whatsapp.com/send?phone=${adminPhone}&text=${encodeURIComponent(mensajeWhatsApp)}`;
-
-// 📲 OPEN ADMIN CHAT
-window.open(
-  url,
-  "_blank"
 );
 
 // =========================================================

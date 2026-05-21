@@ -268,10 +268,20 @@ const [mounted, setMounted] = useState(false);
   return (
     <div style={containerStyle}>
       <div style={cardStyle}>
-        <h2 style={{ marginBottom: 5 }}>🚗 Private Rides</h2>
-        <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>
-          Las Vegas Premium Service
-        </p>
+       <h2 style={{ marginBottom: 5 }}>
+  Welcome to Private Rides.
+</h2>
+
+<p
+  style={{
+    color: "#888",
+    fontSize: 13,
+    marginBottom: 20,
+    lineHeight: 1.5
+  }}
+>
+  Enter your phone number to create your account.
+</p>
 
         <div style={labelStyle}>Phone Number</div>
         <input
