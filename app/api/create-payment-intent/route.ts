@@ -149,10 +149,10 @@ try {
 
     throw err;
   }
-}
-    // =====================================================
-    // 💳 PAYMENT INTENT
-    // =====================================================
+}// =====================================================
+// 💳 PAYMENT INTENT
+// =====================================================
+
 const paymentIntent =
 
   await stripe.paymentIntents.create({
@@ -172,8 +172,16 @@ const paymentIntent =
     confirm:
       true,
 
+    // =================================================
+    // 🔥 USER PRESENT
+    // =================================================
+
     off_session:
       false,
+
+    // =================================================
+    // 🔥 SAVE FOR FUTURE RIDES
+    // =================================================
 
     setup_future_usage:
       "off_session",
@@ -194,6 +202,15 @@ const paymentIntent =
         request_three_d_secure:
           "automatic"
       }
+    },
+
+    metadata: {
+
+      firebaseUID:
+        decoded.uid,
+
+      type:
+        "ride_payment"
     }
   });
 
