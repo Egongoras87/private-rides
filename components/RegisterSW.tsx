@@ -12,7 +12,7 @@ export default function RegisterSW() {
     ) {
 
       navigator.serviceWorker
-        .register("/sw.js")
+        .register("/firebase-messaging-sw.js")
         .then(() => {
 
           console.log(
