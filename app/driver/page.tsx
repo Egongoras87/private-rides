@@ -65,6 +65,8 @@ const viajesPreviosRef =
   useRef<string[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null); // Para poder detener el sonido después
  const vibrationRef = useRef<any>(null);
+ const audioUnlockedRef =
+  useRef(false);
 const notificationPermissionRef =
   useRef(false);
   const [silenciado, setSilenciado] =
@@ -214,7 +216,40 @@ useEffect(() => {
   return () => unsub();
 
 }, []);
+useEffect(() => {
 
+  const unlockAudio =
+    () => {
+
+      if (
+        audioUnlockedRef.current
+      ) return;
+
+      const audio =
+        new Audio();
+
+      audio.play()
+        .catch(() => {});
+
+      audioUnlockedRef.current =
+        true;
+    };
+
+  window.addEventListener(
+    "click",
+    unlockAudio,
+    { once: true }
+  );
+
+  return () => {
+
+    window.removeEventListener(
+      "click",
+      unlockAudio
+    );
+  };
+
+}, []);
 
 useEffect(() => {
 
@@ -1523,7 +1558,7 @@ if (loadingAuth) {
 
     const unlock =
       new Audio(
-        "/notification-v2.mp3"
+        "/notification.mp3"
       );
 
     unlock.volume = 0.01;

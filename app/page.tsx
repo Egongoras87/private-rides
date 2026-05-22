@@ -102,6 +102,48 @@ const MIN_FARE = 1;         // mínimo
 
   const origenRef = useRef<HTMLInputElement | null>(null);
   const destinoRef = useRef<HTMLInputElement | null>(null);
+  const routeDebounceRef =
+  useRef<any>(null);
+  const autocompleteOptions = {
+
+  componentRestrictions: {
+    country: "us"
+  },
+
+  bounds:
+
+    miUbicacion
+
+      ? new window.google.maps.LatLngBounds(
+
+          {
+            lat:
+              miUbicacion.lat - 0.12,
+
+            lng:
+              miUbicacion.lng - 0.12
+          },
+
+          {
+            lat:
+              miUbicacion.lat + 0.12,
+
+            lng:
+              miUbicacion.lng + 0.12
+          }
+
+        )
+
+      : undefined,
+
+  strictBounds: false,
+
+  fields: [
+    "geometry",
+    "formatted_address",
+    "name"
+  ]
+};
    // ... (tus estados y otros useEffect)
 
   // 🔥 UBICACIÓN DE LAS FUNCIONES DE HUNDIMIENTO
@@ -338,6 +380,20 @@ const instalarApp = async () => {
   alert(
     "On iPhone tap Share then Add to Home Screen"
   );
+};
+const calcularRutaDebounced =
+() => {
+
+  clearTimeout(
+    routeDebounceRef.current
+  );
+
+  routeDebounceRef.current =
+    setTimeout(() => {
+
+      calcularRuta();
+
+    }, 500);
 };
  // 📍 Calcular ruta
   const calcularRuta = () => {
@@ -1184,6 +1240,9 @@ return (
     <div style={{ display:"flex", gap:10, alignItems:"center", marginTop:8 }}>
 
       <Autocomplete
+  options={
+    autocompleteOptions
+  }
         onLoad={(ref) => (origenAutoRef.current = ref)}
        onPlaceChanged={() => {
 
@@ -1203,11 +1262,15 @@ return (
   setLngOrigen(lng);
 
   // 🔥 RECALCULAR
-  setTimeout(() => {
+  if (
 
-    calcularRuta();
+  origenRef.current?.value &&
+  destinoRef.current?.value
 
-  }, 300);
+) {
+
+  calcularRutaDebounced();
+}
 }}
       >
 
@@ -1235,6 +1298,9 @@ return (
 
     {/* DESTINATION */}
     <Autocomplete
+  options={
+    autocompleteOptions
+  }
       onLoad={(ref) => (destinoAutoRef.current = ref)}
     onPlaceChanged={() => {
 
@@ -1254,11 +1320,15 @@ return (
   setLngDestino(lng);
 
   // 🔥 RECALCULAR
-  setTimeout(() => {
+  if (
 
-    calcularRuta();
+  origenRef.current?.value &&
+  destinoRef.current?.value
 
-  }, 300);
+) {
+
+  calcularRutaDebounced();
+}
 }}
     >
 
