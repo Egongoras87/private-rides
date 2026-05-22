@@ -35,15 +35,20 @@ firebase.initializeApp({
 // 🔥 FIREBASE MESSAGING
 // =====================================================
 
-const messaging =
-  firebase.messaging();
+firebase.messaging();
 
 console.log(
   "🔥 Firebase Messaging SW Ready"
 );
 
+// =====================================================
+// 🔥 ACTIVATE
+// =====================================================
+
 self.addEventListener(
+
   "activate",
+
   (event) => {
 
     console.log(
@@ -57,25 +62,46 @@ self.addEventListener(
 );
 
 // =====================================================
-// 🔥 BACKGROUND PUSH
+// 🔥 PUSH RECEIVED
 // =====================================================
 
-messaging.onBackgroundMessage(
+self.addEventListener(
 
-  function(payload) {
+  "push",
+
+  function(event) {
 
     console.log(
-      "🔥 BACKGROUND MESSAGE:",
+      "🔥 PUSH RECEIVED"
+    );
+
+    if (!event.data) {
+
+      console.log(
+        "❌ NO PUSH DATA"
+      );
+
+      return;
+    }
+
+    const payload =
+      event.data.json();
+
+    console.log(
+      "🔥 PUSH PAYLOAD:",
       payload
     );
 
     const title =
+
       payload.notification?.title ||
-      "New Ride";
+
+      "🚗 New Ride Request";
 
     const options = {
 
       body:
+
         payload.notification?.body ||
 
         "New ride request",
@@ -92,23 +118,35 @@ messaging.onBackgroundMessage(
       requireInteraction:
         true,
 
+      renotify:
+        true,
+
+      tag:
+        "new-ride",
+
       data: {
 
         url:
-          payload.data?.url ||
+
+          payload?.data?.url ||
+
           "/driver"
       }
     };
 
-    self.registration.showNotification(
-      title,
-      options
+    event.waitUntil(
+
+      self.registration
+        .showNotification(
+          title,
+          options
+        )
     );
   }
 );
 
 // =====================================================
-// 🔥 CLICK NOTIFICATION
+// 🔥 NOTIFICATION CLICK
 // =====================================================
 
 self.addEventListener(
@@ -117,17 +155,27 @@ self.addEventListener(
 
   function(event) {
 
+    console.log(
+      "🔥 NOTIFICATION CLICK"
+    );
+
     event.notification.close();
 
     const url =
-      event.notification.data?.url ||
+
+      event.notification
+        .data?.url ||
+
       "/driver";
 
     event.waitUntil(
 
       clients.matchAll({
+
         type: "window",
-        includeUncontrolled: true
+
+        includeUncontrolled:
+          true
       })
 
       .then((clientList) => {
@@ -135,17 +183,18 @@ self.addEventListener(
         for (const client of clientList) {
 
           if (
+
             client.url.includes(url) &&
+
             "focus" in client
+
           ) {
 
             return client.focus();
           }
         }
 
-        if (
-          clients.openWindow
-        ) {
+        if (clients.openWindow) {
 
           return clients.openWindow(url);
         }
