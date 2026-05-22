@@ -256,13 +256,16 @@ useEffect(() => {
   if (!driverUser)
     return;
 
+  let unsubscribe:
+    (() => void) | null = null;
+
   const initNotifications =
     async () => {
 
       try {
 
         // =================================================
-        // 🔥 VALIDAR MESSAGING
+        // 🔥 VALIDAR FIREBASE MESSAGING
         // =================================================
 
         if (!messaging) {
@@ -275,7 +278,7 @@ useEffect(() => {
         }
 
         // =================================================
-        // 🔥 PERMISSION
+        // 🔥 REQUEST PERMISSION
         // =================================================
 
         const permission =
@@ -312,7 +315,7 @@ useEffect(() => {
         );
 
         // =================================================
-        // 🔥 GET TOKEN
+        // 🔥 GET FCM TOKEN
         // =================================================
 
         const token =
@@ -348,19 +351,19 @@ useEffect(() => {
           token
         ) {
 
-         await update(
+          await update(
 
-  ref(
-    db,
-    "drivers/" + user.uid
-  ),
+            ref(
+              db,
+              "drivers/" + user.uid
+            ),
 
-  {
+            {
 
-    [`fcmTokens/${token}`]:
-      true
-  }
-);
+              [`fcmTokens/${token}`]:
+                true
+            }
+          );
 
           console.log(
             "✅ TOKEN SAVED"
@@ -368,66 +371,80 @@ useEffect(() => {
         }
 
         // =================================================
-// 🔥 FOREGROUND PUSH
-// =================================================
+        // 🔥 FOREGROUND PUSH
+        // =================================================
 
-onMessage(
+        unsubscribe = onMessage(
 
-  messaging,
+          messaging,
 
-  (payload: any) => {
+          (payload: any) => {
 
-    console.log(
-      "🔥 FOREGROUND PUSH:",
-      payload
-    );
+            console.log(
+              "🔥 FOREGROUND PUSH:",
+              payload
+            );
 
-    // =================================================
-    // 🔥 SI APP ESTÁ ABIERTA
-    // NO MOSTRAR NOTIFICACIÓN SISTEMA
-    // =================================================
+            // =============================================
+            // 🔥 SI APP ESTÁ ABIERTA
+            // EVITAR DUPLICATE SYSTEM NOTIFICATION
+            // =============================================
 
-    if (
+            if (
 
-      document.visibilityState ===
-      "visible"
+              document.visibilityState ===
+              "visible"
 
-    ) {
+            ) {
 
-      console.log(
-        "🔥 APP OPEN - SKIP SYSTEM NOTIFICATION"
-      );
+              console.log(
+                "🔥 APP OPEN - SKIP SYSTEM NOTIFICATION"
+              );
 
-      return;
-    }
+              return;
+            }
 
-    // =================================================
-    // 🔥 SHOW NOTIFICATION
-    // =================================================
+            // =============================================
+            // 🔥 SHOW SYSTEM NOTIFICATION
+            // =============================================
 
-    new Notification(
+            new Notification(
 
-      payload.notification?.title ||
+              payload?.data?.title ||
 
-      "New Ride",
+              payload?.notification?.title ||
 
-      {
+              "🚗 New Ride Request",
 
-        body:
+              {
 
-          payload.notification?.body ||
+                body:
 
-          "New ride request",
+                  payload?.data?.body ||
 
-        icon:
-          "/icon-192.png",
+                  payload?.notification?.body ||
 
-        badge:
-          "/badge.png"
-      }
-    );
-  }
-);
+                  "New ride request",
+
+                icon:
+                  "/icon-192.png",
+
+                badge:
+                  "/badge.png",
+
+                
+                requireInteraction:
+                  true,
+
+                silent:
+                  false,
+
+                tag:
+                  "new-ride"
+              }
+            );
+          }
+        );
 
       } catch (err) {
 
@@ -439,6 +456,18 @@ onMessage(
     };
 
   initNotifications();
+
+  // =====================================================
+  // 🔥 CLEANUP
+  // =====================================================
+
+  return () => {
+
+    if (unsubscribe) {
+
+      unsubscribe();
+    }
+  };
 
 }, [driverUser]);
 
@@ -1470,19 +1499,8 @@ const reproducirAlertaViaje =
 
     audioRef.current = audio;
 
-    // =====================================================
-    // 📳 VIBRACIÓN
-    // =====================================================
-    if (navigator.vibrate) {
-
-      navigator.vibrate([
-        500,
-        300,
-        500,
-        300,
-        800
-      ]);
-    }
+    
+    
 
     // =====================================================
     // 🔔 PUSH VISUAL

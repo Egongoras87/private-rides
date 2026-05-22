@@ -87,26 +87,37 @@ self.addEventListener(
     }
 
     const payload =
-      event.data.json();
+  event.data.json();
 
-    console.log(
-      "🔥 PUSH PAYLOAD:",
-      payload
-    );
+console.log(
+  "🔥 PUSH PAYLOAD:",
+  payload
+);
 
-    const title =
+// =====================================================
+// 🔥 EXTRACT DATA
+// =====================================================
 
-  payload.data?.title ||
+const title =
+
+  payload?.data?.title ||
+
+  payload?.notification?.title ||
 
   "🚗 New Ride Request";
+
+const body =
+
+  payload?.data?.body ||
+
+  payload?.notification?.body ||
+
+  "New ride request";
 
 const options = {
 
   body:
-
-    payload.data?.body ||
-
-    "New ride request",
+    body,
 
   icon:
     "/icon-192.png",
@@ -115,7 +126,7 @@ const options = {
     "/badge.png",
 
   vibrate:
-    [400,200,400,200,400],
+    [1000,500,1000,500,1000],
 
   requireInteraction:
     true,

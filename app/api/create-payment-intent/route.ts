@@ -104,67 +104,98 @@ export async function POST(
     }
 
     // =====================================================
-    // 🔗 ATTACH CARD
-    // =====================================================
+// 🔗 ATTACH CARD
+// =====================================================
 
-    try {
+try {
 
-      await stripe.paymentMethods.attach(
+  await stripe.paymentMethods.attach(
 
-        paymentMethodId,
+    paymentMethodId,
 
-        {
-          customer:
-            customerId
-        }
-      );
+    {
+      customer:
+        customerId
+    }
+  );
 
-    } catch (err: any) {
+  // =====================================================
+  // 🔥 DEFAULT PAYMENT METHOD
+  // =====================================================
 
-      if (
-        !err.message.includes(
-          "already attached"
-        )
-      ) {
+  await stripe.customers.update(
 
-        throw err;
+    customerId,
+
+    {
+
+      invoice_settings: {
+
+        default_payment_method:
+          paymentMethodId
       }
     }
+  );
 
+} catch (err: any) {
+
+  if (
+
+    !err.message.includes(
+      "already attached"
+    )
+
+  ) {
+
+    throw err;
+  }
+}
     // =====================================================
     // 💳 PAYMENT INTENT
     // =====================================================
+const paymentIntent =
 
-    const paymentIntent =
-      await stripe.paymentIntents.create({
+  await stripe.paymentIntents.create({
 
-        amount:
-          Math.round(amount * 100),
+    amount:
+      Math.round(amount * 100),
 
-        currency: "usd",
+    currency:
+      "usd",
 
-        customer:
-          customerId,
+    customer:
+      customerId,
 
-        payment_method:
-          paymentMethodId,
+    payment_method:
+      paymentMethodId,
 
-        confirm: true,
+    confirm:
+      true,
 
-        automatic_payment_methods: {
-          enabled: true,
-          allow_redirects: "never"
-        },
+    off_session:
+      false,
 
-        payment_method_options: {
+    setup_future_usage:
+      "off_session",
 
-          card: {
+    automatic_payment_methods: {
 
-            request_three_d_secure:
-              "automatic"
-          }
-        }
-      });
+      enabled:
+        true,
+
+      allow_redirects:
+        "never"
+    },
+
+    payment_method_options: {
+
+      card: {
+
+        request_three_d_secure:
+          "automatic"
+      }
+    }
+  });
 
     // =====================================================
     // ✅ RESPONSE
