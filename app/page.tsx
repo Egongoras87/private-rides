@@ -95,10 +95,10 @@ const [iosDevice, setIosDevice] =
 
 const [cerrarInstall, setCerrarInstall] =
   useState(false);
-    const BASE_FARE = 5;        // tarifa base
-const PRICE_PER_MILE = 1.5; // por milla
+    const BASE_FARE = 1;        // tarifa base
+const PRICE_PER_MILE = 1.0; // por milla
 
-const MIN_FARE = 10;        // mínimo
+const MIN_FARE = 1;         // mínimo
 
   const origenRef = useRef<HTMLInputElement | null>(null);
   const destinoRef = useRef<HTMLInputElement | null>(null);
@@ -347,9 +347,13 @@ const instalarApp = async () => {
   const destino = destinoRef.current.value;
 
   if (!origen || !destino) {
-    alert("Completa origen y destino");
-    return;
-  }
+
+  setPrecio(0);
+
+  setDistancia(0);
+
+  return;
+}
 
   if (!window.google?.maps) {
     console.warn("Google aún no está listo");
@@ -405,39 +409,6 @@ if (!window.google?.maps?.DirectionsService) return;
     }
   );
 };
-useEffect(() => {
-
-  // 🔥 evitar cálculo incompleto
-  if (
-
-    !latOrigen ||
-    !lngOrigen ||
-
-    !latDestino ||
-    !lngDestino
-
-  ) return;
-
-  // 🔥 debounce anti spam
-  const timer =
-    setTimeout(() => {
-
-      calcularRuta();
-
-    }, 500);
-
-  return () =>
-    clearTimeout(timer);
-
-}, [
-
-  latOrigen,
-  lngOrigen,
-
-  latDestino,
-  lngDestino
-
-]);
 
   // 📍 Obtener ubicación real + dirección
   const obtenerUbicacion = () => {
@@ -1214,17 +1185,30 @@ return (
 
       <Autocomplete
         onLoad={(ref) => (origenAutoRef.current = ref)}
-        onPlaceChanged={() => {
+       onPlaceChanged={() => {
 
-          const place = origenAutoRef.current.getPlace();
+  const place =
+    origenAutoRef.current.getPlace();
 
-          if (!place.geometry) return;
+  if (!place.geometry) return;
 
-          setLatOrigen(place.geometry.location.lat());
-          setLngOrigen(place.geometry.location.lng());
+  const lat =
+    place.geometry.location.lat();
 
-        
-        }}
+  const lng =
+    place.geometry.location.lng();
+
+  setLatOrigen(lat);
+
+  setLngOrigen(lng);
+
+  // 🔥 RECALCULAR
+  setTimeout(() => {
+
+    calcularRuta();
+
+  }, 300);
+}}
       >
 
         <input
@@ -1252,17 +1236,30 @@ return (
     {/* DESTINATION */}
     <Autocomplete
       onLoad={(ref) => (destinoAutoRef.current = ref)}
-      onPlaceChanged={() => {
+    onPlaceChanged={() => {
 
-        const place = destinoAutoRef.current.getPlace();
+  const place =
+    destinoAutoRef.current.getPlace();
 
-        if (!place.geometry) return;
+  if (!place.geometry) return;
 
-        setLatDestino(place.geometry.location.lat());
-        setLngDestino(place.geometry.location.lng());
+  const lat =
+    place.geometry.location.lat();
 
-        
-      }}
+  const lng =
+    place.geometry.location.lng();
+
+  setLatDestino(lat);
+
+  setLngDestino(lng);
+
+  // 🔥 RECALCULAR
+  setTimeout(() => {
+
+    calcularRuta();
+
+  }, 300);
+}}
     >
 
       <input
