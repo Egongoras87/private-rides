@@ -252,7 +252,7 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
-
+if (!driverUser) return;
   const initNotifications =
     async () => {
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminDb, adminAuth } from "@/lib/firebase-admin";
+import { adminDb, adminAuth, adminMessaging } from "@/lib/firebase-admin";
 import Stripe from "stripe";
 
 const stripe = new Stripe(
@@ -203,6 +203,131 @@ export async function POST(
 
         driversNotificados: {}
       });
+      // =====================================================
+// 🔥 SEND PUSH TO DRIVERS
+// =====================================================
+
+try {
+
+  const driversSnap =
+    await adminDb
+      .ref("drivers")
+      .once("value");
+
+  const drivers =
+    driversSnap.val();
+
+  if (drivers) {
+
+    await Promise.all(
+
+      Object.keys(drivers)
+        .map(async (driverId) => {
+
+          const driver =
+            drivers[driverId];
+
+          // 🔥 SOLO ACTIVOS
+          if (
+            !driver?.activo
+          ) return;
+
+          // 🔥 TOKEN
+          if (
+            !driver?.fcmToken
+          ) return;
+
+          try {
+
+            console.log(
+              "🔥 SENDING PUSH TO:",
+              driverId
+            );
+
+            const response =
+
+              await adminMessaging.send({
+
+                token:
+                  driver.fcmToken,
+
+                notification: {
+
+                  title:
+                    "🚗 New Ride Request",
+
+                  body:
+                    `${data.origen} → ${data.destino}`
+                },
+
+                data: {
+
+                  viajeId: id,
+
+                  url:
+                    "/driver"
+                },
+
+                android: {
+
+                  priority:
+                    "high"
+                },
+
+                webpush: {
+
+                  headers: {
+
+                    Urgency:
+                      "high"
+                  },
+
+                  notification: {
+
+                    icon:
+                      "/icon-192.png",
+
+                    badge:
+                      "/icon-192.png",
+
+                    requireInteraction:
+                      true,
+
+                    vibrate:
+                      [200,100,200]
+                  },
+
+                  fcmOptions: {
+
+                    link:
+                      "/driver"
+                  }
+                }
+              });
+
+            console.log(
+              "🔥 PUSH SUCCESS:",
+              response
+            );
+
+          } catch (err) {
+
+            console.error(
+              "🔥 PUSH ERROR:",
+              err
+            );
+          }
+        })
+    );
+  }
+
+} catch (err) {
+
+  console.error(
+    "🔥 SEND PUSH ERROR:",
+    err
+  );
+}
 
     // =====================================================
     // ✅ RESPONSE

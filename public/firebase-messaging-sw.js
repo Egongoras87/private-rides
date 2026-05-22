@@ -1,74 +1,141 @@
-import { getApps, initializeApp } from "firebase/app";
+importScripts(
+  "https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"
+);
 
-import {
-
-  getMessaging,
-
-  getToken,
-
-  onMessage
-
-} from "firebase/messaging";
+importScripts(
+  "https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js"
+);
 
 // =====================================================
 // 🔥 FIREBASE CONFIG
 // =====================================================
 
-const firebaseConfig = {
+firebase.initializeApp({
 
   apiKey:
-    process.env
-      .NEXT_PUBLIC_FIREBASE_API_KEY,
+    "AIzaSyCUm9Bawr6Gnr-QAbwDhmdJ2TVVrMNA3Uc",
 
   authDomain:
-    process.env
-      .NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    "private-rides-52e08.firebaseapp.com",
 
   projectId:
-    process.env
-      .NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    "private-rides-52e08",
 
   storageBucket:
-    process.env
-      .NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    "private-rides-52e08.firebasestorage.app",
 
   messagingSenderId:
-    process.env
-      .NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    "768368448310",
 
   appId:
-    process.env
-      .NEXT_PUBLIC_FIREBASE_APP_ID
-};
+    "1:768368448310:web:9e5fc8c3e92aac5e719997"
+});
 
 // =====================================================
-// 🔥 PREVENT DUPLICATE APP
+// 🔥 FIREBASE MESSAGING
 // =====================================================
 
-const app =
+const messaging =
+  firebase.messaging();
 
-  getApps().length === 0
-
-    ? initializeApp(firebaseConfig)
-
-    : getApps()[0];
+console.log(
+  "🔥 Firebase Messaging SW Ready"
+);
 
 // =====================================================
-// 🔥 MESSAGING
+// 🔥 BACKGROUND PUSH
 // =====================================================
 
-export const messaging =
+messaging.onBackgroundMessage(
 
-  typeof window !==
-  "undefined"
+  function(payload) {
 
-    ? getMessaging(app)
+    console.log(
+      "🔥 BACKGROUND MESSAGE:",
+      payload
+    );
 
-    : null;
+    const title =
+      payload.notification?.title ||
+      "New Ride";
 
-export {
+    const options = {
 
-  getToken,
+      body:
+        payload.notification?.body ||
 
-  onMessage
-};
+        "New ride request",
+
+      icon:
+        "/icon-192.png",
+
+      badge:
+        "/icon-192.png",
+
+      vibrate:
+        [200,100,200],
+
+      requireInteraction:
+        true,
+
+      data: {
+
+        url:
+          payload.data?.url ||
+          "/driver"
+      }
+    };
+
+    self.registration.showNotification(
+      title,
+      options
+    );
+  }
+);
+
+// =====================================================
+// 🔥 CLICK NOTIFICATION
+// =====================================================
+
+self.addEventListener(
+
+  "notificationclick",
+
+  function(event) {
+
+    event.notification.close();
+
+    const url =
+      event.notification.data?.url ||
+      "/driver";
+
+    event.waitUntil(
+
+      clients.matchAll({
+        type: "window",
+        includeUncontrolled: true
+      })
+
+      .then((clientList) => {
+
+        for (const client of clientList) {
+
+          if (
+            client.url.includes(url) &&
+            "focus" in client
+          ) {
+
+            return client.focus();
+          }
+        }
+
+        if (
+          clients.openWindow
+        ) {
+
+          return clients.openWindow(url);
+        }
+      })
+    );
+  }
+);
