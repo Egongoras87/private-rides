@@ -368,39 +368,66 @@ useEffect(() => {
         }
 
         // =================================================
-        // 🔥 FOREGROUND PUSH
-        // =================================================
+// 🔥 FOREGROUND PUSH
+// =================================================
 
-        onMessage(
+onMessage(
 
-          messaging,
+  messaging,
 
-          (payload: any) => {
+  (payload: any) => {
 
-            console.log(
-              "🔥 FOREGROUND PUSH:",
-              payload
-            );
+    console.log(
+      "🔥 FOREGROUND PUSH:",
+      payload
+    );
 
-            new Notification(
+    // =================================================
+    // 🔥 SI APP ESTÁ ABIERTA
+    // NO MOSTRAR NOTIFICACIÓN SISTEMA
+    // =================================================
 
-              payload.notification?.title ||
+    if (
 
-              "New Ride",
+      document.visibilityState ===
+      "visible"
 
-              {
+    ) {
 
-                body:
-                  payload.notification?.body ||
+      console.log(
+        "🔥 APP OPEN - SKIP SYSTEM NOTIFICATION"
+      );
 
-                  "New ride request",
+      return;
+    }
 
-                icon:
-                  "/icon-192.png"
-              }
-            );
-          }
-        );
+    // =================================================
+    // 🔥 SHOW NOTIFICATION
+    // =================================================
+
+    new Notification(
+
+      payload.notification?.title ||
+
+      "New Ride",
+
+      {
+
+        body:
+
+          payload.notification?.body ||
+
+          "New ride request",
+
+        icon:
+          "/icon-192.png",
+
+        badge:
+          "/badge.png"
+      }
+    );
+  }
+);
 
       } catch (err) {
 
@@ -1439,7 +1466,7 @@ const reproducirAlertaViaje =
     // 🔥 loop infinito
     audio.loop = true;
 
-    await audio.play();
+    await audio.play().catch(() => {});
 
     audioRef.current = audio;
 
