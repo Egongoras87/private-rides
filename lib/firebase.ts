@@ -19,7 +19,8 @@ const firebaseConfig = {
     "1:768368448310:web:9e5fc8c3e92aac5e719997"
 };
 
-const app = initializeApp(firebaseConfig);
+export const app =
+  initializeApp(firebaseConfig);
 
 export const db = getDatabase(app);
 

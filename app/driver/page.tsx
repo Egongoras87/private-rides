@@ -20,6 +20,15 @@ import { googleMapsConfig } from "@/lib/googleMaps";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useEffect, useState, useCallback, useRef } from "react";
+import {
+
+  messaging,
+
+  getToken,
+
+  onMessage
+
+} from "@/lib/firebase-messaging";
 
 // 🔥 ETA
 
@@ -203,6 +212,125 @@ useEffect(() => {
     );
 
   return () => unsub();
+
+}, []);
+
+
+useEffect(() => {
+
+  const initNotifications =
+    async () => {
+
+      try {
+
+        // =================================================
+        // 🔥 PERMISSION
+        // =================================================
+
+        const permission =
+
+          await Notification
+            .requestPermission();
+
+        if (
+          permission !== "granted"
+        ) {
+
+          console.log(
+            "Notification denied"
+          );
+
+          return;
+        }
+
+        // =================================================
+        // 🔥 GET FCM TOKEN
+        // =================================================
+
+        if (!messaging) return;
+
+        const token =
+          await getToken(
+            messaging,
+            {
+
+              vapidKey:
+
+                process.env
+                  .NEXT_PUBLIC_FIREBASE_VAPID_KEY
+            }
+          );
+
+        console.log(
+          "FCM TOKEN:",
+          token
+        );
+
+        // =================================================
+        // 🔥 SAVE TOKEN
+        // =================================================
+
+        const user =
+          auth.currentUser;
+
+        if (
+          user &&
+          token
+        ) {
+
+          await update(
+            ref(
+              db,
+              "drivers/" + user.uid
+            ),
+            {
+              fcmToken:
+                token
+            }
+          );
+        }
+
+        // =================================================
+        // 🔥 FOREGROUND PUSH
+        // =================================================
+
+       onMessage(
+  messaging,
+  (payload: any) => {
+
+            console.log(
+              "FOREGROUND PUSH:",
+              payload
+            );
+
+            new Notification(
+
+              payload.notification?.title ||
+
+              "New Ride",
+
+              {
+
+                body:
+                  payload.notification?.body,
+
+                icon:
+                  "/icon-192.png"
+              }
+            );
+          }
+        );
+
+      } catch (err) {
+
+        console.error(
+          "FCM ERROR:",
+          err
+        );
+      }
+    };
+
+  initNotifications();
 
 }, []);
 

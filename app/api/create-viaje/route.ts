@@ -5,7 +5,7 @@ import Stripe from "stripe";
 const stripe = new Stripe(
   process.env.STRIPE_SECRET_KEY!,
   {
-    apiVersion: "2024-04-10" as any
+    apiVersion: "2026-04-22.dahlia"
   }
 );
 
@@ -32,7 +32,9 @@ export async function POST(
     if (!token) {
 
       return NextResponse.json(
-        { error: "No token" },
+        {
+          error: "No token"
+        },
         { status: 401 }
       );
     }
@@ -55,7 +57,7 @@ export async function POST(
 
       distancia,
 
-      paymentMethodId
+      paymentIntentId
 
     } = data;
 
@@ -103,147 +105,44 @@ export async function POST(
         precioFinal.toFixed(2)
       );
 
-   // =====================================================
-// 💳 STRIPE
-// =====================================================
+    // =====================================================
+    // 💳 VALIDAR STRIPE
+    // =====================================================
 
-let paymentIntentId: string | null = null;
+    if (metodoPago === "stripe") {
 
-let clientSecret: string | null = null;
+      if (!paymentIntentId) {
 
-let customerId: string | null = null;
-
-if (metodoPago === "stripe") {
-
-  if (!paymentMethodId) {
-
-    return NextResponse.json(
-      {
-        error: "paymentMethodId requerido"
-      },
-      { status: 400 }
-    );
-  }
-
-  // =====================================================
-  // 👤 USER FIREBASE
-  // =====================================================
-
-  const userRef =
-    adminDb.ref(
-      "users/" + decoded.uid
-    );
-
-  const userSnap =
-    await userRef.get();
-
-  const userData =
-    userSnap.val() || {};
-
-  // =====================================================
-  // 👤 CUSTOMER EXISTENTE
-  // =====================================================
-
-  customerId =
-    userData.customerId || null;
-
-  // =====================================================
-  // 👤 CREAR CUSTOMER
-  // =====================================================
-
-  if (!customerId) {
-
-    const customer =
-      await stripe.customers.create({
-
-        metadata: {
-          firebaseUID:
-            decoded.uid
-        }
-      });
-
-    customerId =
-      customer.id;
-
-    await userRef.update({
-      customerId
-    });
-  }
-
-  // =====================================================
-  // 🔗 ATTACH CARD
-  // =====================================================
-
-  try {
-
-    await stripe.paymentMethods.attach(
-
-      paymentMethodId,
-
-      {
-        customer: customerId
+        return NextResponse.json(
+          {
+            error:
+              "paymentIntentId requerido"
+          },
+          { status: 400 }
+        );
       }
-    );
-    await stripe.customers.update(
-  customerId,
-  {
-    invoice_settings: {
-      default_payment_method:
-        paymentMethodId
+
+      const paymentIntent =
+        await stripe.paymentIntents.retrieve(
+          paymentIntentId
+        );
+
+      // 🔥 SOLO SUCCESS
+      if (
+        paymentIntent.status !==
+        "succeeded"
+      ) {
+
+        return NextResponse.json(
+          {
+            error:
+              "Payment not completed"
+          },
+          { status: 400 }
+        );
+      }
     }
-  }
-);
 
-  } catch (err: any) {
-
-    // 🔥 ya attached
-    if (
-      !err.message.includes(
-        "already attached"
-      )
-    ) {
-
-      throw err;
-    }
-  }
-
-  // =====================================================
-// 💳 PAYMENT INTENT
-// =====================================================
-
-const paymentIntent =
-  await stripe.paymentIntents.create({
-
-    amount:
-      Math.round(
-        precioFinalFijo * 100
-      ),
-
-    currency: "usd",
-
-    customer:
-      customerId,
-
-    payment_method:
-      paymentMethodId,
-
-    payment_method_types: [
-      "card"
-    ],
-
-    confirm: true,
-
-
-    setup_future_usage:
-      "off_session"
-  });
-
-paymentIntentId =
-  paymentIntent.id;
-
-clientSecret =
-  paymentIntent.client_secret;
-}
     // =====================================================
     // 🚗 CREAR VIAJE
     // =====================================================
@@ -268,7 +167,7 @@ clientSecret =
         userId:
           decoded.uid,
 
-        // 🚗 DRIVER RECONOCE
+        // 🚗 ESTADO
         estado:
           "Pendiente",
 
@@ -276,25 +175,32 @@ clientSecret =
         timestamp:
           Date.now(),
 
-          expiraAt:
+        expiraAt:
           Date.now() + 120000,
 
-        // 💳 PAGO
+        // 💳 PAYMENT
         pagado:
-        metodoPago === "stripe",
+          metodoPago === "stripe",
 
-        // 📊 ESTADO PAGO
         estadoPago:
-          metodoPago === "stripe"
-            ? "pagado"
 
-            : "pendiente",
+          metodoPago === "cash"
+
+            ? "cash"
+
+            : "pagado",
 
         // 💳 STRIPE
         paymentIntentId:
           paymentIntentId || null,
 
-        // 🔥 OBLIGATORIO
+        // 🔥 SISTEMA
+        refundProcesado:
+          false,
+
+        trackingVisible:
+          false,
+
         driversNotificados: {}
       });
 
@@ -307,9 +213,6 @@ clientSecret =
       ok: true,
 
       id,
-
-      clientSecret:
-        clientSecret || null,
 
       paymentIntentId:
         paymentIntentId || null

@@ -95,8 +95,8 @@ const [iosDevice, setIosDevice] =
 
 const [cerrarInstall, setCerrarInstall] =
   useState(false);
-    const BASE_FARE = 8;        // tarifa base
-const PRICE_PER_MILE = 2.0; // por milla
+    const BASE_FARE = 5;        // tarifa base
+const PRICE_PER_MILE = 1.5; // por milla
 
 const MIN_FARE = 10;        // mínimo
 
@@ -405,6 +405,39 @@ if (!window.google?.maps?.DirectionsService) return;
     }
   );
 };
+useEffect(() => {
+
+  // 🔥 evitar cálculo incompleto
+  if (
+
+    !latOrigen ||
+    !lngOrigen ||
+
+    !latDestino ||
+    !lngDestino
+
+  ) return;
+
+  // 🔥 debounce anti spam
+  const timer =
+    setTimeout(() => {
+
+      calcularRuta();
+
+    }, 500);
+
+  return () =>
+    clearTimeout(timer);
+
+}, [
+
+  latOrigen,
+  lngOrigen,
+
+  latDestino,
+  lngDestino
+
+]);
 
   // 📍 Obtener ubicación real + dirección
   const obtenerUbicacion = () => {
@@ -557,6 +590,178 @@ const reservar = async () => {
 
     const token = await user.getIdToken();
 
+   // =========================================================
+// 💳 STRIPE PAYMENT FIRST
+// =========================================================
+
+let finalPaymentIntentId = null;
+
+if (metodoPago === "stripe") {
+
+  // 🔥 VALIDAR STRIPE READY
+  if (!stripe || !elements) {
+
+    alert(
+      "Stripe not ready"
+    );
+
+    setLoadingPago(false);
+
+    return;
+  }
+
+  const paymentRes =
+    await fetch(
+      "/api/create-payment-intent",
+      {
+
+        method: "POST",
+
+        headers: {
+
+          "Content-Type":
+            "application/json",
+
+          Authorization:
+            "Bearer " + token
+        },
+
+        body: JSON.stringify({
+
+          amount: precio,
+
+          paymentMethodId
+        })
+      }
+    );
+
+  const paymentData =
+    await paymentRes.json();
+
+  if (!paymentRes.ok) {
+
+    localStorage.removeItem(
+      "viajeId"
+    );
+
+    localStorage.removeItem(
+      "viajeData"
+    );
+
+    alert(
+      paymentData.error ||
+      "Payment failed"
+    );
+
+    setLoadingPago(false);
+
+    return;
+  }
+  
+
+
+  // =====================================================
+  // 🔥 3DS
+  // =====================================================
+
+  if (
+    paymentData.status ===
+    "requires_action"
+  ) {
+
+    if (!stripe) {
+
+      alert(
+        "Stripe not loaded"
+      );
+
+      return;
+    }
+
+    const result =
+      await stripe.confirmCardPayment(
+        paymentData.clientSecret
+      );
+
+    // ❌ FAILED
+    if (result.error) {
+
+  localStorage.removeItem(
+    "viajeId"
+  );
+
+  localStorage.removeItem(
+    "viajeData"
+  );
+
+  alert(
+    result.error.message ||
+    "Authentication failed"
+  );
+
+  setLoadingPago(false);
+
+  return;
+}
+
+    // ❌ NOT SUCCEEDED
+    if (
+  result.paymentIntent?.status !==
+  "succeeded"
+) {
+
+  localStorage.removeItem(
+    "viajeId"
+  );
+
+  localStorage.removeItem(
+    "viajeData"
+  );
+
+  alert(
+    "Payment not completed"
+  );
+
+  setLoadingPago(false);
+
+  return;
+}
+
+    finalPaymentIntentId =
+      result.paymentIntent.id;
+  }
+
+  // ✅ SUCCESS DIRECT
+  else if (
+    paymentData.status ===
+    "succeeded"
+  ) {
+
+    finalPaymentIntentId =
+      paymentData.paymentIntentId;
+  }
+
+  // ❌ FAILED
+  else {
+
+  localStorage.removeItem(
+    "viajeId"
+  );
+
+  localStorage.removeItem(
+    "viajeData"
+  );
+
+  alert(
+    "Payment failed"
+  );
+
+  setLoadingPago(false);
+
+  return;
+}
+}
+
     // 🔥 CREAR VIAJE EN BACKEND
     const res = await fetch("/api/create-viaje", {
       method: "POST",
@@ -578,8 +783,9 @@ const reservar = async () => {
         fecha: fechaISO,
         esProgramado,
         metodoPago,
+       paymentIntentId:
+        finalPaymentIntentId,
        
-        paymentMethodId: metodoPago === "stripe" ? paymentMethodId : null
       })
     });
 
@@ -596,24 +802,6 @@ if (!res.ok) {
 
 // ✅ ID DEL VIAJE
 const viajeId = data.id;
-
-// =========================================================
-// 💳 STRIPE YA CONFIRMADO EN BACKEND
-// =========================================================
-
-if (metodoPago === "stripe") {
-
-  // ✅ ACTUALIZAR FIREBASE
-  await update(
-    ref(db, "viajes/" + viajeId),
-    {
-      pagado: true,
-      estadoPago: "pagado",
-      paymentIntentId:
-        data.paymentIntentId
-    }
-  );
-}
 
 // =========================================================
 // 🔥 LOCAL STORAGE
@@ -1035,13 +1223,7 @@ return (
           setLatOrigen(place.geometry.location.lat());
           setLngOrigen(place.geometry.location.lng());
 
-          setTimeout(() => {
-
-            if (origenRef.current?.value && destinoRef.current?.value) {
-              calcularRuta();
-            }
-
-          }, 300);
+        
         }}
       >
 
@@ -1079,13 +1261,7 @@ return (
         setLatDestino(place.geometry.location.lat());
         setLngDestino(place.geometry.location.lng());
 
-        setTimeout(() => {
-
-          if (origenRef.current?.value && destinoRef.current?.value) {
-            calcularRuta();
-          }
-
-        }, 300);
+        
       }}
     >
 
