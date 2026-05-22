@@ -42,6 +42,20 @@ console.log(
   "🔥 Firebase Messaging SW Ready"
 );
 
+self.addEventListener(
+  "activate",
+  (event) => {
+
+    console.log(
+      "🔥 SW ACTIVATED"
+    );
+
+    event.waitUntil(
+      self.clients.claim()
+    );
+  }
+);
+
 // =====================================================
 // 🔥 BACKGROUND PUSH
 // =====================================================

@@ -252,11 +252,27 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
-if (!driverUser) return;
+
+  if (!driverUser)
+    return;
+
   const initNotifications =
     async () => {
 
       try {
+
+        // =================================================
+        // 🔥 VALIDAR MESSAGING
+        // =================================================
+
+        if (!messaging) {
+
+          console.log(
+            "❌ Firebase Messaging unavailable"
+          );
+
+          return;
+        }
 
         // =================================================
         // 🔥 PERMISSION
@@ -272,19 +288,35 @@ if (!driverUser) return;
         ) {
 
           console.log(
-            "Notification denied"
+            "❌ Notification denied"
           );
 
           return;
         }
 
         // =================================================
-        // 🔥 GET FCM TOKEN
+        // 🔥 REGISTER FIREBASE SW
         // =================================================
 
-        if (!messaging) return;
+        const registration =
+
+          await navigator
+            .serviceWorker
+            .register(
+              "/firebase-messaging-sw.js"
+            );
+
+        console.log(
+          "🔥 FIREBASE SW:",
+          registration
+        );
+
+        // =================================================
+        // 🔥 GET TOKEN
+        // =================================================
 
         const token =
+
           await getToken(
             messaging,
             {
@@ -292,12 +324,15 @@ if (!driverUser) return;
               vapidKey:
 
                 process.env
-                  .NEXT_PUBLIC_FIREBASE_VAPID_KEY
+                  .NEXT_PUBLIC_FIREBASE_VAPID_KEY,
+
+              serviceWorkerRegistration:
+                registration
             }
           );
 
         console.log(
-          "FCM TOKEN:",
+          "🔥 FCM TOKEN:",
           token
         );
 
@@ -314,14 +349,20 @@ if (!driverUser) return;
         ) {
 
           await update(
+
             ref(
               db,
               "drivers/" + user.uid
             ),
+
             {
               fcmToken:
                 token
             }
+          );
+
+          console.log(
+            "✅ TOKEN SAVED"
           );
         }
 
@@ -329,12 +370,14 @@ if (!driverUser) return;
         // 🔥 FOREGROUND PUSH
         // =================================================
 
-       onMessage(
-  messaging,
-  (payload: any) => {
+        onMessage(
+
+          messaging,
+
+          (payload: any) => {
 
             console.log(
-              "FOREGROUND PUSH:",
+              "🔥 FOREGROUND PUSH:",
               payload
             );
 
@@ -347,7 +390,9 @@ if (!driverUser) return;
               {
 
                 body:
-                  payload.notification?.body,
+                  payload.notification?.body ||
+
+                  "New ride request",
 
                 icon:
                   "/icon-192.png"
@@ -359,7 +404,7 @@ if (!driverUser) return;
       } catch (err) {
 
         console.error(
-          "FCM ERROR:",
+          "❌ FCM ERROR:",
           err
         );
       }
@@ -367,7 +412,7 @@ if (!driverUser) return;
 
   initNotifications();
 
-}, []);
+}, [driverUser]);
 
 // TRACKING DE UBICACIÓN EN TIEMPO REAL
 useEffect(() => {
