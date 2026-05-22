@@ -37,6 +37,8 @@ firebase.initializeApp({
 
 firebase.messaging();
 
+self.skipWaiting();
+
 console.log(
   "🔥 Firebase Messaging SW Ready"
 );
@@ -94,46 +96,48 @@ self.addEventListener(
 
     const title =
 
-      payload.notification?.title ||
+  payload.data?.title ||
 
-      "🚗 New Ride Request";
+  "🚗 New Ride Request";
 
-    const options = {
+const options = {
 
-      body:
+  body:
 
-        payload.notification?.body ||
+    payload.data?.body ||
 
-        "New ride request",
+    "New ride request",
 
-      icon:
-        "/icon-192.png",
+  icon:
+    "/icon-192.png",
 
-      badge:
-        "/icon-192.png",
+  badge:
+    "/badge.png",
 
-      vibrate:
-        [200,100,200],
+  vibrate:
+    [400,200,400,200,400],
 
-      requireInteraction:
-        true,
+  requireInteraction:
+    true,
 
-      renotify:
-        true,
+  renotify:
+    true,
 
-      tag:
-        "new-ride",
+  silent:
+    false,
 
-      data: {
+  tag:
+    "new-ride",
 
-        url:
+  data: {
 
-          payload?.data?.url ||
+    url:
 
-          "/driver"
-      }
-    };
+      payload?.data?.url ||
 
+      "/driver"
+  }
+};
     event.waitUntil(
 
       self.registration

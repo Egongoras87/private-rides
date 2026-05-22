@@ -203,13 +203,14 @@ export async function POST(
 
         driversNotificados: {}
       });
-      // =====================================================
+     // =====================================================
 // 🔥 SEND PUSH TO DRIVERS
 // =====================================================
 
 try {
 
   const driversSnap =
+
     await adminDb
       .ref("drivers")
       .once("value");
@@ -222,20 +223,25 @@ try {
     await Promise.all(
 
       Object.keys(drivers)
+
         .map(async (driverId) => {
 
           const driver =
             drivers[driverId];
 
+          // =================================================
           // 🔥 SOLO ACTIVOS
-          if (
-            !driver?.activo
-          ) return;
+          // =================================================
 
+          if (!driver?.activo)
+            return;
+
+          // =================================================
           // 🔥 TOKEN
-          if (
-            !driver?.fcmToken
-          ) return;
+          // =================================================
+
+          if (!driver?.fcmToken)
+            return;
 
           try {
 
@@ -251,28 +257,39 @@ try {
                 token:
                   driver.fcmToken,
 
-                notification: {
+                // =================================================
+                // 🔥 DATA ONLY
+                // EVITA DUPLICATE NOTIFICATIONS
+                // =================================================
+
+                data: {
 
                   title:
                     "🚗 New Ride Request",
 
                   body:
-                    `${data.origen} → ${data.destino}`
-                },
+                    `${data.origen} → ${data.destino}`,
 
-                data: {
-
-                  viajeId: id,
+                  viajeId:
+                    id,
 
                   url:
                     "/driver"
                 },
+
+                // =================================================
+                // 🔥 ANDROID
+                // =================================================
 
                 android: {
 
                   priority:
                     "high"
                 },
+
+                // =================================================
+                // 🔥 WEB PUSH
+                // =================================================
 
                 webpush: {
 
@@ -288,13 +305,22 @@ try {
                       "/icon-192.png",
 
                     badge:
-                      "/icon-192.png",
+                      "/badge.png",
 
                     requireInteraction:
                       true,
 
+                    renotify:
+                      true,
+
+                    silent:
+                      false,
+
                     vibrate:
-                      [200,100,200]
+                      [400,200,400,200,400],
+
+                    tag:
+                      "new-ride"
                   },
 
                   fcmOptions: {
@@ -306,14 +332,14 @@ try {
               });
 
             console.log(
-              "🔥 PUSH SUCCESS:",
+              "✅ PUSH SUCCESS:",
               response
             );
 
           } catch (err) {
 
             console.error(
-              "🔥 PUSH ERROR:",
+              "❌ PUSH ERROR:",
               err
             );
           }
@@ -324,11 +350,10 @@ try {
 } catch (err) {
 
   console.error(
-    "🔥 SEND PUSH ERROR:",
+    "❌ SEND PUSH ERROR:",
     err
   );
 }
-
     // =====================================================
     // ✅ RESPONSE
     // =====================================================
