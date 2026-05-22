@@ -348,18 +348,19 @@ useEffect(() => {
           token
         ) {
 
-          await update(
+         await update(
 
-            ref(
-              db,
-              "drivers/" + user.uid
-            ),
+  ref(
+    db,
+    "drivers/" + user.uid
+  ),
 
-            {
-              fcmToken:
-                token
-            }
-          );
+  {
+
+    [`fcmTokens/${token}`]:
+      true
+  }
+);
 
           console.log(
             "✅ TOKEN SAVED"
