@@ -185,37 +185,26 @@ const darkMapStyle = [
   }
 ];
 // =========================================================
-// 🔥 AUTH PERSISTENTE
+// 🔥 AUTH PERSISTENTE Y PROTECCIÓN DE RUTA
 // =========================================================
 useEffect(() => {
-
-  const unsub =
-
-    onAuthStateChanged(
-
-      auth,
-
-      async (user) => {
-
-        // ✅ usuario autenticado
-        if (user) {
-
-          setDriverUser(user);
-
-        } else {
-
-          setDriverUser(null);
-        }
-
-        // ✅ auth ya terminó
+  const unsub = onAuthStateChanged(
+    auth,
+    async (user) => {
+      if (user) {
+        // ✅ Usuario autenticado: lo guardamos y quitamos el loading
+        setDriverUser(user);
         setLoadingAuth(false);
-        
+      } else {
+        // ❌ NO hay usuario: limpiamos el estado y REDIRIGIMOS al login
+        setDriverUser(null);
+        router.replace("/login"); // Asegúrate de que esta sea la ruta correcta de tu login
       }
-    );
+    }
+  );
 
   return () => unsub();
-
-}, []);
+}, [router]);
 useEffect(() => {
 
   const unlockAudio =

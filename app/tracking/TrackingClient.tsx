@@ -504,55 +504,25 @@ if (
     }
 
     // ===================================================
-    // ⏳ CALCULAR REFUND
-    // ===================================================
+// 💳 FULL REFUND MESSAGE
+// ===================================================
 
-    const minutos =
+let mensaje =
+  "Cancel ride?";
 
-      (
-        Date.now() -
+if (
+  viaje.metodoPago ===
+  "stripe"
+) {
 
-        (
-          viaje.timestamp ||
-          Date.now()
-        )
-      ) / 60000;
+  mensaje =
+    "Cancel ride?\nFull refund";
+}
 
-    let porcentaje = 0;
+const ok =
+  confirm(mensaje);
 
-    if (minutos <= 2) porcentaje = 1;
-    else if (minutos <= 5) porcentaje = 0.5;
-
-    // ===================================================
-    // 💳 MENSAJE STRIPE
-    // ===================================================
-
-    let mensaje =
-      "Cancel ride?";
-
-    if (
-      viaje.metodoPago ===
-      "stripe"
-    ) {
-
-      mensaje =
-
-        porcentaje === 1
-
-          ? "Cancel ride?\nFull refund"
-
-          : porcentaje === 0.5
-
-          ? "Cancel ride?\n50% refund"
-
-          : "Cancel ride?\nNo refund";
-    }
-
-    const ok =
-      confirm(mensaje);
-
-    if (!ok) return;
-
+if (!ok) return;
    
     // ===================================================
     // 🔐 TOKEN
@@ -585,7 +555,7 @@ if (
 
             viajeId: id,
 
-            percent: porcentaje
+            
           })
         }
       );

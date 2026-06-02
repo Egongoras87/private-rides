@@ -196,46 +196,11 @@ export async function POST(req: Request) {
     // =====================================================
     // ⏳ REFUND LOGIC
     // =====================================================
+// =====================================================
+// 💳 FULL REFUND
+// =====================================================
 
-    const now =
-      Date.now();
-
-    let refundPercent = 1;
-
-    // 🚕 nadie aceptó
-    if (!v.asignadoAt) {
-
-      refundPercent = 1;
-
-    } else {
-
-      const minutos =
-
-        (now - v.asignadoAt) /
-        60000;
-
-      // 🚗 usuario cancela rápido
-      if (minutos <= 2) {
-
-        refundPercent = 1;
-
-      }
-
-      // 🚗 cancelación media
-      else if (
-        minutos <= 5
-      ) {
-
-        refundPercent = 0.5;
-
-      }
-
-      // 🚗 muy tarde
-      else {
-
-        refundPercent = 0;
-      }
-    }
+const refundPercent = 1;
 
     // =====================================================
     // 🔒 BLOQUEAR REFUND

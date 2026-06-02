@@ -123,7 +123,10 @@ const options = {
     "/icon-192.png",
 
   badge:
-    "/badge.png",
+
+  payload?.data?.badge ||
+
+  "/badge.png",
 
   vibrate:
     [1000,500,1000,500,1000],
@@ -214,6 +217,21 @@ self.addEventListener(
           return clients.openWindow(url);
         }
       })
+    );
+  }
+);
+// =====================================================
+// 🔥 NOTIFICATION CLOSED
+// =====================================================
+
+self.addEventListener(
+
+  "notificationclose",
+
+  function(event) {
+
+    console.log(
+      "🔥 Notification closed"
     );
   }
 );
