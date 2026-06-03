@@ -82,40 +82,59 @@ export default function Login() {
   }, []);
 
   // ===================================================
-  // 🔥 PASO 1: ENVIAR SMS
+  // 🔥 PASO 1: ENVIAR SMS (Lógica exacta del User)
   // ===================================================
   const sendSMS = async () => {
-    const cleaned = phone.replace(/\D/g, "");
+    const limpio = phone.replace(/\D/g, "");
 
-    if (cleaned.length !== 10) {
-      alert("Por favor ingresa un número válido de 10 dígitos");
+    if (limpio.length !== 10) {
+      alert("Please enter a valid 10-digit US phone number.");
       return;
     }
 
     setLoading(true);
 
     try {
-      const formattedPhone = cleaned.startsWith("+1") ? cleaned : `+1${cleaned}`;
+      const formattedPhone = "+1" + limpio;
       
+      // 🔥 1. Destruir instancia previa de recaptcha de forma segura si existe
+      if ((window as any).recaptchaVerifier) {
+        try {
+          (window as any).recaptchaVerifier.clear();
+        } catch (e) {
+          console.log("Error clearing recaptcha", e);
+        }
+      }
+
+      // 🔥 2. Limpiar el DOM (Crucial en Next.js para evitar choques)
+      const recaptchaContainer = document.getElementById("recaptcha-container");
+      if (recaptchaContainer) {
+        recaptchaContainer.innerHTML = "";
+      }
+
+      // 🔥 3. Crear nuevo verificador invisible
+      const appVerifier = new RecaptchaVerifier(auth, "recaptcha-container", {
+        size: "invisible",
+      });
+
+      // 🔥 4. FORZAR RENDERIZADO ANTES DE ENVIAR (Esto evitaba el error en el User)
+      await appVerifier.render();
+      (window as any).recaptchaVerifier = appVerifier;
+
+      // 🔥 5. Enviar SMS
       const confirmation = await signInWithPhoneNumber(
         auth,
         formattedPhone,
-        recaptchaVerifierRef.current
+        appVerifier
       );
 
       setConfirmationResult(confirmation);
       setStep(2);
 
     } catch (err: any) {
-      console.error("ERROR ENVIANDO SMS:", err);
-      alert(err?.message || "Hubo un error al enviar el SMS. Intenta de nuevo.");
-      
-      // Resetear recaptcha en caso de error para poder intentar de nuevo
-      if (recaptchaVerifierRef.current) {
-        recaptchaVerifierRef.current.render().then((widgetId: any) => {
-          (window as any).grecaptcha.reset(widgetId);
-        });
-      }
+      console.error("SMS ERROR:", err);
+      (window as any).recaptchaVerifier = null;
+      alert(err?.message || "Error sending SMS. Please try again.");
     } finally {
       setLoading(false);
     }

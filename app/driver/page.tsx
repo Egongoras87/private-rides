@@ -198,7 +198,7 @@ useEffect(() => {
       } else {
         // ❌ NO hay usuario: limpiamos el estado y REDIRIGIMOS al login
         setDriverUser(null);
-        router.replace("/login"); // Asegúrate de que esta sea la ruta correcta de tu login
+        router.replace("/login-driver"); // Asegúrate de que esta sea la ruta correcta de tu login
       }
     }
   );

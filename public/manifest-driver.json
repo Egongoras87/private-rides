@@ -8,9 +8,9 @@
   "description":
     "Aplicación oficial para conductores de Private Rides Las Vegas",
 
-  "start_url": "/driver",
+  "start_url": "/",
 
-  "scope": "/driver",
+  "scope": "/",
 
   "display": "standalone",
 

@@ -77,48 +77,21 @@ if (totalRechazos >= totalDriversOnline) {
     });
   }
 
-  await viajeRef.update({
-
-  estado:
-    "Cancelado",
-
-  estadoPago:
-
-    refund
-
-      ? "reembolsado"
-
-      : v.estadoPago,
-
-  canceladoPor:
-    "no_drivers_available",
-
-  refundId:
-    refund?.id || null,
-
-  refundProcesado:
-    true,
-
-  refundAt:
-    Date.now(),
-
-  refundPercent:
-
-    v.metodoPago === "stripe"
-
-      ? 1
-
-      : 0,
-
-  trackingVisible:
-    false,
-
-  expiraAt:
-    null,
-
-  canceladoAt:
-    Date.now()
-});
+ await viajeRef.update({
+    estado: "Cancelado",
+    
+    // ✅ EL ARREGLO: Agregamos || null para evitar el error de undefined
+    estadoPago: refund ? "reembolsado" : (v.estadoPago || null),
+    
+    canceladoPor: "no_drivers_available",
+    refundId: refund?.id || null,
+    refundProcesado: true,
+    refundAt: Date.now(),
+    refundPercent: v.metodoPago === "stripe" ? 1 : 0,
+    trackingVisible: false,
+    expiraAt: null,
+    canceladoAt: Date.now()
+  });
 const driversConViaje =
   await db
     .ref("drivers")

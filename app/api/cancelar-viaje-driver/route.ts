@@ -67,46 +67,21 @@ export async function POST(req: Request) {
       }
     }
 
-    // 🔥 ACTUALIZAR VIAJE
-  await refViaje.update({
-
-  estado:
-    "Cancelado",
-
-  canceladoPor:
-    "driver",
-
-  refundId:
-    refundId || v.refundId || null,
-
-  refundProcesado:
-    true,
-
-  refundPercent:
-
-    v.metodoPago === "stripe"
-
-    ? 1
-
-    : 0,
-
-  estadoPago:
-
-    refundId
-
-      ? "reembolsado"
-
-      : v.estadoPago,
-
-  trackingVisible:
-    false,
-
-  expiraAt:
-    null,
-
-  canceladoAt:
-    Date.now()
-});
+   // 🔥 ACTUALIZAR VIAJE
+    await refViaje.update({
+      estado: "Cancelado",
+      canceladoPor: "driver",
+      refundId: refundId || v.refundId || null,
+      refundProcesado: true,
+      refundPercent: v.metodoPago === "stripe" ? 1 : 0,
+      
+      // ✅ SOLUCIÓN AL ERROR: Si v.estadoPago no existe, mandamos null
+      estadoPago: refundId ? "reembolsado" : (v.estadoPago || null),
+      
+      trackingVisible: false,
+      expiraAt: null,
+      canceladoAt: Date.now()
+    });
     if (v.telefono) {
   const telefono = "1" + String(v.telefono).replace(/\D/g, "");
 
